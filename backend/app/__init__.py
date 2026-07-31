@@ -9,9 +9,11 @@ from app.api.stakeholder_routes import stakeholder_bp
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
 from app.models.poc.poc import Poc
+from app.api.oem_routes import oem_bp
 
 from app.models.account.account import Account
 from app.models.account.contact import Contact
+from app.api.activity_routes import activity_bp
 
 from app.models.opportunity.stage_master import StageMaster
 from app.models.system.tag import Tag
@@ -26,7 +28,8 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(poc_bp)
     app.register_blueprint(stakeholder_bp)
-
+    app.register_blueprint(oem_bp)
+    app.register_blueprint(activity_bp)
     @app.route("/")
     def health():
         return {
@@ -35,3 +38,13 @@ def create_app():
         }
 
     return app
+
+__all__ = [
+    "User",
+    "UserRole",
+    "Poc",
+    "Account",
+    "Contact",
+    "StageMaster",
+    "Tag"
+]

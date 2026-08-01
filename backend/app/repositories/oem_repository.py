@@ -14,15 +14,33 @@ class OEMRepository:
 
     @staticmethod
     def create(oem):
-        db.session.add(oem)
-        db.session.commit()
-        return oem
+        try:
+            db.session.add(oem)
+            db.session.commit()
+            return oem
+        except Exception:
+            db.session.rollback()
+            raise
 
     @staticmethod
     def update():
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
 
     @staticmethod
     def delete(oem):
-        db.session.delete(oem)
-        db.session.commit()
+        try:
+            db.session.delete(oem)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+
+    @staticmethod
+    def get_by_partner_name(partner_name):
+        return OEMPartner.query.filter_by(
+            partner_name=partner_name
+        ).first()

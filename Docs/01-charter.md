@@ -21,7 +21,7 @@ This project addresses that issue by designing a structured system that enforces
 
 | Role | Team Member |
 |------|-------------|
-| **Team Lead** | ya Narayan Gour |
+
 | **Build Owner** | Rajdeep Singh Sidhu |
 | **Data & Quality Owner** | Deekshitha Karri |
 | **Mentor(s)** | Phanee / Shwetha |

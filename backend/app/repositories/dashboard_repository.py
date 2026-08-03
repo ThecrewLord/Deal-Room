@@ -219,3 +219,4 @@ class DashboardRepository:
             )
 
         return 0
+    

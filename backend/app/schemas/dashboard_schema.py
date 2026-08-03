@@ -28,3 +28,4 @@ class DashboardSchema(Schema):
     win_loss_ratio = fields.Float()
 
     partner_contribution = fields.Int()
+    

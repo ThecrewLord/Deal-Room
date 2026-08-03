@@ -1,0 +1,1 @@
+from .opportunity_repository import OpportunityRepository

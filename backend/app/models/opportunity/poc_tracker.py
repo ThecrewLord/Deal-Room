@@ -40,6 +40,44 @@ class POCTracker(BaseModel):
         db.Text,
     )
 
+    # --- Mandatory exit-criteria fields (core project requirement) ---
+
+    objective = db.Column(
+        db.Text,
+        nullable=False,
+    )
+
+    success_metric = db.Column(
+        db.Text,
+        nullable=False,
+    )
+
+    target_date = db.Column(
+        db.Date,
+        nullable=False,
+    )
+
+    failure_condition = db.Column(
+        db.Text,
+        nullable=False,
+    )
+
+    stakeholder_signoff = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+    )
+
+    outcome = db.Column(
+        db.String(20),
+        nullable=True,
+    )  # Success / Failure / Ongoing / Abandoned
+
+    outcome_notes = db.Column(
+        db.Text,
+        nullable=True,
+    )
+
     opportunity = db.relationship(
         "Opportunity",
         back_populates="poc_trackers",

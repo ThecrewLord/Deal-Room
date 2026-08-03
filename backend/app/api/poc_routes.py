@@ -1,14 +1,10 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint
+from app.controllers.poc_controller import PocController
 
 poc_bp = Blueprint("poc", __name__, url_prefix="/api/poc")
 
-@poc_bp.route("/<int:opportunity_id>", methods=["POST"])
-def create_poc(opportunity_id):
-    data = request.get_json()
-    # TODO: call PocController.create(opportunity_id, data) once controller exists
-    return jsonify({"message": "Create POC API Working", "opportunity_id": opportunity_id})
-
-@poc_bp.route("/<int:opportunity_id>", methods=["GET"])
-def get_poc(opportunity_id):
-    # TODO: call PocController.get(opportunity_id) once controller exists
-    return jsonify({"message": "Get POC API Working", "opportunity_id": opportunity_id})
+poc_bp.route("", methods=["POST"])(PocController.create)
+poc_bp.route("/<int:poc_id>", methods=["GET"])(PocController.get)
+poc_bp.route("/opportunity/<int:opportunity_id>", methods=["GET"])(PocController.get_by_opportunity)
+poc_bp.route("/<int:poc_id>", methods=["PUT"])(PocController.update)
+poc_bp.route("/<int:poc_id>", methods=["DELETE"])(PocController.delete)

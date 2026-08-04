@@ -44,4 +44,7 @@ backend/migrations/uploads/
 htmlcov/
 
 # Alembic cache
-backend/migrations/__pycache__/backend.zip
+backend/migrations/__pycache__/
+
+# Zip files
+*.zip

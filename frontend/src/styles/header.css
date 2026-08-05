@@ -1,0 +1,67 @@
+.app-header {
+
+    height: var(--header-height);
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    padding: 0 24px;
+
+    background: var(--color-surface);
+
+    border-bottom: 1px solid var(--color-border);
+
+    box-shadow: var(--shadow-sm);
+
+}
+
+.app-header h2 {
+
+    color: var(--color-text);
+
+}
+
+.user-menu {
+
+    display: flex;
+
+    align-items: center;
+
+    gap: 18px;
+
+}
+
+.user-menu span {
+
+    color: var(--color-text);
+
+    font-weight: 500;
+
+}
+
+.user-menu button {
+
+    border: none;
+
+    cursor: pointer;
+
+    background: var(--color-danger);
+
+    color: var(--color-text-white);
+
+    padding: 8px 18px;
+
+    border-radius: var(--radius-md);
+
+    transition: var(--transition);
+
+}
+
+.user-menu button:hover {
+
+    opacity: .9;
+
+}

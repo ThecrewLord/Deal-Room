@@ -1,54 +1,211 @@
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import OpportunityDetail from './pages/OpportunityDetail'
-import './App.css'
+import { Routes, Route } from "react-router-dom";
+import Login from "./pages/auth/Login";
+import Signup from "./pages/auth/Signup";
+import PendingAccess from "./pages/auth/PendingAccess";
+import RevokedAccess from "./pages/auth/RevokedAccess";
+import RoleSelection from "./pages/auth/RoleSelection";
+import DashboardLayout from "./layouts/DashboardLayout";
+import Dashboard from "./pages/dashboard/Dashboard";
+import ComingSoon from "./pages/common/ComingSoon";
+import ProtectedRoute from "./routes/ProtectedRoute";
+import RoleRoute from "./routes/RoleRoute";
+import OpportunityDetail from "./pages/OpportunityDetail";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
+import UserApproval from "./pages/admin/UserApproval";
+import UserManagement from "./pages/admin/UserManagement";
+import RoleRoute from "./routes/RoleRoute";
 
 function Home() {
-  const [count, setCount] = useState(0)
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-        <p style={{ marginTop: "20px" }}>
-          <Link to="/opportunity/1">Go to Opportunity #1 (POC Test)</Link>
-        </p>
-      </section>
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    return <h2>Collaborating Opportunities</h2>;
+
 }
 
-function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/opportunity/:id" element={<OpportunityDetail />} />
-      </Routes>
-    </BrowserRouter>
-  )
+function Unauthorized() {
+
+    return <h2>Unauthorized</h2>;
+
 }
 
-export default App
+const Layout = ({ children }) => (
+
+    <ProtectedRoute>
+
+        <DashboardLayout>
+
+            {children}
+
+        </DashboardLayout>
+
+    </ProtectedRoute>
+
+);
+
+
+function HomeRedirect() {
+
+    const { user, loading } = useAuth();
+
+    if (loading) return null;
+
+    return (
+        <Navigate
+            replace
+            to={
+                user
+                    ? "/dashboard"
+                    : "/login"
+            }
+        />
+    );
+}
+
+export default function App() {
+
+    return (
+
+        <Routes>
+
+            <Route path="/" element={<HomeRedirect />} />
+
+            <Route path="/login" element={<Login />} />
+
+            <Route path="/signup" element={<Signup />} />
+
+            <Route path="/pending" element={<PendingAccess />} />
+
+            <Route path="/revoked" element={<RevokedAccess />} />
+
+            <Route path="/select-role" element={<RoleSelection />} />
+
+            <Route path="/unauthorized" element={<Unauthorized />} />
+
+            <Route
+
+                path="/dashboard"
+
+                element={
+
+                    <Layout>
+
+                        <Dashboard />
+
+                    </Layout>
+
+                }
+
+            />
+
+            <Route
+
+                path="/admin/users"
+
+                element={
+
+                    <Layout>
+
+                        <RoleRoute roles={["Admin"]}>
+
+                            <ComingSoon title="Pending Users" />
+
+                        </RoleRoute>
+
+                    </Layout>
+
+                }
+
+            />
+
+            <Route
+
+                path="/admin/roles"
+
+                element={
+
+                    <Layout>
+
+                        <RoleRoute roles={["Admin"]}>
+
+                            <ComingSoon title="Assign Roles" />
+
+                        </RoleRoute>
+
+                    </Layout>
+
+                }
+
+            />
+
+            <Route
+
+                path="/admin/access"
+
+                element={
+
+                    <Layout>
+
+                        <RoleRoute roles={["Admin"]}>
+
+                            <ComingSoon title="Access Management" />
+
+                        </RoleRoute>
+
+                    </Layout>
+
+                }
+
+            />
+
+            <Route
+
+                path="/opportunity/:id"
+                element={<OpportunityDetail />}
+
+            />
+
+            <Route
+
+                path="/admin/approval"
+
+                element={
+
+                    <ProtectedRoute>
+
+                        <RoleRoute role="Admin">
+
+                            <UserApproval />
+
+                        </RoleRoute>
+
+                    </ProtectedRoute>
+
+                }
+
+            />
+
+            <Route
+
+                path="/admin/users"
+
+                element={
+
+                    <ProtectedRoute>
+
+                        <RoleRoute role="Admin">
+
+                            <UserManagement />
+
+                        </RoleRoute>
+
+                    </ProtectedRoute>
+
+                }
+
+            />
+
+        </Routes>
+
+    );
+
+}

@@ -1,0 +1,52 @@
+:root {
+
+    /* Primary */
+    --color-primary: #2563eb;
+    --color-primary-hover: #1d4ed8;
+
+    /* Secondary */
+    --color-secondary: #64748b;
+
+    /* Success */
+    --color-success: #16a34a;
+
+    /* Warning */
+    --color-warning: #f59e0b;
+
+    /* Danger */
+    --color-danger: #dc2626;
+
+    /* Backgrounds */
+    --color-bg: #f5f6fa;
+    --color-surface: #ffffff;
+    --color-sidebar: #1e293b;
+
+    /* Text */
+    --color-text: #1f2937;
+    --color-text-light: #6b7280;
+    --color-text-white: #ffffff;
+
+    /* Borders */
+    --color-border: #d1d5db;
+
+    /* Inputs */
+    --color-input-bg: #ffffff;
+    --color-input-border: #cbd5e1;
+    --color-input-focus: #2563eb;
+
+    /* Shadows */
+    --shadow-sm: 0 2px 6px rgba(0,0,0,.08);
+    --shadow-md: 0 8px 24px rgba(0,0,0,.12);
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+
+    /* Transition */
+    --transition: all .2s ease;
+
+    /* Layout */
+    --header-height: 64px;
+    --sidebar-width: 260px;
+}

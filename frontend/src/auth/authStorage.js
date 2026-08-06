@@ -1,44 +1,66 @@
-const TOKEN_KEY = "token";
+const ACCESS_TOKEN_KEY = "accessToken";
+const REFRESH_TOKEN_KEY = "refreshToken";
 const USER_KEY = "user";
-const ROLE_KEY = "activeRole";
+const ACTIVE_ROLE_KEY = "activeRole";
 
-export const saveSession = ({ token, user, activeRole }) => {
-    if (token)
-        localStorage.setItem(TOKEN_KEY, token);
+export const saveSession = ({
+    accessToken,
+    refreshToken,
+    user,
+    activeRole,
+}) => {
+    if (accessToken !== undefined && accessToken !== null) {
+        localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+    }
 
-    if (user)
-        localStorage.setItem(
-            USER_KEY,
-            JSON.stringify(user)
-        );
+    if (refreshToken !== undefined && refreshToken !== null) {
+        localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    }
 
-    if (activeRole)
-        localStorage.setItem(
-            ROLE_KEY,
-            activeRole
-        );
+    if (user !== undefined && user !== null) {
+        localStorage.setItem(USER_KEY, JSON.stringify(user));
+    }
+
+    if (activeRole !== undefined && activeRole !== null) {
+        localStorage.setItem(ACTIVE_ROLE_KEY, activeRole);
+    }
 };
 
-export const getToken = () =>
-    localStorage.getItem(TOKEN_KEY);
+export const getAccessToken = () =>
+    localStorage.getItem(ACCESS_TOKEN_KEY);
+
+export const getRefreshToken = () =>
+    localStorage.getItem(REFRESH_TOKEN_KEY);
 
 export const getUser = () => {
-    const user = localStorage.getItem(USER_KEY);
+    const value = localStorage.getItem(USER_KEY);
 
-    return user ? JSON.parse(user) : null;
+    if (!value) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
 };
 
 export const getActiveRole = () =>
-    localStorage.getItem(ROLE_KEY);
+    localStorage.getItem(ACTIVE_ROLE_KEY);
 
-export const updateRole = (role) =>
-    localStorage.setItem(ROLE_KEY, role);
+export const updateActiveRole = (role) => {
+    if (role === undefined || role === null) {
+        localStorage.removeItem(ACTIVE_ROLE_KEY);
+        return;
+    }
 
-export const clearSession = () => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(ROLE_KEY);
+    localStorage.setItem(ACTIVE_ROLE_KEY, role);
 };
 
-export const isAuthenticated = () =>
-    !!getToken();
+export const clearSession = () => {
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(ACTIVE_ROLE_KEY);
+};

@@ -1,79 +1,41 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import {
-    getActiveRole,
-    isAuthenticated,
-} 
- from "../auth/authStorage";
-
-// export default function RoleRoute({
-
-//     children,
-
-//     roles,
-
-// }) {
-
-//     if (!isAuthenticated()) {
-
-//         return <Navigate to="/login" replace />;
-
-//     }
-
-//     const role = getActiveRole();
-
-//     if (!roles.includes(role)) {
-
-//         return (
-
-//             <Navigate
-
-//                 to="/unauthorized"
-
-//                 replace
-
-//             />
-
-//         );
-
-//     }
-
-//     return children;
-
-// }
 
 export default function RoleRoute({
-
-    role,
-
     children,
-
+    roles,
 }) {
+    const {
+        loading,
+        isAuthenticated,
+        activeRole,
+    } = useAuth();
 
-    const { user } = useAuth();
-
-    if (!user) {
-
+    if (loading) {
         return (
-            <Navigate
-                replace
-                to="/login"
-            />
+            <div className="page-loading">
+                Loading...
+            </div>
         );
-
     }
 
-    if (user.active_role !== role) {
-
+    if (!isAuthenticated) {
         return (
             <Navigate
+                to="/login"
                 replace
-                to="/dashboard"
             />
         );
+    }
 
+    if (!roles.includes(activeRole)) {
+        return (
+            <Navigate
+                to="/unauthorized"
+                replace
+            />
+        );
     }
 
     return children;
-
 }

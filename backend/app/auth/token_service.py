@@ -4,7 +4,6 @@ from flask_jwt_extended import (
     decode_token,
     get_jwt,
 )
-
 from app.database import db
 from app.models.auth.token_blocklist import TokenBlocklist
 
@@ -62,17 +61,24 @@ def revoke_token(encoded_token, token_type):
     db.session.commit()
 
 
-def revoke_current(jwt_payload):
 
-    db.session.add(
-        TokenBlocklist(
-            jti=jwt_payload["jti"],
-            user_id=int(jwt_payload["sub"]),
-            token_type=jwt_payload["type"],
-            expires_at=datetime.fromtimestamp(
-                jwt_payload["exp"]
-            ),
+
+def revoke_current(access_token, refresh_token):
+    for encoded_token, token_type in (
+        (access_token, "access"),
+        (refresh_token, "refresh"),
+    ):
+        payload = decode_token(encoded_token)
+
+        db.session.add(
+            TokenBlocklist(
+                jti=payload["jti"],
+                user_id=int(payload["sub"]),
+                token_type=token_type,
+                expires_at=datetime.fromtimestamp(
+                    payload["exp"]
+                ),
+            )
         )
-    )
 
     db.session.commit()

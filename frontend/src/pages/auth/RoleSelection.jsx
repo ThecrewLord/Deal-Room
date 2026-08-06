@@ -1,21 +1,39 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+    useState,
+} from "react";
 
-import { createSession } from "../../auth/authService";
+import {
+    useNavigate,
+} from "react-router-dom";
+
+import {
+    useAuth,
+} from "../../context/AuthContext";
 
 import "../../styles/auth.css";
 
-export default function RoleSelection(){
+export default function RoleSelection() {
 
-    const navigate=useNavigate();
+    const navigate =
+        useNavigate();
 
-    const loginResponse=JSON.parse(
-        sessionStorage.getItem("login_response")
-    );
+    const { selectRole } =
+        useAuth();
 
-    const [role,setRole]=useState("");
+    const loginResponse =
+        JSON.parse(
+            sessionStorage.getItem(
+                "login_response"
+            )
+        );
 
-    if(!loginResponse){
+    const [role, setRole] =
+        useState("");
+
+    const [error, setError] =
+        useState("");
+
+    if (!loginResponse) {
 
         navigate("/login");
 
@@ -23,53 +41,94 @@ export default function RoleSelection(){
 
     }
 
-    const submit=()=>{
+    async function submit() {
 
-        if(!role)return;
+        if (!role) {
 
-        createSession({
+            setError(
+                "Please select a role."
+            );
 
-            token:loginResponse.token,
-            user:loginResponse.user,
-            activeRole:role
+            return;
 
-        });
+        }
 
-        sessionStorage.removeItem("login_response");
+        try {
 
-        navigate("/dashboard");
+            await selectRole(role);
 
-    };
+            sessionStorage.removeItem(
+                "login_response"
+            );
 
-    return(
+            navigate("/dashboard");
+
+        } catch (err) {
+
+            setError(
+                err.response?.data
+                    ?.message ||
+                    "Unable to select role."
+            );
+
+        }
+
+    }
+
+    return (
 
         <div className="auth-container">
 
             <div className="auth-card">
 
-                <h2>Select Role</h2>
+                <h2>
+
+                    Select Role
+
+                </h2>
 
                 <div className="auth-form">
 
-                    {loginResponse.roles.map(r=>(
+                    {loginResponse.roles.map(
+                        (r) => (
 
-                        <label key={r}>
+                            <label
+                                key={r}
+                            >
 
-                            <input
-                                type="radio"
-                                name="role"
-                                value={r}
-                                onChange={()=>setRole(r)}
-                            />
+                                <input
+                                    type="radio"
+                                    value={r}
+                                    checked={
+                                        role === r
+                                    }
+                                    onChange={() =>
+                                        setRole(r)
+                                    }
+                                />
 
-                            {" "}
-                            {r}
+                                {" "}
 
-                        </label>
+                                {r}
 
-                    ))}
+                            </label>
 
-                    <button onClick={submit}>
+                        )
+                    )}
+
+                    {error && (
+
+                        <p>
+
+                            {error}
+
+                        </p>
+
+                    )}
+
+                    <button
+                        onClick={submit}
+                    >
 
                         Continue
 

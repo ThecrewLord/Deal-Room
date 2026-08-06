@@ -9,7 +9,7 @@ from app.constants.auth_constants import (
     STATUS_REVOKED,
 )
 from flask_jwt_extended import (
-    get_jwt_identity,
+    get_jwt_identity, get_jwt,
 )
 
 from app.auth.token_service import (
@@ -18,8 +18,6 @@ from app.auth.token_service import (
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
 from app.repositories.auth_repository import AuthRepository
-
-
 class AuthService:
 
     @staticmethod
@@ -90,6 +88,7 @@ class AuthService:
             return {
                 "requires_role_selection": True,
                 "roles": roles,
+                "user": user.to_dict(),
             }
 
         access = create_access(
@@ -109,6 +108,7 @@ class AuthService:
         return {
             "access_token": access,
             "refresh_token": refresh,
+            "active_role": roles[0],
             "user": user.to_dict(),
         }
 
@@ -136,7 +136,9 @@ class AuthService:
                 user,
                 role,
             ),
-            
+
+            "active_role": role,
+
             "user": user.to_dict(),
         }
 
@@ -149,8 +151,13 @@ class AuthService:
         if not user:
             raise ValueError("User not found.")
 
-        return user.to_dict()
+        response = user.to_dict()
 
+        response["active_role"] = (
+            get_jwt().get("active_role")
+        )
+
+        return response
 
     @staticmethod
     def refresh(user_id, active_role):
@@ -164,13 +171,17 @@ class AuthService:
             "access_token": create_access(
                 user,
                 active_role,
-            )
+            ),
+            "active_role": active_role,
         }
 
 
     @staticmethod
-    def logout(jwt_payload):
-        revoke_current(jwt_payload)
+    def logout(access_token, refresh_token):
+        revoke_current(
+            access_token,
+            refresh_token,
+        )
 
         return {
             "message": "Logged out successfully."

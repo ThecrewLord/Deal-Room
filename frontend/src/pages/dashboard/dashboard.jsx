@@ -1,23 +1,107 @@
-export default function Dashboard() {
+import { useEffect, useState } from "react";
 
-    return (
+import { getDashboardSummary } from "../../api/dashboardApi";
+import { useAuth } from "../../context/AuthContext";
 
-        <div>
+import SalesExecutiveDashboard from "./roles/SalesExecutiveDashboard";
+import PresalesDashboard from "./roles/PresalesDashboard";
+import ManagerDashboard from "./roles/ManagerDashboard";
 
-            <h1>
+const Dashboard = () => {
+    const {
+        user,
+        activeRole,
+        loading: authLoading,
+    } = useAuth();
 
-                Dashboard
+    const [dashboard, setDashboard] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
 
-            </h1>
+    useEffect(() => {
+        let mounted = true;
 
-            <p>
+        const loadDashboard = async () => {
+            try {
+                const response =
+                    await getDashboardSummary();
 
-                Welcome to Collaborating Opportunities.
+                if (mounted) {
+                    setDashboard(response);
+                    setError("");
+                }
+            } catch (err) {
+                if (mounted) {
+                    setError(
+                        err?.response?.data
+                            ?.message ??
+                            "Unable to load dashboard."
+                    );
+                }
+            } finally {
+                if (mounted) {
+                    setLoading(false);
+                }
+            }
+        };
 
-            </p>
+        if (!authLoading) {
+            loadDashboard();
+        }
 
-        </div>
+        return () => {
+            mounted = false;
+        };
+    }, [authLoading]);
 
-    );
+    if (authLoading || loading) {
+        return (
+            <div className="dashboard-loading">
+                Loading dashboard...
+            </div>
+        );
+    }
 
-}
+    if (error) {
+        return (
+            <div className="dashboard-error">
+                {error}
+            </div>
+        );
+    }
+
+    switch (activeRole) {
+        case "Sales Executive":
+            return (
+                <SalesExecutiveDashboard
+                    user={user}
+                    dashboard={dashboard}
+                />
+            );
+
+        case "Pre-Sales Consultant":
+            return (
+                <PresalesDashboard
+                    user={user}
+                    dashboard={dashboard}
+                />
+            );
+
+        case "Sales Manager":
+            return (
+                <ManagerDashboard
+                    user={user}
+                    dashboard={dashboard}
+                />
+            );
+
+        default:
+            return (
+                <div className="dashboard-error">
+                    No dashboard is available for your assigned role.
+                </div>
+            );
+    }
+};
+
+export default Dashboard;

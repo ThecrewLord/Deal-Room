@@ -49,4 +49,30 @@
     /* Layout */
     --header-height: 64px;
     --sidebar-width: 260px;
+
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+
+    /* Font Sizes */
+    --font-xs: 12px;
+    --font-sm: 14px;
+    --font-md: 16px;
+    --font-lg: 20px;
+    --font-xl: 24px;
+    --font-2xl: 32px;
+
+    /* Z-index */
+    --z-header: 100;
+    --z-sidebar: 200;
+    --z-modal: 1000;
+
+    /* Status Colors */
+    --color-info: #3b82f6;
+    --color-success-bg: #dcfce7;
+    --color-warning-bg: #fef3c7;
+    --color-danger-bg: #fee2e2;
 }

@@ -105,11 +105,29 @@ def refresh():
 @jwt_required()
 def logout():
 
+    data = request.get_json() or {}
+
+    refresh_token = data.get(
+        "refresh_token"
+    )
+
+    auth_header = request.headers.get(
+        "Authorization",
+        ""
+    )
+
+    access_token = auth_header.replace(
+        "Bearer ",
+        ""
+    )
+
     return jsonify(
         AuthService.logout(
-            get_jwt()
+            access_token,
+            refresh_token,
         )
     )
+
 
 @auth_bp.get("/admin/pending")
 @jwt_required()
@@ -120,6 +138,7 @@ def pending_users():
         AuthService.list_pending()
     )
 
+
 @auth_bp.get("/admin/users")
 @jwt_required()
 @admin_required
@@ -128,6 +147,7 @@ def users():
     return jsonify(
         AuthService.list_users()
     )
+
 
 @auth_bp.post("/admin/approve/<int:user_id>")
 @jwt_required()

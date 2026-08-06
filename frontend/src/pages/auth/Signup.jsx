@@ -1,116 +1,95 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { signup } from "../../auth/authService";
+import authService from "../../auth/authService";
 
 import "../../styles/auth.css";
 
-export default function Signup(){
+export default function Signup() {
+    const navigate = useNavigate();
 
-    const navigate=useNavigate();
-
-    const [form,setForm]=useState({
-        firstName:"",
-        lastName:"",
-        email:"",
-        password:""
+    const [form, setForm] = useState({
+        full_name: "",
+        email: "",
+        password: "",
     });
 
-    const [error,setError]=useState("");
+    const [error, setError] = useState("");
 
-    const handleChange=(e)=>{
-
-        setForm({
-            ...form,
-            [e.target.name]:e.target.value
-        });
-
+    const handleChange = (e) => {
+        setForm((previous) => ({
+            ...previous,
+            [e.target.name]: e.target.value,
+        }));
     };
 
-    const submit=async(e)=>{
-
+    const submit = async (e) => {
         e.preventDefault();
 
-        try{
+        setError("");
 
-            await signup(form);
+        try {
+            await authService.signup(form);
 
             navigate("/pending");
-
-        }catch(err){
-
+        } catch (err) {
             setError(
-                err.response?.data?.message ||
-                "Unable to register."
+                err.response?.data?.message ??
+                    "Unable to register."
             );
-
         }
-
     };
 
-    return(
-
+    return (
         <div className="auth-container">
-
             <div className="auth-card">
-
                 <h2>Create Account</h2>
 
                 <form
-                    onSubmit={submit}
                     className="auth-form"
+                    onSubmit={submit}
                 >
-
                     <input
-                        name="firstName"
-                        placeholder="First Name"
+                        name="full_name"
+                        placeholder="Full Name"
+                        value={form.full_name}
                         onChange={handleChange}
-                    />
-
-                    <input
-                        name="lastName"
-                        placeholder="Last Name"
-                        onChange={handleChange}
+                        required
                     />
 
                     <input
                         name="email"
                         type="email"
                         placeholder="Email"
+                        value={form.email}
                         onChange={handleChange}
+                        required
                     />
 
                     <input
                         name="password"
                         type="password"
                         placeholder="Password"
+                        value={form.password}
                         onChange={handleChange}
+                        required
                     />
 
-                    <button>
-
+                    <button type="submit">
                         Register
-
                     </button>
-
                 </form>
 
-                {error && <p>{error}</p>}
+                {error && (
+                    <p>{error}</p>
+                )}
 
                 <div className="auth-link">
-
                     <Link to="/login">
-
                         Back to Login
-
                     </Link>
-
                 </div>
-
             </div>
-
         </div>
-
     );
-
 }

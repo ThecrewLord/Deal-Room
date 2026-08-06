@@ -14,7 +14,6 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import UserApproval from "./pages/admin/UserApproval";
 import UserManagement from "./pages/admin/UserManagement";
-import RoleRoute from "./routes/RoleRoute";
 
 function Home() {
 

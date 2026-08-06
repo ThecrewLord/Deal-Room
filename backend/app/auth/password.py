@@ -7,7 +7,7 @@ from werkzeug.security import (
 def hash_password(password: str) -> str:
     return generate_password_hash(
         password,
-        method="scrypt",
+        method="pbkdf2:sha256",
     )
 
 

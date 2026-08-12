@@ -3,6 +3,29 @@ import { useNavigate } from "react-router-dom";
 const QuickActions = () => {
     const navigate = useNavigate();
 
+    const actions = [
+        {
+            title: "Opportunities",
+            subtitle: "Manage sales opportunities",
+            route: "/opportunities",
+        },
+        {
+            title: "Accounts",
+            subtitle: "View customer accounts",
+            route: "/accounts",
+        },
+        {
+            title: "Activities",
+            subtitle: "Track daily activities",
+            route: "/activities",
+        },
+        {
+            title: "POCs",
+            subtitle: "Proof of Concepts",
+            route: "/poc",
+        },
+    ];
+
     return (
         <div className="dashboard-panel">
             <div className="panel-header">
@@ -10,35 +33,17 @@ const QuickActions = () => {
             </div>
 
             <div className="quick-actions">
+                {actions.map((action) => (
+                    <button
+                        key={action.route}
+                        className="action-btn"
+                        onClick={() => navigate(action.route)}
+                    >
+                        <strong>{action.title}</strong>
 
-                <button
-                    className="action-btn"
-                    onClick={() => navigate("/opportunities")}
-                >
-                    Opportunities
-                </button>
-
-                <button
-                    className="action-btn"
-                    onClick={() => navigate("/accounts")}
-                >
-                    Accounts
-                </button>
-
-                <button
-                    className="action-btn"
-                    onClick={() => navigate("/activities")}
-                >
-                    Activities
-                </button>
-
-                <button
-                    className="action-btn"
-                    onClick={() => navigate("/poc")}
-                >
-                    POCs
-                </button>
-
+                        <small>{action.subtitle}</small>
+                    </button>
+                ))}
             </div>
         </div>
     );

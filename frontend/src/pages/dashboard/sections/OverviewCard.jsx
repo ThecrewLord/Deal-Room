@@ -43,17 +43,27 @@ const OverviewCards = ({ dashboard }) => {
             {cards.map((card) => (
 
                 <div
-                    className="overview-card"
-                    key={card.key}
+                    key={card.title}
+                    className="overview-card clickable-card"
+                    onClick={() => navigate(card.route)}
                 >
+                    <div className="overview-card-header">
+                        <span>{card.title}</span>
 
-                    <p>{card.title}</p>
+                        {card.icon && (
+                            <div className="overview-icon">
+                                {card.icon}
+                            </div>
+                        )}
+                    </div>
 
-                    <h2>
-                        {dashboard?.[card.key]}
-                        {card.suffix || ""}
-                    </h2>
+                    <h2>{card.value ?? "-"}</h2>
 
+                    {card.subtitle && (
+                        <p className="overview-subtitle">
+                            {card.subtitle}
+                        </p>
+                    )}
                 </div>
 
             ))}

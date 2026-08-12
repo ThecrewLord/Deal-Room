@@ -4,16 +4,20 @@ const DashboardSkeleton = ({
     content,
 }) => {
     return (
-        <div className="dashboard-page">
+        <div className="dashboard-container">
+            <div className="dashboard-header">
+                {welcome}
+            </div>
 
-            {welcome}
+            <div className="dashboard-overview">
+                {overview}
+            </div>
 
-            {overview}
-
-            {content}
-
+            <div className="dashboard-content">
+                {content}
+            </div>
         </div>
     );
 };
 
-export default DashboardSkeleton; 
+export default DashboardSkeleton;

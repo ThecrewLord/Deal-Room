@@ -1,3 +1,13 @@
+import {
+    ResponsiveContainer,
+    BarChart,
+    CartesianGrid,
+    XAxis,
+    YAxis,
+    Tooltip,
+    Bar,
+} from "recharts";
+
 const PipelineSummary = ({ dashboard }) => {
     const items = [
         {
@@ -26,23 +36,52 @@ const PipelineSummary = ({ dashboard }) => {
         },
     ];
 
+    // Uses backend data if available.
+    // Empty array keeps the component safe until the API is updated.
+    const chartData = dashboard?.pipeline_by_stage ?? [];
+
     return (
         <div className="dashboard-panel">
             <div className="panel-header">
                 <h2>Pipeline Summary</h2>
             </div>
 
-            <div className="summary-grid">
+            <div className="pipeline-grid">
                 {items.map((item) => (
                     <div
-                        className="summary-item"
                         key={item.label}
+                        className="pipeline-card"
                     >
                         <span>{item.label}</span>
-                        <strong>{item.value ?? "-"}</strong>
+
+                        <h3>{item.value ?? "-"}</h3>
                     </div>
                 ))}
             </div>
+
+            {chartData.length > 0 && (
+                <div className="pipeline-chart">
+                    <ResponsiveContainer
+                        width="100%"
+                        height={280}
+                    >
+                        <BarChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+
+                            <XAxis dataKey="stage" />
+
+                            <YAxis />
+
+                            <Tooltip />
+
+                            <Bar
+                                dataKey="count"
+                                radius={[6, 6, 0, 0]}
+                            />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
         </div>
     );
 };

@@ -163,6 +163,7 @@ def approve(user_id):
         )
     )
 
+
 @auth_bp.post("/admin/revoke/<int:user_id>")
 @jwt_required()
 @admin_required

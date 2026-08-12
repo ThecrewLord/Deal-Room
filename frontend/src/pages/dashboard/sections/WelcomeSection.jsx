@@ -1,44 +1,63 @@
 const WelcomeSection = ({ user }) => {
+    const hour = new Date().getHours();
+
+    const greeting =
+        hour < 12
+            ? "Good Morning"
+            : hour < 18
+            ? "Good Afternoon"
+            : "Good Evening";
 
     const today = new Date().toLocaleDateString(undefined, {
         weekday: "long",
-        month: "long",
         day: "numeric",
+        month: "long",
         year: "numeric",
     });
 
+    const displayName =
+        user?.full_name ||
+        user?.name ||
+        "User";
+
+    const displayRole =
+        user?.active_role || "No Active Role";
+
     return (
         <section className="dashboard-welcome">
+            <div className="welcome-content">
+                <div>
+                    <h1>
+                        {greeting}, {displayName}
+                    </h1>
 
-            <div>
+                    <p>{today}</p>
 
-                <h1>
-                    Welcome back, {user?.full_name || user?.name}
-                </h1>
-
-                <p>{today}</p>
-
+                    <span className="role-badge">
+                        {displayRole}
+                    </span>
+                </div>
             </div>
 
             <div className="user-summary">
-
                 <div>
                     <span>Name</span>
-                    <strong>{user?.full_name}</strong>
+
+                    <strong>{displayName}</strong>
                 </div>
 
                 <div>
                     <span>Email</span>
-                    <strong>{user?.email}</strong>
+
+                    <strong>{user?.email || "-"}</strong>
                 </div>
 
                 <div>
                     <span>Role</span>
-                    <strong>{user?.active_role}</strong>
+
+                    <strong>{displayRole}</strong>
                 </div>
-
             </div>
-
         </section>
     );
 };

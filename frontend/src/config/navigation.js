@@ -1,12 +1,35 @@
 const navigation = {
 
+    // Admin: [
+    //     {
+    //         name: "Dashboard",
+    //         path: "/dashboard",
+    //     },
+    //     {
+    //         name: "User Management",
+    //         path: "/admin/users",
+    //     },
+    //     {
+    //         name: "Role Management",
+    //         path: "/admin/roles",
+    //     },
+    //     {
+    //         name: "Access Management",
+    //         path: "/admin/access",
+    //     },
+    // ],
+
     Admin: [
         {
             name: "Dashboard",
             path: "/dashboard",
         },
         {
-            name: "User Management",
+            name: "Pending Approvals",
+            path: "/admin/approval",
+        },
+        {
+            name: "Users",
             path: "/admin/users",
         },
         {
@@ -18,6 +41,7 @@ const navigation = {
             path: "/admin/access",
         },
     ],
+
 
     Sales: [
         {

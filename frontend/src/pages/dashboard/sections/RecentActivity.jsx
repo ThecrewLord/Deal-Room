@@ -1,18 +1,14 @@
+import EmptyState from "./EmptyState";
+import SectionCard from "./SectionCard";
+
 const RecentActivity = () => {
     return (
-        <div className="dashboard-panel">
-
-            <div className="panel-header">
-                <h2>Recent Activity</h2>
-            </div>
-
-            <div className="empty-state">
-                <p>
-                    Recent activity will appear here when supported by the backend.
-                </p>
-            </div>
-
-        </div>
+        <SectionCard title="Recent Activity">
+            <EmptyState
+                title="No recent activity"
+                subtitle="Recent opportunity updates will appear here."
+            />
+        </SectionCard>
     );
 };
 

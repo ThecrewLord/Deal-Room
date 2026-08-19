@@ -11,6 +11,8 @@ from app.api.oem_routes import oem_bp
 from app.api.activity_routes import activity_bp
 from app.api.opportunity_routes import opportunity_bp
 from app.api.dashboard_routes import dashboard_bp
+from app.api.account_routes import account_bp
+from app.api.stage_routes import stage_bp
 
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
@@ -37,6 +39,8 @@ def create_app():
     app.register_blueprint(activity_bp)
     app.register_blueprint(opportunity_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(account_bp)
+    app.register_blueprint(stage_bp)
 
     @app.route("/")
     def health():

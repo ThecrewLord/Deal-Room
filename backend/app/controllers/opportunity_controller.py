@@ -192,6 +192,7 @@ class OpportunityController:
 
 
     @staticmethod
+
     def delete(opportunity_id):
 
         try:
@@ -253,6 +254,23 @@ class OpportunityController:
                     "message":
                     "Opportunity deleted"
                 }
+            ),
+            200,
+        )
+    @staticmethod
+    def search():
+        search_term = request.args.get("q", "").strip()
+
+        if not search_term:
+            return jsonify({
+                "message": "Search term is required"
+            }), 400
+
+        opportunities = OpportunityService.search(search_term)
+
+        return (
+            jsonify(
+                response_list_schema.dump(opportunities)
             ),
             200,
         )

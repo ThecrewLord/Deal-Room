@@ -26,8 +26,8 @@ class PocController:
         except ValidationError as err:
             return jsonify(err.messages), 400
 
-        except Exception:
-            return jsonify({"message": "Failed to create POC"}), 500
+        except Exception as e:
+            return jsonify({"message": str(e)}), 500
 
     @staticmethod
     def get(poc_id):

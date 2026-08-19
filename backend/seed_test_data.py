@@ -1,12 +1,12 @@
 """
-Seed realistic test data into the Dealroom PostgreSQL database.
+Seed realistic test data into the deal_room PostgreSQL database.
 
 Run from the backend directory:
     python seed_test_data.py
 
-By default this script targets the database named `dealroom`.
+By default this script targets the database named `deal_room`.
 If you want to explicitly choose a connection string, set:
-    SEED_DATABASE_URL=postgresql://user:password@localhost:5432/dealroom
+    SEED_DATABASE_URL=postgresql://user:password@localhost:5432/deal_room
 """
 
 import os
@@ -29,11 +29,11 @@ if not configured_url:
         "DATABASE_URL is not set. Add it to .env or set SEED_DATABASE_URL."
     )
 
-# The project .env currently points to dealroom2. This seed script is
-# intentionally pointed at the requested database: dealroom.
+# The project .env currently points to deal_room2. This seed script is
+# intentionally pointed at the requested database: deal_room.
 if not os.getenv("SEED_DATABASE_URL"):
     url = make_url(configured_url)
-    url = url.set(database="dealroom")
+    url = url.set(database="deal_room")
     os.environ["DATABASE_URL"] = url.render_as_string(hide_password=False)
 else:
     os.environ["DATABASE_URL"] = configured_url
@@ -99,7 +99,7 @@ def seed_users():
 
     if not users:
         raise RuntimeError(
-            "No existing users were found in the dealroom database. "
+            "No existing users were found in the deal_room database. "
             "Create/authenticate at least one user first; this seed script "
             "will never create users."
         )
@@ -746,7 +746,7 @@ def main():
     app = create_app()
 
     with app.app_context():
-        print("Seeding Dealroom test data...")
+        print("Seeding deal_room test data...")
         print(f"Database: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
         # IMPORTANT: only read existing users. No users or roles are created.

@@ -106,6 +106,8 @@ class OpportunityService:
         return opportunity
 
     @staticmethod
+    def search(search_term):
+        return OpportunityRepository.search(search_term)
     def delete_opportunity(opportunity_id):
 
         opportunity = OpportunityRepository.get_by_id(

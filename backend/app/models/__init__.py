@@ -1,5 +1,8 @@
-from app.models.auth.user import User
-from app.models.auth.user_role import UserRole
+from app.models.auth import (
+    User,
+    UserRole,
+    TokenBlocklist,
+)
 from app.models.account.account import Account
 from app.models.account.contact import Contact
 from app.models.opportunity.stage_master import StageMaster
@@ -14,4 +17,17 @@ from app.models.opportunity import (
     POCTracker,
 )
 
-__all__ = ["User", "UserRole", "Account", "Contact", "StageMaster", "Tag", "Opportunity", "Stakeholder", "OpportunityTeam", "StageHistory", "POCTracker"]
+__all__ = [
+    "User",
+    "UserRole",
+    "TokenBlocklist",
+    "Account",
+    "Contact",
+    "StageMaster",
+    "Tag",
+    "Opportunity",
+    "Stakeholder",
+    "OpportunityTeam",
+    "StageHistory",
+    "POCTracker",
+]

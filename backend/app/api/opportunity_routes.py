@@ -26,6 +26,14 @@ opportunity_bp.route(
 )
 
 opportunity_bp.route(
+    "/search",
+    methods=["GET"],
+)(
+    OpportunityController.search
+)
+
+
+opportunity_bp.route(
     "/<int:opportunity_id>",
     methods=["GET"],
 )(

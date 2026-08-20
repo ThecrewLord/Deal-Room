@@ -1,15 +1,18 @@
-import bcrypt
+from werkzeug.security import (
+    check_password_hash,
+    generate_password_hash,
+)
 
 
-def hash_password(password):
-    return bcrypt.hashpw(
-        password.encode(),
-        bcrypt.gensalt()
-    ).decode()
+def hash_password(password: str) -> str:
+    return generate_password_hash(
+        password,
+        method="pbkdf2:sha256",
+    )
 
 
-def verify_password(password, hashed):
-    return bcrypt.checkpw(
-        password.encode(),
-        hashed.encode()
+def verify_password(password: str, password_hash: str) -> bool:
+    return check_password_hash(
+        password_hash,
+        password,
     )

@@ -34,6 +34,18 @@ class OpportunityRepository:
         return Opportunity.query.filter_by(
             account_id=account_id
         ).all()
+    @staticmethod
+    def search(search_term):
+        return (
+        Opportunity.query
+        .filter(
+            Opportunity.opportunity_name.ilike(
+                f"%{search_term}%"
+            )
+        )
+        .order_by(Opportunity.created_at.desc())
+        .all()
+    )
 
     @staticmethod
     def update():

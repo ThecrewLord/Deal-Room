@@ -1,122 +1,171 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
+import Login from "./pages/auth/Login";
+import Signup from "./pages/auth/Signup";
+import PendingAccess from "./pages/auth/PendingAccess";
+import RevokedAccess from "./pages/auth/RevokedAccess";
+import RoleSelection from "./pages/auth/RoleSelection";
 
-function App() {
-  const [count, setCount] = useState(0)
+import Dashboard from "./pages/dashboard/dashboard";
+import DashboardLayout from "./layouts/DashboardLayout";
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+import OpportunityDetail from "./pages/OpportunityDetail";
 
-      <div className="ticks"></div>
+import UserApproval from "./pages/admin/UserApproval";
+import UserManagement from "./pages/admin/UserManagement";
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+import ComingSoon from "./pages/common/ComingSoon";
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+import ProtectedRoute from "./routes/ProtectedRoute";
+import RoleRoute from "./routes/RoleRoute";
+
+function Unauthorized() {
+    return <h2>Unauthorized</h2>;
 }
 
-export default App
+function HomeRedirect() {
+    const {
+        isAuthenticated,
+        loading,
+    } = useAuth();
+
+    if (loading) {
+        return null;
+    }
+
+    return (
+        <Navigate
+            replace
+            to={
+                isAuthenticated
+                    ? "/dashboard"
+                    : "/login"
+            }
+        />
+    );
+}
+
+function Layout({ children }) {
+    return (
+        <ProtectedRoute>
+            <DashboardLayout>
+                {children}
+            </DashboardLayout>
+        </ProtectedRoute>
+    );
+}
+
+export default function App() {
+    return (
+        <Routes>
+
+            <Route
+                path="/"
+                element={<HomeRedirect />}
+            />
+
+            <Route
+                path="/login"
+                element={<Login />}
+            />
+
+            <Route
+                path="/signup"
+                element={<Signup />}
+            />
+
+            <Route
+                path="/pending"
+                element={<PendingAccess />}
+            />
+
+            <Route
+                path="/revoked"
+                element={<RevokedAccess />}
+            />
+
+            <Route
+                path="/select-role"
+                element={<RoleSelection />}
+            />
+
+            <Route
+                path="/unauthorized"
+                element={<Unauthorized />}
+            />
+
+            <Route
+                path="/dashboard"
+                element={
+                    <Layout>
+                        <Dashboard />
+                    </Layout>
+                }
+            />
+
+            <Route
+                path="/opportunity/:id"
+                element={
+                    <Layout>
+                        <OpportunityDetail />
+                    </Layout>
+                }
+            />
+
+            <Route
+                path="/admin/approval"
+                element={
+                    <Layout>
+                        <RoleRoute roles={["Admin"]}>
+                            <UserApproval />
+                        </RoleRoute>
+                    </Layout>
+                }
+            />
+
+            <Route
+                path="/admin/users"
+                element={
+                    <Layout>
+                        <RoleRoute roles={["Admin"]}>
+                            <UserManagement />
+                        </RoleRoute>
+                    </Layout>
+                }
+            />
+
+            <Route
+                path="/admin/roles"
+                element={
+                    <Layout>
+                        <RoleRoute roles={["Admin"]}>
+                            <ComingSoon title="Assign Roles" />
+                        </RoleRoute>
+                    </Layout>
+                }
+            />
+
+            <Route
+                path="/admin/access"
+                element={
+                    <Layout>
+                        <RoleRoute roles={["Admin"]}>
+                            <ComingSoon title="Access Management" />
+                        </RoleRoute>
+                    </Layout>
+                }
+            />
+
+            <Route
+                path="*"
+                element={
+                    <Navigate
+                        replace
+                        to="/"
+                    />
+                }
+            />
+
+        </Routes>
+    );
+}

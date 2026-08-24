@@ -1,7 +1,6 @@
 import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
 
-import "../styles/dashboard.css";
 
 export default function DashboardLayout({
     children,

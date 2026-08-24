@@ -1,4 +1,5 @@
 import axios from "axios";
+import API_BASE_URL from "../config/api";
 
 import api from "../api/axiosClient";
 
@@ -6,8 +7,7 @@ import {
     getRefreshToken,
 } from "./authStorage";
 
-const BASE_URL =
-    import.meta.env.VITE_API_URL;
+const BASE_URL = API_BASE_URL;
 
 const authApi = {
     login(payload) {
@@ -24,7 +24,7 @@ const authApi = {
 
     logout() {
         return api
-            .post("/auth/logout")
+            .post("/auth/logout", { refresh_token: getRefreshToken() })
             .then((res) => res.data);
     },
 
@@ -43,10 +43,19 @@ const authApi = {
     },
 
     selectRole(role) {
-        return api
-            .post("/auth/select-role", {
-                role,
-            })
+        // Role selection happens before an access token exists for a
+        // multi-role login, so authenticate this request explicitly with
+        // the refresh token returned by /auth/login.
+        return axios
+            .post(
+                `${BASE_URL}/auth/select-role`,
+                { role },
+                {
+                    headers: {
+                        Authorization: `Bearer ${getRefreshToken()}`,
+                    },
+                }
+            )
             .then((res) => res.data);
     },
 

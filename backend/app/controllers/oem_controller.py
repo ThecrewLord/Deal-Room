@@ -1,14 +1,13 @@
 from flask import jsonify, request
 
+from app.auth.authorization import AuthorizationDenied
 from app.services.oem_service import OEMService
 
 
 class OEMController:
-
     @staticmethod
-    def get_all():
-        oems = OEMService.get_all()
-
+    def get_all(user, active_role):
+        oems = OEMService.get_all(user, active_role)
         return jsonify([
             {
                 "oem_partner_id": oem.oem_partner_id,
@@ -25,12 +24,10 @@ class OEMController:
         ])
 
     @staticmethod
-    def get_by_id(oem_id):
-        oem = OEMService.get_by_id(oem_id)
-
+    def get_by_id(oem_id, user, active_role):
+        oem = OEMService.get_by_id(oem_id, user, active_role)
         if not oem:
             return jsonify({"message": "OEM Partner not found"}), 404
-
         return jsonify({
             "oem_partner_id": oem.oem_partner_id,
             "account_id": oem.account_id,
@@ -44,89 +41,29 @@ class OEMController:
         })
 
     @staticmethod
-    def create():
-
+    def create(user, active_role):
         try:
-            oem = OEMService.create(request.get_json())
-
-            return (
-                jsonify(
-                    {
-                        "message": "OEM Partner created",
-                        "id": oem.oem_partner_id,
-                    }
-                ),
-                201,
-            )
-
+            oem = OEMService.create(request.get_json() or {}, user, active_role)
+            return jsonify({"message": "OEM Partner created", "id": oem.oem_partner_id}), 201
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403
         except ValueError as err:
-            return jsonify(
-                {"message": str(err)}
-            ), 409
-
-        except Exception:
-            return jsonify(
-                {
-                    "message": "Failed to create OEM Partner"
-                }
-            ), 500
+            return jsonify({"message": str(err)}), 409
 
     @staticmethod
-    def update(oem_id):
-
+    def update(oem_id, user, active_role):
         try:
-            oem = OEMService.update(
-                oem_id,
-                request.get_json(),
-            )
-
-            if not oem:
-                return jsonify(
-                    {
-                        "message": "OEM Partner not found"
-                    }
-                ), 404
-
-            return jsonify(
-                {
-                    "message": "OEM Partner updated"
-                }
-            ), 200
-
-        except ValueError as err:
-            return jsonify(
-                {"message": str(err)}
-            ), 409
-
-        except Exception:
-            return jsonify(
-                {
-                    "message": "Failed to update OEM Partner"
-                }
-            ), 500
+            OEMService.update(oem_id, request.get_json() or {}, user, active_role)
+            return jsonify({"message": "OEM Partner updated"}), 200
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403
 
     @staticmethod
-    def delete(oem_id):
-
+    def delete(oem_id, user, active_role):
         try:
-            deleted = OEMService.delete(oem_id)
-
+            deleted = OEMService.delete(oem_id, user, active_role)
             if not deleted:
-                return jsonify(
-                    {
-                        "message": "OEM Partner not found"
-                    }
-                ), 404
-
-            return jsonify(
-                {
-                    "message": "OEM Partner deleted"
-                }
-            ), 200
-
-        except Exception:
-            return jsonify(
-                {
-                    "message": "Failed to delete OEM Partner"
-                }
-            ), 500
+                return jsonify({"message": "OEM Partner not found"}), 404
+            return jsonify({"message": "OEM Partner deleted"}), 200
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403

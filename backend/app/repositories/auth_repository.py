@@ -1,7 +1,7 @@
 from app.database import db
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
-from app.constants.auth_constants import STATUS_PENDING
+from app.constants.auth_constants import STATUS_PENDING, STATUS_APPROVED
 
 
 class AuthRepository:
@@ -36,7 +36,7 @@ class AuthRepository:
     def pending_users():
         return User.query.filter_by(
             status=STATUS_PENDING
-        ).all()
+        ).order_by(User.created_at.desc()).all()
 
     @staticmethod
     def all_users():
@@ -45,15 +45,36 @@ class AuthRepository:
         ).all()
 
     @staticmethod
+    def direct_reports(user_id):
+        return User.query.filter(User.manager_id == user_id).order_by(User.full_name.asc()).all()
+
+    @staticmethod
+    def manager_candidates(required_roles, exclude_user_id=None):
+        query = User.query.filter(
+            User.status == STATUS_APPROVED,
+            User.active.is_(True),
+        )
+        if exclude_user_id is not None:
+            query = query.filter(User.user_id != exclude_user_id)
+        for role in sorted(required_roles):
+            query = query.filter(User.roles.any(UserRole.role == role))
+        return query.order_by(User.full_name.asc()).all()
+
+    @staticmethod
     def delete_roles(user):
         UserRole.query.filter_by(
             user_id=user.user_id
-        ).delete()
+        ).delete(synchronize_session="fetch")
 
     @staticmethod
     def add_role(user, role):
         user.roles.append(
-            UserRole(
-                role=role
-            )
+            UserRole(role=role)
         )
+
+    @staticmethod
+    def replace_roles(user, roles):
+        """Replace the user's complete role set atomically in the session."""
+        AuthRepository.delete_roles(user)
+        for role in roles:
+            AuthRepository.add_role(user, role)

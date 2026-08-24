@@ -1,139 +1,47 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-
+import AuthLayout from "../../components/AuthLayout";
 import { useAuth } from "../../context/AuthContext";
-
 import "../../styles/auth.css";
 
 export default function Login() {
     const navigate = useNavigate();
-
     const { login } = useAuth();
-
-    const [email, setEmail] =
-        useState("");
-
-    const [password, setPassword] =
-        useState("");
-
-    const [error, setError] =
-        useState("");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [error, setError] = useState("");
+    const [submitting, setSubmitting] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-
         setError("");
-
+        setSubmitting(true);
         try {
-            const response =
-                await login({
-                    email,
-                    password,
-                });
-
-            if (
-                response.requires_role_selection
-            ) {
-                sessionStorage.setItem(
-                    "login_response",
-                    JSON.stringify(
-                        response
-                    )
-                );
-
-                navigate(
-                    "/select-role"
-                );
-
+            const response = await login({ email: email.trim(), password });
+            if (response?.requires_role_selection) {
+                sessionStorage.setItem("login_response", JSON.stringify(response));
+                navigate("/select-role", { replace: true });
                 return;
             }
-
-            await new Promise(resolve => setTimeout(resolve, 0));
-
-            navigate("/dashboard", {
-                replace: true,
-            });
-
+            navigate(response.active_role === "Admin" ? "/admin/approval" : "/dashboard", { replace: true });
         } catch (err) {
-            const message =
-                err.response?.data
-                    ?.message ??
-                "Login failed.";
-
-            if (
-                message.includes(
-                    "awaiting administrator approval"
-                )
-            ) {
-                navigate("/pending");
-                return;
-            }
-
-            if (
-                message.includes(
-                    "revoked"
-                )
-            ) {
-                navigate("/revoked");
-                return;
-            }
-
+            const message = err?.response?.data?.message || err?.response?.data?.error || err?.message || "Login failed.";
+            if (message.toLowerCase().includes("awaiting administrator approval")) { navigate("/pending", { replace: true }); return; }
+            if (message.toLowerCase().includes("revoked")) { navigate("/revoked", { replace: true }); return; }
             setError(message);
-        }
+        } finally { setSubmitting(false); }
     };
 
     return (
-        <div className="auth-container">
-            <div className="auth-card">
-                <h2>Login</h2>
-
-                <form
-                    className="auth-form"
-                    onSubmit={
-                        handleSubmit
-                    }
-                >
-                    <input
-                        type="email"
-                        placeholder="Email"
-                        value={email}
-                        onChange={(e) =>
-                            setEmail(
-                                e.target
-                                    .value
-                            )
-                        }
-                        required
-                    />
-
-                    <input
-                        type="password"
-                        placeholder="Password"
-                        value={password}
-                        onChange={(e) =>
-                            setPassword(
-                                e.target
-                                    .value
-                            )
-                        }
-                        required
-                    />
-
-                    <button type="submit">
-                        Login
-                    </button>
-                </form>
-
-                {error && (
-                    <p>{error}</p>
-                )}
-
-                <div className="auth-link">
-                    <Link to="/signup">
-                        Create Account
-                    </Link>
-                </div>
-            </div>
-        </div>
+        <AuthLayout eyebrow="DEAL ROOM" title="Welcome back" description="Sign in to continue managing your opportunities and deals.">
+            <form className="auth-modern-form" onSubmit={handleSubmit} noValidate>
+                <label className="auth-field"><span>Email</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required autoComplete="email" /></label>
+                <label className="auth-field"><span>Password</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required autoComplete="current-password" /></label>
+                {error && <div className="auth-error" role="alert">{error}</div>}
+                <button className="auth-submit" type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Login"}</button>
+            </form>
+            <p className="auth-footer-link">Don't have an account? <Link to="/signup">Create Account</Link></p>
+        </AuthLayout>
     );
 }
+

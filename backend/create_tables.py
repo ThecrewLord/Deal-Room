@@ -1,8 +1,10 @@
-from app import create_app
-from app.database import db
+"""Deprecated compatibility entrypoint.
 
-app = create_app()
+Use Flask-Migrate/Alembic instead:
 
-with app.app_context():
-    db.create_all()
-    print("All tables created successfully.")
+    flask --app run.py db upgrade
+
+This command intentionally does not call db.create_all().
+"""
+
+print("Use 'flask --app run.py db upgrade' to apply Deal Room migrations.")

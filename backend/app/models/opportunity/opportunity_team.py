@@ -5,6 +5,15 @@ from app.models.base import BaseModel
 class OpportunityTeam(BaseModel):
     __tablename__ = "opportunity_team"
 
+    __table_args__ = (
+        db.UniqueConstraint(
+            "opportunity_id",
+            "user_id",
+            "role",
+            name="uq_opportunity_team_member_role",
+        ),
+    )
+
     team_id = db.Column(
         db.Integer,
         primary_key=True,

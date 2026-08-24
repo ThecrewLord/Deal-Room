@@ -1,50 +1,22 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.sqlite3
-
-# Virtual Environment
-.venv/
-venv/
-env/
-
-# Environment Variables
-.env
-
-# Flask
-instance/
-
-# Logs
-*.log
-
-# VS Code
-.vscode/
-
 # macOS
 .DS_Store
 
-# Node
-frontend/node_modules/
-frontend/dist/
+# Python
+.venv/
+__pycache__/
+*.py[cod]
 
-# React
-npm-debug.log*
+# Environment files
+.env
+*.env
 
-# Uploads
-backend/uploads/
-backend/migrations/uploads/
+# Frontend dependencies/build
+node_modules/
+dist/
 
-# Pytest
-.pytest_cache/
+# Backup/archive files
+frontend/Deal_Room_UI_Updated_src.zip
+frontend/src_org.zip
 
-# Coverage
-.coverage
-htmlcov/
-
-# Alembic cache
-backend/migrations/__pycache__/
-
-# Zip files
-*.zip
+# Local/generated files
+frontend/git add frontend, backend - Ask Brave_files/

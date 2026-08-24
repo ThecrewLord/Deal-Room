@@ -15,7 +15,7 @@ import {
 import { NavLink } from "react-router-dom";
 
 import navigation from "../config/navigation";
-import { getActiveRole } from "../auth/authStorage";
+import { useAuth } from "../context/AuthContext";
 
 import "../styles/sidebar.css";
 
@@ -32,6 +32,7 @@ const iconMap = {
     Reports: BarChart3,
     Analytics: BarChart3,
     "Pending Approvals": ShieldCheck,
+    "Pending Technical Assignment": Target,
     Users: Users,
     "Role Management": Users,
     "Access Management": ShieldCheck,
@@ -49,7 +50,8 @@ function getNavigationItems(role) {
 }
 
 export default function Sidebar() {
-    const role = getActiveRole();
+    const { activeRole } = useAuth();
+    const role = activeRole;
 
     const menu = getNavigationItems(role);
 

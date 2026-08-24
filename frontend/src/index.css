@@ -1,7 +1,9 @@
-@import url(
-    "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
-);
-@import "./styles/figma-dashboard.css";
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import "./styles/theme.css";
+@import "./styles/ui.css";
+@import "./styles/dashboard.css";
+@import "./styles/admin.css";
+@import "./styles/sales-executive.css";
 
 * {
     box-sizing: border-box;
@@ -76,14 +78,14 @@ img {
 
 ::-webkit-scrollbar-thumb {
     background:
-        #cbd5e1;
+        var(--color-border);
 
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
     background:
-        #94a3b8;
+        var(--color-text-muted);
 }
 
 /* =========================

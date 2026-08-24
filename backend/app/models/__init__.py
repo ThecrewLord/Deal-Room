@@ -15,6 +15,7 @@ from app.models.opportunity import (
     StageHistory,
     StageMaster,
     POCTracker,
+    SolutionDesign,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "OpportunityTeam",
     "StageHistory",
     "POCTracker",
+    "SolutionDesign",
 ]

@@ -1,4 +1,5 @@
 import axios from "axios";
+import API_BASE_URL from "../config/api";
 
 import {
     getAccessToken,
@@ -8,7 +9,7 @@ import {
 } from "../auth/authStorage";
 
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL,
+    baseURL: API_BASE_URL,
 });
 
 let isRefreshing = false;
@@ -59,6 +60,21 @@ api.interceptors.response.use(
         const originalRequest =
             error.config;
 
+        const message = error.response?.data?.message || "";
+        if (error.response?.status === 409 && error.response?.data) {
+            error.response.data.message = "This record was changed by another user. Refresh and try again.";
+        }
+        if (error.response?.status === 403 && message.toLowerCase().includes("revoked")) {
+            clearSession();
+            window.location.replace("/revoked");
+            return Promise.reject(error);
+        }
+        if (error.response?.status === 403 && (message.toLowerCase().includes("stale") || message.toLowerCase().includes("no longer assigned"))) {
+            clearSession();
+            window.location.replace("/login");
+            return Promise.reject(error);
+        }
+
         const authEndpoints = [
             "/auth/login",
             "/auth/signup",
@@ -108,7 +124,7 @@ api.interceptors.response.use(
         try {
             const response =
                 await axios.post(
-                    `${import.meta.env.VITE_API_URL}/auth/refresh`,
+                    `${API_BASE_URL}/auth/refresh`,
                     {},
                     {
                         headers: {
@@ -145,10 +161,8 @@ api.interceptors.response.use(
             );
 
             clearSession();
-
-            window.location.replace(
-                "/login"
-            );
+            const refreshMessage = refreshError.response?.data?.message || "";
+            window.location.replace(refreshMessage.toLowerCase().includes("revoked") ? "/revoked" : "/login");
 
             return Promise.reject(
                 refreshError

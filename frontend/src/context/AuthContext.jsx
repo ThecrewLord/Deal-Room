@@ -74,6 +74,12 @@ export function AuthProvider({ children }) {
         const session = await authService.login(credentials);
 
         if (session.requires_role_selection) {
+            // Keep only the refresh token needed to authenticate the
+            // subsequent role-selection request. No active role is set yet.
+            saveSession({
+                refreshToken: session.refresh_token,
+                user: session.user,
+            });
             return session;
         }
 
@@ -100,14 +106,10 @@ export function AuthProvider({ children }) {
             await authService.selectRole(role);
 
         saveSession({
-            accessToken:
-                session.access_token,
-            refreshToken:
-                session.refresh_token,
-            user:
-                session.user,
-            activeRole:
-                role,
+            accessToken: session.access_token,
+            refreshToken: session.refresh_token,
+            user: session.user,
+            activeRole: session.active_role,
         });
 
         setUser(session.user);

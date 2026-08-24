@@ -20,6 +20,154 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    op.create_table("users",
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("full_name", sa.String(length=150), nullable=False),
+        sa.Column("email", sa.String(length=150), nullable=False),
+        sa.Column("password_hash", sa.String(length=255), nullable=False),
+        sa.Column("active", sa.Boolean(), nullable=False),
+        sa.Column("status", sa.String(length=20), nullable=False),
+        sa.Column("last_login", sa.DateTime(), nullable=True),
+        sa.Column("approved_at", sa.DateTime(), nullable=True),
+        sa.Column("approved_by", sa.Integer(), nullable=True),
+        sa.Column("manager_id", sa.Integer(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("auth_version", sa.Integer(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(["approved_by"], ["users.user_id"]),
+        sa.ForeignKeyConstraint(["manager_id"], ["users.user_id"]),
+        sa.PrimaryKeyConstraint("user_id"),
+        sa.UniqueConstraint("email"),
+    )
+
+    op.create_table("user_roles",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("role", sa.String(length=50), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["users.user_id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "user_id",
+            "role",
+            name="uq_user_role",
+        ),
+    )
+
+    op.create_table("token_blocklist",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("jti", sa.String(length=255), nullable=False),
+        sa.Column("token_type", sa.String(length=20), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("expires_at", sa.DateTime(), nullable=False),
+        sa.Column("revoked_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["users.user_id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("jti"),
+    )
+
+    op.create_table("accounts",
+        sa.Column("account_id", sa.Integer(), nullable=False),
+        sa.Column("account_name", sa.String(length=200), nullable=False),
+        sa.Column("industry", sa.String(length=100), nullable=True),
+        sa.Column("website", sa.String(length=255), nullable=True),
+        sa.Column("phone", sa.String(length=50), nullable=True),
+        sa.Column("country", sa.String(length=100), nullable=True),
+        sa.Column("state", sa.String(length=100), nullable=True),
+        sa.Column("city", sa.String(length=100), nullable=True),
+        sa.Column("address", sa.Text(), nullable=True),
+        sa.Column("is_active", sa.Boolean(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.PrimaryKeyConstraint("account_id"),
+        sa.UniqueConstraint("account_name"),
+    )
+
+    op.create_table("contacts",
+        sa.Column("contact_id", sa.Integer(), nullable=False),
+        sa.Column("account_id", sa.Integer(), nullable=False),
+        sa.Column("full_name", sa.String(length=150), nullable=False),
+        sa.Column("title", sa.String(length=100), nullable=True),
+        sa.Column("email", sa.String(length=150), nullable=True),
+        sa.Column("phone", sa.String(length=50), nullable=True),
+        sa.Column("is_primary", sa.Boolean(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["account_id"],
+            ["accounts.account_id"],
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("contact_id"),
+    )
+
+    op.create_table("tags",
+        sa.Column("tag_id", sa.Integer(), nullable=False),
+        sa.Column("name", sa.String(length=100), nullable=False),
+        sa.Column("color", sa.String(length=20), nullable=True),
+        sa.Column("is_active", sa.Boolean(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.PrimaryKeyConstraint("tag_id"),
+        sa.UniqueConstraint("name"),
+    )
+
+    op.create_index(
+        "ix_tags_name",
+        "tags",
+        ["name"],
+        unique=False,
+    )
+
+
+
+    op.create_index(
+        "ix_accounts_account_name",
+        "accounts",
+        ["account_name"],
+        unique=False,
+    )
+
+
+    op.create_index(
+        "ix_token_blocklist_jti",
+        "token_blocklist",
+        ["jti"],
+        unique=False,
+    )
+
+    op.create_index(
+        "ix_token_blocklist_user_id",
+        "token_blocklist",
+        ["user_id"],
+        unique=False,
+    )
+
+    op.create_index(
+        "ix_user_roles_user_id",
+        "user_roles",
+        ["user_id"],
+        unique=False,
+    )
+
+    op.create_index(
+        "ix_user_roles_role",
+        "user_roles",
+        ["role"],
+        unique=False,
+    )
+    op.create_index(
+        "ix_users_manager_id",
+        "users",
+        ["manager_id"],
+        unique=False,
+    )
+
     # ### commands auto generated by Alembic - please adjust! ###
     op.create_table('audit_logs',
     sa.Column('audit_log_id', sa.Integer(), nullable=False),
@@ -48,6 +196,21 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('oem_partner_id')
     )
     op.create_index(op.f('ix_oem_partners_account_id'), 'oem_partners', ['account_id'], unique=False)
+    # StageMaster is referenced by opportunities, so it must exist before the
+    # opportunities table is created on fresh Alembic databases.
+    op.create_table('stage_master',
+    sa.Column('stage_id', sa.Integer(), nullable=False),
+    sa.Column('stage_name', sa.String(length=100), nullable=False),
+    sa.Column('display_order', sa.Integer(), nullable=False),
+    sa.Column('requires_poc', sa.Boolean(), nullable=False, server_default=sa.false()),
+    sa.Column('is_closed', sa.Boolean(), nullable=False, server_default=sa.false()),
+    sa.Column('is_won', sa.Boolean(), nullable=False, server_default=sa.false()),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.PrimaryKeyConstraint('stage_id'),
+    sa.UniqueConstraint('stage_name', name='uq_stage_master_stage_name')
+    )
+    op.create_index('ix_stage_master_stage_name', 'stage_master', ['stage_name'], unique=True)
     op.create_table('opportunities',
     sa.Column('opportunity_id', sa.Integer(), nullable=False),
     sa.Column('account_id', sa.Integer(), nullable=False),
@@ -143,6 +306,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_opportunities_stage_id'), table_name='opportunities')
     op.drop_index(op.f('ix_opportunities_account_id'), table_name='opportunities')
     op.drop_table('opportunities')
+    op.drop_index('ix_stage_master_stage_name', table_name='stage_master')
+    op.drop_table('stage_master')
     op.drop_index(op.f('ix_oem_partners_account_id'), table_name='oem_partners')
     op.drop_table('oem_partners')
     op.drop_table('audit_logs')

@@ -1,12 +1,12 @@
 """
-Seed realistic test data into the deal_room PostgreSQL database.
+Seed realistic test data into the Dealroom PostgreSQL database.
 
 Run from the backend directory:
     python seed_test_data.py
 
-By default this script targets the database named `deal_room`.
+By default this script uses the database configured by DATABASE_URL.
 If you want to explicitly choose a connection string, set:
-    SEED_DATABASE_URL=postgresql://user:password@localhost:5432/deal_room
+    SEED_DATABASE_URL=postgresql://user:password@localhost:5432/dealroom
 """
 
 import os
@@ -22,6 +22,25 @@ load_dotenv()
 # Database selection
 # ---------------------------------------------------------------------------
 
+
+
+# configured_url = os.getenv("SEED_DATABASE_URL") or os.getenv("DATABASE_URL")
+
+# if not configured_url:
+#     raise RuntimeError(
+#         "DATABASE_URL is not set. Add it to .env or set SEED_DATABASE_URL."
+#     )
+
+# # The project .env currently points to dealroom2. This seed script is
+# # intentionally pointed at the requested database: dealroom.
+# if not os.getenv("SEED_DATABASE_URL"):
+#     url = make_url(configured_url)
+#     url = url.set(database="dealroom")
+#     os.environ["DATABASE_URL"] = url.render_as_string(hide_password=False)
+# else:
+#     os.environ["DATABASE_URL"] = configured_url
+
+
 configured_url = os.getenv("SEED_DATABASE_URL") or os.getenv("DATABASE_URL")
 
 if not configured_url:
@@ -29,17 +48,16 @@ if not configured_url:
         "DATABASE_URL is not set. Add it to .env or set SEED_DATABASE_URL."
     )
 
-# The project .env currently points to deal_room2. This seed script is
-# intentionally pointed at the requested database: deal_room.
-if not os.getenv("SEED_DATABASE_URL"):
-    url = make_url(configured_url)
-    url = url.set(database="deal_room")
-    os.environ["DATABASE_URL"] = url.render_as_string(hide_password=False)
-else:
-    os.environ["DATABASE_URL"] = configured_url
+os.environ["DATABASE_URL"] = configured_url
+
+
 
 from app import create_app
 from app.database import db
+from app.auth.password import hash_password
+from app.constants.auth_constants import STATUS_APPROVED, STATUS_PENDING, STATUS_REVOKED
+from app.constants.roles import ADMIN, PRE_SALES_MANAGER, DELIVERY
+from app.models.system.notification import Notification
 
 # This seed script intentionally does NOT create or modify users/roles.
 
@@ -59,7 +77,8 @@ from app.models.poc.poc import Poc
 from app.models.system.tag import Tag
 from app.models.system.audit_log import AuditLog
 
-from app.constants.stages import PIPELINE_STAGES
+from app.constants.roles import SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY
+from app.constants.stages import PIPELINE_STAGES, CLOSED_STATUS, OPEN_STATUS
 
 
 # ---------------------------------------------------------------------------
@@ -82,42 +101,62 @@ def get_or_create(model, filters, defaults=None):
 
 
 def seed_users():
-    """
-    Use ONLY users that already exist in the database.
+    """Create/update only the documented local development identities."""
+    password_hash = hash_password("Test@123")
+    specs = [
+        ("System Administrator", "admin@dealroom.local", [ADMIN], STATUS_APPROVED),
+        ("Sales Executive", "sales.exec@dealroom.local", [SALES_EXECUTIVE], STATUS_APPROVED),
+        ("Sales Manager", "sales.manager@dealroom.local", [SALES_MANAGER], STATUS_APPROVED),
+        ("Pre-Sales Manager", "presales.manager@dealroom.local", [PRE_SALES_MANAGER], STATUS_APPROVED),
+        ("Solution Engineer", "solution.engineer@dealroom.local", [SOLUTION_ENGINEER], STATUS_APPROVED),
+        ("Solution Engineer", "delivery@dealroom.local", [DELIVERY], STATUS_APPROVED),
+        ("Multi Role User", "multi.role@dealroom.local", [SOLUTION_ENGINEER], STATUS_APPROVED),
+        ("Pending User", "pending@dealroom.local", [], STATUS_PENDING),
+        ("Revoked User", "revoked@dealroom.local", [SALES_EXECUTIVE], STATUS_REVOKED),
+    ]
+    users = {}
+    for name, email, roles, status in specs:
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            user = User(full_name=name, email=email, password_hash=password_hash,
+                        status=status, active=(status != STATUS_REVOKED),
+                        approved_at=datetime.utcnow() if status == STATUS_APPROVED else None)
+            db.session.add(user)
+            db.session.flush()
+        else:
+            user.full_name = name
+            user.password_hash = password_hash
+            user.status = status
+            user.active = status != STATUS_REVOKED
+            if status == STATUS_APPROVED and not user.approved_at:
+                user.approved_at = datetime.utcnow()
+        existing_roles = {row.role for row in user.roles}
+        for role in roles:
+            if role not in existing_roles:
+                user.roles.append(UserRole(role=role))
+        if not roles:
+            for row in list(user.roles):
+                db.session.delete(row)
+        users[email.lower()] = user
 
-    This function intentionally does not:
-      - create users
-      - create roles
-      - change passwords
-      - change existing user roles
-      - change existing user profile/status fields
-
-    Existing users are returned as a dictionary keyed by email so the rest of
-    the seed script can assign them to test records.
-    """
-    users = User.query.order_by(User.user_id).all()
-
-    if not users:
-        raise RuntimeError(
-            "No existing users were found in the deal_room database. "
-            "Create/authenticate at least one user first; this seed script "
-            "will never create users."
-        )
-
-    print("\nUsing existing users only:")
-    for user in users:
-        role_rows = UserRole.query.filter_by(user_id=user.user_id).all()
-        roles = [str(row.role) for row in role_rows]
-        role_text = ", ".join(roles) if roles else "No role assigned"
-
-        print(
-            f"  - {user.full_name} <{user.email}> "
-            f"[{role_text}]"
-        )
-
-    # Keep every existing user available by email.
-    # No user fields or roles are modified.
-    return {user.email.lower(): user for user in users}
+    db.session.flush()
+    manager_map = {
+        "sales.exec@dealroom.local": "sales.manager@dealroom.local",
+        "solution.engineer@dealroom.local": "presales.manager@dealroom.local",
+        "delivery@dealroom.local": "presales.manager@dealroom.local",
+        "multi.role@dealroom.local": "presales.manager@dealroom.local",
+    }
+    for email, manager_email in manager_map.items():
+        users[email].manager_id = users[manager_email].user_id
+    for email in {"admin@dealroom.local", "sales.manager@dealroom.local",
+                  "presales.manager@dealroom.local", "pending@dealroom.local",
+                  "revoked@dealroom.local"}:
+        users[email].manager_id = None
+    db.session.commit()
+    print("\nDevelopment users ready:")
+    for email, user in users.items():
+        print(f"  - {email}: {', '.join(user.role_names()) or 'No role'} [{user.status}]")
+    return users
 
 
 def get_user_for_assignment(users, index):
@@ -132,6 +171,14 @@ def get_user_for_assignment(users, index):
         raise RuntimeError("No existing users are available for assignment.")
 
     return existing_users[index % len(existing_users)]
+
+def get_user_by_system_role(users, role):
+    """Return an existing user assigned the requested canonical system role."""
+    for user in users.values():
+        if user.has_role(role):
+            return user
+    return None
+
 
 def seed_stages():
     stages = {}
@@ -312,7 +359,7 @@ def seed_tags():
         )
 
 
-def seed_opportunities(accounts, stages):
+def seed_opportunities(accounts, stages, users):
     opportunities_data = [
         {
             "account": "Acme Technologies",
@@ -370,7 +417,7 @@ def seed_opportunities(accounts, stages):
             "stage": "Closed Won",
             "value": Decimal("950000"),
             "probability": 100,
-            "status": "Closed Won",
+            "status": CLOSED_STATUS,
             "days_to_close": -10,
             "description": "Cloud migration advisory and implementation services.",
         },
@@ -380,7 +427,7 @@ def seed_opportunities(accounts, stages):
             "stage": "Closed Lost",
             "value": Decimal("2100000"),
             "probability": 0,
-            "status": "Closed Lost",
+            "status": CLOSED_STATUS,
             "days_to_close": -30,
             "description": "Legacy application modernization opportunity.",
         },
@@ -435,7 +482,17 @@ def seed_opportunities(accounts, stages):
                 "probability": data["probability"],
                 "expected_close_date": date.today() + timedelta(days=data["days_to_close"]),
                 "status": data["status"],
-                "is_active": data["status"] == "Open",
+                "is_active": data["status"] == OPEN_STATUS,
+                "created_by": (
+                    get_user_by_system_role(users, SALES_EXECUTIVE).user_id
+                    if get_user_by_system_role(users, SALES_EXECUTIVE)
+                    else None
+                ),
+                "sales_owner_id": (
+                    get_user_by_system_role(users, SALES_EXECUTIVE).user_id
+                    if get_user_by_system_role(users, SALES_EXECUTIVE)
+                    else None
+                ),
             },
         )
 
@@ -446,7 +503,13 @@ def seed_opportunities(accounts, stages):
         opportunity.probability = data["probability"]
         opportunity.expected_close_date = date.today() + timedelta(days=data["days_to_close"])
         opportunity.status = data["status"]
-        opportunity.is_active = data["status"] == "Open"
+        opportunity.is_active = data["status"] == OPEN_STATUS
+        if opportunity.created_by is None:
+            creator = get_user_by_system_role(users, SALES_EXECUTIVE)
+            opportunity.created_by = creator.user_id if creator else None
+        if opportunity.sales_owner_id is None:
+            owner = get_user_by_system_role(users, SALES_EXECUTIVE)
+            opportunity.sales_owner_id = owner.user_id if owner else None
 
         opportunities[data["name"]] = opportunity
 
@@ -468,39 +531,39 @@ def seed_opportunities(accounts, stages):
 
 
 def seed_opportunity_teams(opportunities, users):
-    """
-    Attach existing users to opportunities.
-
-    The `role` here is the opportunity-team assignment (e.g. Account
-    Executive), NOT a user-system role. Existing UserRole records are never
-    changed by this seed script.
-    """
+    """Seed deliberately separated opportunity-team memberships."""
     assignments = [
-        ("Acme DevSecOps Transformation", 0, "Account Executive"),
-        ("Acme DevSecOps Transformation", 1, "Solution Engineer"),
-        ("Nova Pharma Secure Software Supply Chain", 2, "Sales Manager"),
-        ("Nova Pharma Secure Software Supply Chain", 3, "Solution Engineer"),
-        ("FinEdge Observability Platform", 0, "Account Executive"),
-        ("CloudPeak Kubernetes Platform", 1, "Account Executive"),
-        ("Global Retail Group", 2, "Sales Manager"),
-        ("Retail CI/CD Modernization", 3, "Solution Engineer"),
+        ("Acme DevSecOps Transformation", "sales.exec@dealroom.local", SALES_EXECUTIVE),
+        ("Acme DevSecOps Transformation", "solution.engineer@dealroom.local", SOLUTION_ENGINEER),
+        ("Nova Pharma Secure Software Supply Chain", "sales.manager@dealroom.local", SALES_MANAGER),
+        ("Nova Pharma Secure Software Supply Chain", "solution.engineer@dealroom.local", SOLUTION_ENGINEER),
+        ("Nova Pharma Secure Software Supply Chain", "delivery@dealroom.local", DELIVERY),
+        ("FinEdge Observability Platform", "sales.exec@dealroom.local", SALES_EXECUTIVE),
+        ("FinEdge Observability Platform", "delivery@dealroom.local", DELIVERY),
+        ("CloudPeak Kubernetes Platform", "sales.manager@dealroom.local", SALES_MANAGER),
+        ("Global Retail Group", "sales.manager@dealroom.local", SALES_MANAGER),
+        ("Retail CI/CD Modernization", "solution.engineer@dealroom.local", SOLUTION_ENGINEER),
+        ("Retail CI/CD Modernization", "delivery@dealroom.local", DELIVERY),
     ]
-
-    for opportunity_name, user_index, team_role in assignments:
+    for opportunity_name, email, team_role in assignments:
         opportunity = opportunities.get(opportunity_name)
-        if not opportunity:
+        user = users.get(email)
+        if not opportunity or not user:
             continue
+        existing = OpportunityTeam.query.filter_by(
+            opportunity_id=opportunity.opportunity_id,
+            user_id=user.user_id,
+        ).first()
+        if existing:
+            existing.role = team_role
+        else:
+            db.session.add(OpportunityTeam(
+                opportunity_id=opportunity.opportunity_id,
+                user_id=user.user_id,
+                role=team_role,
+            ))
+    db.session.flush()
 
-        user = get_user_for_assignment(users, user_index)
-
-        get_or_create(
-            OpportunityTeam,
-            {
-                "opportunity_id": opportunity.opportunity_id,
-                "user_id": user.user_id,
-            },
-            {"role": team_role},
-        )
 
 def seed_stakeholders(opportunities):
     stakeholders = [
@@ -601,62 +664,50 @@ def seed_stage_history(opportunities, stages, users):
             )
 
 def seed_pocs(opportunities):
+    """Seed POCs using the canonical Phase 6 status vocabulary."""
     poc_data = [
-        {
-            "opportunity": "Nova Pharma Secure Software Supply Chain",
-            "name": "Secure Supply Chain POC",
-            "status": "Ongoing",
-            "days": 10,
-            "objective": "Validate secure artifact management and software supply-chain controls.",
-            "success_metric": "100% of POC artifacts pass configured security policies.",
-            "failure_condition": "Critical vulnerabilities or policy bypasses remain unresolved.",
-            "signoff": False,
-        },
-        {
-            "opportunity": "Retail Platform POC",
-            "name": "Retail Platform Technical POC",
-            "status": "Planned",
-            "days": 20,
-            "objective": "Validate deployment automation and platform scalability.",
-            "success_metric": "Deployment completes successfully with repeatable automation.",
-            "failure_condition": "Deployment cannot meet agreed reliability requirements.",
-            "signoff": False,
-        },
+        ("Acme DevSecOps Transformation", "Draft POC", "Draft"),
+        ("Nova Pharma Secure Software Supply Chain", "Secure Supply Chain POC", "Pending Approval"),
+        ("FinEdge Observability Platform", "Observability Approval POC", "Approved"),
+        ("CloudPeak Security Automation", "Security Automation POC", "In Progress"),
+        ("Retail Platform POC", "Retail Platform Technical POC", "Submitted"),
+        ("CloudPeak Kubernetes Platform", "Completed Kubernetes POC", "Completed"),
     ]
-
-    for data in poc_data:
-        opportunity = opportunities[data["opportunity"]]
-        target = date.today() + timedelta(days=data["days"])
-
+    for opportunity_name, poc_name, status in poc_data:
+        opportunity = opportunities[opportunity_name]
+        target = date.today() + timedelta(days=20)
         tracker, _ = get_or_create(
             POCTracker,
-            {
-                "opportunity_id": opportunity.opportunity_id,
-                "poc_name": data["name"],
-            },
+            {"opportunity_id": opportunity.opportunity_id, "poc_name": poc_name},
             {
                 "start_date": date.today(),
                 "end_date": target,
-                "status": data["status"],
-                "remarks": "Seeded POC for testing the POC tracker screens.",
-                "objective": data["objective"],
-                "success_metric": data["success_metric"],
+                "status": status,
+                "remarks": "Seeded POC for local workflow testing.",
+                "objective": "Validate the proposed technical solution against agreed requirements.",
+                "success_metric": "All mandatory acceptance criteria pass.",
                 "target_date": target,
-                "failure_condition": data["failure_condition"],
-                "stakeholder_signoff": data["signoff"],
-                "outcome": None,
-                "outcome_notes": None,
+                "failure_condition": "A critical acceptance criterion fails.",
+                "stakeholder_signoff": status in {"Submitted", "Completed"},
+                "outcome": "Success" if status == "Completed" else None,
+                "outcome_notes": "Seeded completed result." if status == "Completed" else None,
+                "exit_criteria": "Acceptance criteria reviewed and documented.",
+                "poc_access_link": "https://example.com/deal-room-poc" if status in {"In Progress", "Submitted", "Completed"} else None,
             },
         )
-
         tracker.start_date = date.today()
         tracker.end_date = target
-        tracker.status = data["status"]
-        tracker.objective = data["objective"]
-        tracker.success_metric = data["success_metric"]
+        tracker.status = status
+        tracker.objective = "Validate the proposed technical solution against agreed requirements."
+        tracker.success_metric = "All mandatory acceptance criteria pass."
         tracker.target_date = target
-        tracker.failure_condition = data["failure_condition"]
-        tracker.stakeholder_signoff = data["signoff"]
+        tracker.failure_condition = "A critical acceptance criterion fails."
+        tracker.stakeholder_signoff = status in {"Submitted", "Completed"}
+        tracker.outcome = "Success" if status == "Completed" else None
+        tracker.outcome_notes = "Seeded completed result." if status == "Completed" else None
+        tracker.exit_criteria = "Acceptance criteria reviewed and documented."
+        tracker.poc_access_link = "https://example.com/deal-room-poc" if status in {"In Progress", "Submitted", "Completed"} else None
+        db.session.flush()
 
 
 def seed_legacy_poc_table(opportunities):
@@ -742,14 +793,52 @@ def seed_audit_logs(opportunities, users):
                 )
             )
 
+def seed_notifications(opportunities, users):
+    """Create deterministic in-app workflow examples without duplicates."""
+    samples = [
+        ("sales.manager@dealroom.local", "OPPORTUNITY_SUBMITTED_FOR_REVIEW", "Opportunity", "Acme DevSecOps Transformation", "Acme DevSecOps Transformation is ready for Sales Manager review."),
+        ("presales.manager@dealroom.local", "OPPORTUNITY_APPROVED", "Opportunity", "Nova Pharma Secure Software Supply Chain", "Nova Pharma Secure Software Supply Chain was approved and is ready for technical assignment."),
+        ("solution.engineer@dealroom.local", "SOLUTION_ENGINEER_ASSIGNED", "Opportunity", "Nova Pharma Secure Software Supply Chain", "You were assigned as Solution Engineer."),
+        ("delivery@dealroom.local", "SOLUTION_ENGINEER_ASSIGNED", "Opportunity", "Nova Pharma Secure Software Supply Chain", "You were assigned for Delivery/POC execution."),
+        ("presales.manager@dealroom.local", "POC_REQUESTED", "POC", "Secure Supply Chain POC", "A Solution Engineer requested POC approval."),
+        ("delivery@dealroom.local", "POC_APPROVED", "POC", "Observability Approval POC", "The POC was approved for execution."),
+        ("solution.engineer@dealroom.local", "POC_RESULT_SUBMITTED", "POC", "Retail Platform Technical POC", "Delivery submitted a POC result for review."),
+    ]
+    for email, kind, entity_type, name, message in samples:
+        user = users.get(email)
+        if not user:
+            continue
+        if entity_type == "Opportunity":
+            entity = opportunities.get(name)
+            entity_id = entity.opportunity_id if entity else None
+        else:
+            entity = POCTracker.query.filter_by(poc_name=name).first()
+            entity_id = entity.poc_id if entity else None
+        if entity_id is None:
+            continue
+        exists = Notification.query.filter_by(
+            recipient_user_id=user.user_id,
+            notification_type=kind,
+            entity_type=entity_type,
+            entity_id=entity_id,
+        ).first()
+        if not exists:
+            db.session.add(Notification(
+                recipient_user_id=user.user_id,
+                notification_type=kind,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                message=message,
+                is_read=False,
+            ))
+
 def main():
     app = create_app()
 
     with app.app_context():
-        print("Seeding deal_room test data...")
+        print("Seeding Dealroom test data...")
         print(f"Database: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
-        # IMPORTANT: only read existing users. No users or roles are created.
         users = seed_users()
         stages = seed_stages()
         accounts = seed_accounts()
@@ -757,13 +846,14 @@ def main():
         seed_oem_partners(accounts)
         seed_tags()
 
-        opportunities = seed_opportunities(accounts, stages)
+        opportunities = seed_opportunities(accounts, stages, users)
         seed_opportunity_teams(opportunities, users)
         seed_stakeholders(opportunities)
         seed_stage_history(opportunities, stages, users)
         seed_pocs(opportunities)
         seed_legacy_poc_table(opportunities)
         seed_audit_logs(opportunities, users)
+        seed_notifications(opportunities, users)
 
         db.session.commit()
 

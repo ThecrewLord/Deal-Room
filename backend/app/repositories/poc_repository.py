@@ -8,9 +8,11 @@ from sqlalchemy import and_
 
 class PocRepository:
     @staticmethod
+    
     def create(data):
         poc = POCTracker(**data)
         db.session.add(poc)
+        db.session.flush()
         return poc
 
     @staticmethod

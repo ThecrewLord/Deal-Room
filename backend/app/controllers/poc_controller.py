@@ -25,8 +25,10 @@ class PocController:
             return jsonify({"message": str(err)}), 403
         except ValueError as err:
             return jsonify({"message": str(err)}), 400
-        except Exception:
-            return jsonify({"message": "Failed to request POC"}), 500
+        except Exception as err:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"message": str(err)}), 500
 
     @staticmethod
     def get(poc_id):

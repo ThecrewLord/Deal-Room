@@ -1,6 +1,16 @@
 import "../styles/business-workspaces.css";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, CheckCircle2, Clock3, FlaskConical, ExternalLink, RefreshCw, Search, Target } from "lucide-react";
+import {
+    CalendarDays,
+    CheckCircle2,
+    Clock3,
+    FlaskConical,
+    ExternalLink,
+    RefreshCw,
+    Search,
+    Target,
+    Plus,
+} from "lucide-react";
 import { getOpportunities } from "../api/opportunityApi";
 import { getPocsByOpportunity } from "../api/pocApi";
 import { ROLES } from "../auth/roles";
@@ -15,18 +25,23 @@ import ErrorState from "../components/ui/ErrorState";
 import StatusBadge from "../components/ui/StatusBadge";
 import EmptyState from "../components/ui/EmptyState";
 import Button from "../components/ui/Button";
+import PocForm from "../components/PocForm";
+import { requestPoc } from "../api/pocApi";
 
 const STATUS_ORDER = ["Approved", "In Progress", "Submitted", "Completed", "Rejected"];
 
 export default function Pocs() {
     const { activeRole } = useAuth();
+
     const [items, setItems] = useState([]);
     const [search, setSearch] = useState("");
     const [filter, setFilter] = useState("All");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    const load = async () => {
+    const [showAddPoc, setShowAddPoc] = useState(false);
+    const [creating, setCreating] = useState(false);
+        const load = async () => {
         try {
             setLoading(true);
             setError("");
@@ -46,6 +61,25 @@ export default function Pocs() {
             setError(err?.response?.data?.message || "Unable to load POCs. Please try again.");
         } finally {
             setLoading(false);
+        }
+    };
+    const handleCreatePoc = async (payload) => {
+        try {
+            setCreating(true);
+            setError("");
+
+            await requestPoc(payload);
+
+            setShowAddPoc(false);
+
+            await load();
+        } catch (err) {
+            setError(
+                err?.response?.data?.message ||
+                "Unable to create POC. Please try again."
+            );
+        } finally {
+            setCreating(false);
         }
     };
 
@@ -85,10 +119,58 @@ export default function Pocs() {
     return (
         <div className="standard-page business-workspace fade-in">
             <PageHeader
-                title="POC Tracker"
-                description="Plan, execute and close technical proofs of concept."
-                actions={<Button variant="secondary" onClick={load} disabled={loading}><RefreshCw size={14} /> Refresh</Button>}
+    title="POC Tracker"
+    description="Plan, execute and close technical proofs of concept."
+    actions={
+        <div className="poc-header-actions">
+            <Button
+                variant="primary"
+                onClick={() => setShowAddPoc(true)}
+            >
+                <Plus size={15} />
+                Add POC
+            </Button>
+
+            <Button
+                variant="secondary"
+                onClick={load}
+                disabled={loading}
+            >
+                <RefreshCw size={14} />
+                Refresh
+            </Button>
+        </div>
+    }
+/>
+{showAddPoc && (
+    <div className="poc-modal-backdrop">
+        <div className="poc-modal">
+            <div className="poc-modal-header">
+                <div>
+                    <h2>Create New POC</h2>
+                    <p>
+                        Define the technical proof of concept and its success criteria.
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    className="poc-modal-close"
+                    onClick={() => setShowAddPoc(false)}
+                    disabled={creating}
+                >
+                    ×
+                </button>
+            </div>
+
+            <PocForm
+                onSubmit={handleCreatePoc}
+                submitting={creating}
+                onCancel={() => setShowAddPoc(false)}
             />
+        </div>
+    </div>
+)}
 
             {error && <ErrorState message={error} onRetry={load} />}
 

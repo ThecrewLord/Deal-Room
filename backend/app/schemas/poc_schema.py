@@ -1,8 +1,5 @@
 from marshmallow import Schema, fields, validate
-
 from app.constants.poc_outcome import POC_OUTCOMES
-
-
 class PocRequestSchema(Schema):
     opportunity_id = fields.Int(required=True)
     poc_name = fields.Str(required=True, validate=validate.Length(min=2, max=150))
@@ -12,6 +9,7 @@ class PocRequestSchema(Schema):
     target_date = fields.Date(required=True)
     failure_condition = fields.Str(required=True, validate=validate.Length(min=1))
     remarks = fields.Str(allow_none=True)
+    stakeholder_signoff = fields.Bool(load_default=False)
 
 
 class PocDesignUpdateSchema(Schema):

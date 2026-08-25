@@ -37,6 +37,14 @@ class PocService:
     @staticmethod
     def request_poc(data, user, active_role):
         opportunity = PocRepository.get_opportunity(data["opportunity_id"])
+        print(
+            "POC DEBUG:",
+            "user_id=", getattr(user, "user_id", None),
+            "user_name=", getattr(user, "full_name", None),
+            "active_role=", active_role,
+            "opportunity_id=", data.get("opportunity_id"),
+        )        
+
         if not opportunity:
             return None
         if not AuthorizationService.can_request_poc(user, active_role, opportunity):
@@ -50,7 +58,7 @@ class PocService:
         payload = dict(data)
         payload["status"] = POC_STATUS_APPROVED
         payload["requested_by"] = user.user_id
-        payload["stakeholder_signoff"] = False
+        payload["stakeholder_signoff"] = data.get("stakeholder_signoff", False)
         poc = PocRepository.create(payload)
         ActivityService.log(
             "POC", poc.poc_id, POC_REQUESTED,

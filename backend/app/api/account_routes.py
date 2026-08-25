@@ -12,6 +12,11 @@ def get_accounts():
     return AccountController.get_all(g.auth_user, g.active_role)
 
 
+@account_bp.post("")
+@business_access_required
+def create_account():
+    return AccountController.create(g.auth_user, g.active_role)
+
 @account_bp.get("/<int:account_id>")
 @business_access_required
 def get_account(account_id):

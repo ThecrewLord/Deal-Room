@@ -9,6 +9,7 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import EmptyState from "../components/ui/EmptyState";
 import StageBadge from "../components/ui/StageBadge";
+import KpiCard from "../components/ui/KpiCard";
 
 const money = (value) => {
     const n = Number(value || 0);
@@ -53,11 +54,10 @@ export default function PreSalesAssignment() {
     return <div className="standard-page psm-work-page fade-in">
         <PageHeader title="Technical Assignment" description="Assign Solution Engineers to approved opportunities and manage technical ownership." actions={<><Button variant="ghost" onClick={() => navigate("/pre-sales/team-performance")}><Users size={14}/> Team Performance</Button><Button variant="secondary" onClick={load}><RefreshCw size={14}/> Refresh</Button></>} />
         {error && <div className="standard-error">{error}</div>}
-        <div className="psm-assignment-overview">
-            <div><span><BriefcaseBusiness size={14}/> Awaiting assignment</span><strong>{queue.length}</strong><small>{money(totalValue)} total opportunity value</small></div>
-            <div><span><Users size={14}/> Eligible Solution Engineers</span><strong>{solutionEngineers.length}</strong><small>Available for allocation</small></div>
-            
-            <div className="ready"><span><CheckCircle2 size={14}/> Ready to finalize</span><strong>{assignedCount}</strong><small>Complete technical teams selected</small></div>
+        <div className="psm-assignment-overview ui-kpi-grid">
+            <KpiCard icon={BriefcaseBusiness} label="Awaiting assignment" value={queue.length} description={`${money(totalValue)} total opportunity value`} />
+            <KpiCard icon={Users} label="Eligible Solution Engineers" value={solutionEngineers.length} description="Available for allocation" />
+            <KpiCard icon={CheckCircle2} label="Ready to finalize" value={assignedCount} description="Complete technical teams selected" tone="success" className="psm-kpi-success" />
         </div>
         <Card padding={false} className="psm-assignment-shell">
             <div className="psm-assignment-toolbar"><div><div className="psm-eyebrow">WORK QUEUE</div><h2>Approved opportunities awaiting technical ownership</h2><p>Assign one or more technical resources, then finalize the handoff.</p></div><label className="ui-search"><Search size={14}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search opportunity, account or sales owner…" /></label></div>

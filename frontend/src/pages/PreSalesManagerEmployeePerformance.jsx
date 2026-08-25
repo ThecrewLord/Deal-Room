@@ -7,6 +7,7 @@ import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import StageBadge from "../components/ui/StageBadge";
 import StatusBadge from "../components/ui/StatusBadge";
+import KpiCard from "../components/ui/KpiCard";
 
 const money = (value) => {
     const n = Number(value || 0);
@@ -28,7 +29,7 @@ export default function PreSalesManagerEmployeePerformance() {
     const maxPoc = Math.max(...pocStatuses.map(x => Number(x.count || 0)), 1);
     const m = data?.metrics || {};
     const e = data?.employee || {};
-    const roleClass = e.role === "Solution Engineer" ? "delivery" : "se";
+    const roleClass = e.role === "Solution Engineer" ? "technical" : "se";
     const performanceScore = useMemo(() => {
         const completed = Number(m.completed_pocs || 0); const active = Number(m.active_pocs || 0); const stalled = Number(m.stalled_opportunities || 0);
         return Math.max(0, Math.min(100, Math.round((completed * 25) + (active * 10) + Math.max(0, 20 - stalled * 5))));
@@ -37,13 +38,17 @@ export default function PreSalesManagerEmployeePerformance() {
     return <div className="standard-page psm-performance-page fade-in">
         <PageHeader title={e.full_name || "Employee Performance"} description={`${e.role || "Technical Team Member"} · Individual performance and workload`} actions={<><Button variant="ghost" onClick={() => navigate("/pre-sales/team-performance")}><ArrowLeft size={14}/> Team Performance</Button><Button variant="secondary" onClick={load}><RefreshCw size={14}/> Refresh</Button></>} />
         {error && <div className="standard-error">{error}</div>}
-        <div className="psm-profile-strip"><div className="psm-profile-avatar">{initials(e.full_name)}</div><div><h2>{e.full_name}</h2><p>{e.email}</p></div><em className={`psm-role-chip ${roleClass}`}>{e.role}</em><div className="psm-score"><span>Technical workload score</span><strong>{performanceScore}</strong><small>Based on current POC workload and stalled work</small></div></div>
-        <div className="psm-performance-kpis detail">
-            <div><BriefcaseBusiness size={17}/><span>Assigned Opportunities</span><strong>{m.assigned_opportunities || 0}</strong><small>{money(m.assigned_value)} assigned value</small></div>
-            <div><TrendingUp size={17}/><span>Weighted Forecast</span><strong>{money(m.weighted_forecast)}</strong><small>Probability-adjusted</small></div>
-            <div><Clock3 size={17}/><span>Active Work</span><strong>{m.active_opportunities || 0}</strong><small>{m.average_stage_age_days || 0}d avg. stage age</small></div>
-            <div><FlaskConical size={17}/><span>Active POCs</span><strong>{m.active_pocs || 0}</strong><small>{m.completed_pocs || 0} completed</small></div>
-            <div><Target size={17}/><span>Stalled Work</span><strong>{m.stalled_opportunities || 0}</strong><small>Needs manager attention</small></div>
+        <div className="psm-profile-strip">
+            <div className="psm-profile-avatar">{initials(e.full_name)}</div>
+            <div className="psm-profile-identity"><h2>{e.full_name}</h2><p>{e.email}</p><em className={`psm-role-chip ${roleClass}`}>{e.role}</em></div>
+            <div className="psm-score"><span>Technical workload score</span><strong>{performanceScore}</strong><small>Based on current POC workload and stalled work</small></div>
+        </div>
+        <div className="psm-performance-kpis detail ui-kpi-grid-5">
+            <KpiCard icon={BriefcaseBusiness} label="Assigned Opportunities" value={m.assigned_opportunities || 0} description={`${money(m.assigned_value)} assigned value`} />
+            <KpiCard icon={TrendingUp} label="Weighted Forecast" value={money(m.weighted_forecast)} description="Probability-adjusted" />
+            <KpiCard icon={Clock3} label="Active Work" value={m.active_opportunities || 0} description={`${m.average_stage_age_days || 0}d avg. stage age`} />
+            <KpiCard icon={FlaskConical} label="Active POCs" value={m.active_pocs || 0} description={`${m.completed_pocs || 0} completed`} />
+            <KpiCard icon={Target} label="Stalled Work" value={m.stalled_opportunities || 0} description="Needs manager attention" />
         </div>
         <div className="psm-employee-detail-grid">
             <Card><div className="psm-card-head"><div><h3>Assigned Pipeline</h3><p>Opportunities where this employee is part of the technical team.</p></div></div><div className="psm-detail-stage-list">{pipeline.map((item, i) => <div className="psm-detail-stage" key={item.stage}><div><strong>{item.stage}</strong><span>{item.count} {item.count === 1 ? "deal" : "deals"}</span></div><div className="psm-detail-track"><i style={{width: `${Math.max(Number(item.value || 0) / maxValue * 100, item.count ? 4 : 0)}%`}} /></div><b>{money(item.value)}</b></div>)}</div></Card>

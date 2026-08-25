@@ -77,6 +77,10 @@
 }
 
 
+.opportunity-create-card .field-label > input[aria-label="New account name"] {
+    margin-top: 2px;
+}
+
 /* =========================================================
    ERROR
    ========================================================= */

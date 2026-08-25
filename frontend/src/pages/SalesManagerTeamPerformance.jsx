@@ -5,7 +5,7 @@ import { getTeamPerformance } from "../api/managerPerformanceApi";
 import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
-import StatusBadge from "../components/ui/StatusBadge";
+import KpiCard from "../components/ui/KpiCard";
 
 const money = (value) => {
     const number = Number(value || 0);
@@ -40,12 +40,12 @@ export default function SalesManagerTeamPerformance() {
     return <div className="standard-page manager-performance-page">
         <PageHeader title="Team Performance" description="Individual performance of the Sales Executives assigned to you." actions={<Button variant="secondary" onClick={load}><RefreshCw size={14} /> Refresh</Button>} />
         {error && <div className="standard-error">{error}</div>}
-        <div className="manager-performance-summary">
-            <div><UsersIcon /><span>Team members</span><strong>{data?.team_size ?? 0}</strong></div>
-            <div><DollarSign size={18} /><span>Team pipeline</span><strong>{money(totals.pipeline)}</strong></div>
-            <div><TrendingUp size={18} /><span>Weighted forecast</span><strong>{money(totals.forecast)}</strong></div>
-            <div><Target size={18} /><span>Deals won</span><strong>{totals.won}</strong></div>
-            <div><AlertTriangle size={18} /><span>Stalled deals</span><strong>{totals.stalled}</strong></div>
+        <div className="manager-performance-summary ui-kpi-grid-5">
+            <KpiCard icon={UsersIcon} label="Team Members" value={data?.team_size ?? 0} description="Direct reports" />
+            <KpiCard icon={DollarSign} label="Team Pipeline" value={money(totals.pipeline)} description="Open opportunities" />
+            <KpiCard icon={TrendingUp} label="Weighted Forecast" value={money(totals.forecast)} description="Probability-adjusted" />
+            <KpiCard icon={Target} label="Deals Won" value={totals.won} description="Closed won" />
+            <KpiCard icon={AlertTriangle} label="Stalled Deals" value={totals.stalled} description={totals.stalled ? "Needs attention" : "No stalled deals"} />
         </div>
         <Card padding={false}>
             <div className="manager-performance-toolbar"><div className="ui-search"><Search size={15} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search employees…" /></div></div>

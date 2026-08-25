@@ -7,6 +7,7 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import StageBadge from "../components/ui/StageBadge";
 import StatusBadge from "../components/ui/StatusBadge";
+import KpiCard from "../components/ui/KpiCard";
 
 const money = (value) => {
     const number = Number(value || 0);
@@ -38,13 +39,17 @@ export default function SalesManagerEmployeePerformance() {
 
     return <div className="standard-page manager-employee-page">
         <PageHeader title={data?.employee?.full_name || "Employee Performance"} description={`${data?.employee?.email || ""} · Individual Sales Executive performance`} actions={<><Button variant="ghost" onClick={() => navigate("/sales-manager/team-performance")}><ArrowLeft size={14} /> Back to team</Button><Button variant="secondary" onClick={load}><RefreshCw size={14} /> Refresh</Button></>} />
-        <div className="manager-profile-strip"><span className="manager-avatar manager-avatar-large">{data?.employee?.full_name?.charAt(0)?.toUpperCase()}</span><div><strong>{data?.employee?.full_name}</strong><span>{data?.employee?.email}</span></div><StatusBadge status="Active" /></div>
-        <div className="manager-kpi-grid manager-kpi-grid-detail">
-            <DetailMetric icon={<DollarSign size={18} />} label="Pipeline" value={money(m.pipeline_value)} hint="Owned open pipeline" />
-            <DetailMetric icon={<TrendingUp size={18} />} label="Weighted forecast" value={money(m.weighted_forecast)} hint="Probability-adjusted" />
-            <DetailMetric icon={<Target size={18} />} label="Open deals" value={m.open_opportunities ?? 0} hint={`${m.total_opportunities ?? 0} total opportunities`} />
-            <DetailMetric icon={<Percent size={18} />} label="Win rate" value={`${m.win_rate ?? 0}%`} hint={`${m.closed_won ?? 0} won · ${m.closed_lost ?? 0} lost`} />
-            <DetailMetric icon={<AlertTriangle size={18} />} label="Stalled" value={m.stalled_deals ?? 0} hint={`${m.average_stage_age_days ?? 0} day avg stage age`} />
+        <div className="manager-profile-strip">
+            <span className="manager-avatar manager-avatar-large">{data?.employee?.full_name?.charAt(0)?.toUpperCase()}</span>
+            <div className="manager-profile-identity"><strong>{data?.employee?.full_name}</strong><span>{data?.employee?.email}</span><StatusBadge status="Active" /></div>
+            <div className="manager-profile-score"><span>Role</span><strong>Sales Executive</strong><small>Individual performance and workload</small></div>
+        </div>
+        <div className="manager-kpi-grid manager-kpi-grid-detail ui-kpi-grid-5">
+            <KpiCard icon={DollarSign} label="Pipeline" value={money(m.pipeline_value)} description="Owned open pipeline" />
+            <KpiCard icon={TrendingUp} label="Weighted Forecast" value={money(m.weighted_forecast)} description="Probability-adjusted" />
+            <KpiCard icon={Target} label="Open Deals" value={m.open_opportunities ?? 0} description={`${m.total_opportunities ?? 0} total opportunities`} />
+            <KpiCard icon={Percent} label="Win Rate" value={`${m.win_rate ?? 0}%`} description={`${m.closed_won ?? 0} won · ${m.closed_lost ?? 0} lost`} />
+            <KpiCard icon={AlertTriangle} label="Stalled" value={m.stalled_deals ?? 0} description={`${m.average_stage_age_days ?? 0} day avg stage age`} />
         </div>
         <div className="manager-dashboard-grid">
             <Card><div className="manager-section-head"><div><h2>Pipeline by Stage</h2><p>Current owned pipeline distribution.</p></div></div><div className="manager-bar-list manager-stage-list">{pipeline.map((item) => { const value = Number(item.value || 0); return <div className="manager-bar-row" key={item.stage}><div className="manager-bar-label"><span>{item.stage}</span><strong>{money(value)} · {item.count}</strong></div><div className="manager-bar-track"><div className="manager-bar-fill" style={{ width: `${Math.max((value / maxStageValue) * 100, value ? 4 : 0)}%` }} /></div></div>; })}</div></Card>
@@ -54,5 +59,4 @@ export default function SalesManagerEmployeePerformance() {
     </div>;
 }
 
-function DetailMetric({ icon, label, value, hint }) { return <div className="manager-metric"><div className="manager-metric-icon">{icon}</div><div><span>{label}</span><strong>{value}</strong><small>{hint}</small></div></div>; }
 function Signal({ label, value, warn }) { return <div className={`manager-signal ${warn ? "warn" : ""}`}><span>{label}</span><strong>{value}</strong></div>; }

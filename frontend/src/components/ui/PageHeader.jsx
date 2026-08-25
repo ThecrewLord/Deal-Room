@@ -1,7 +1,8 @@
-export default function PageHeader({ title, description, actions }) {
+export default function PageHeader({ eyebrow, title, description, actions }) {
     return (
         <div className="page-header">
             <div className="page-header-copy">
+                {eyebrow && <span className="page-header-eyebrow">{eyebrow}</span>}
                 <h1>{title}</h1>
                 {description && <p>{description}</p>}
             </div>

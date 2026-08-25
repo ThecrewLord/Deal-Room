@@ -8,6 +8,7 @@ import EmptyState from "../components/ui/EmptyState";
 import { getPreSalesTeamPerformance } from "../api/preSalesPerformanceApi";
 import { ROLES } from "../auth/roles";
 import { useAuth } from "../context/AuthContext";
+import KpiCard from "../components/ui/KpiCard";
 
 const money = (value) => {
     const n = Number(value || 0);
@@ -58,12 +59,12 @@ export default function PreSalesManagerTeamPerformance() {
         <PageHeader title="Team Performance" description="Monitor the technical workload and POC performance of your Solution Engineer team." actions={<Button variant="secondary" onClick={load}><RefreshCw size={14}/> Refresh</Button>} />
         {error && <div className="standard-error">{error}</div>}
 
-        <div className="psm-performance-kpis">
-            <div><Users size={17}/><span>Technical Team</span><strong>{data?.team_size || 0}</strong></div>
-            <div><BriefcaseBusiness size={17}/><span>Assigned Opportunities</span><strong>{summary.assigned}</strong></div>
-            <div><Clock3 size={17}/><span>Active Technical Work</span><strong>{summary.active}</strong></div>
-            <div><FlaskConical size={17}/><span>Active POCs</span><strong>{summary.pocs}</strong></div>
-            <div><BarChart3 size={17}/><span>Completed POCs</span><strong>{summary.completed}</strong></div>
+        <div className="psm-performance-kpis ui-kpi-grid-5">
+            <KpiCard icon={Users} label="Technical Team" value={data?.team_size || 0} description="Direct technical reports" />
+            <KpiCard icon={BriefcaseBusiness} label="Assigned Opportunities" value={summary.assigned} description="Current technical scope" />
+            <KpiCard icon={Clock3} label="Active Technical Work" value={summary.active} description="Open assigned work" />
+            <KpiCard icon={FlaskConical} label="Active POCs" value={summary.pocs} description="Technical evaluations" />
+            <KpiCard icon={BarChart3} label="Completed POCs" value={summary.completed} description="Completed evaluations" />
         </div>
 
         <Card padding={false} className="psm-performance-card">

@@ -4,7 +4,6 @@ import "../styles/opportunities.css";
 import {
     Search,
     RefreshCw,
-    Plus,
     TrendingUp,
     CheckCircle2,
     CircleDollarSign,
@@ -13,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { createOpportunity, getOpportunities } from "../api/opportunityApi";
-import { getAccounts } from "../api/accountApi";
+import { createAccount, getAccounts } from "../api/accountApi";
 import { ROLES } from "../auth/roles";
 import { useAuth } from "../context/AuthContext";
 
@@ -29,6 +28,7 @@ export default function Opportunities() {
 
     const [opportunities, setOpportunities] = useState([]);
     const [accounts, setAccounts] = useState([]);
+    const [newAccountName, setNewAccountName] = useState("");
 
     const [search, setSearch] = useState("");
     const [stageFilter, setStageFilter] = useState("all");
@@ -79,9 +79,21 @@ export default function Opportunities() {
         try {
             setCreating(true);
 
+            let accountId = form.account_id;
+            if (form.account_id === "other") {
+                const accountName = newAccountName.trim();
+                if (!accountName) {
+                    setError("Enter an account name to continue.");
+                    return;
+                }
+
+                const account = await createAccount({ account_name: accountName });
+                accountId = account.account_id;
+            }
+
             const created = await createOpportunity({
                 ...form,
-                account_id: Number(form.account_id),
+                account_id: Number(accountId),
                 estimated_value:
                     form.estimated_value === ""
                         ? null
@@ -98,6 +110,7 @@ export default function Opportunities() {
                 probability: 0,
                 expected_close_date: "",
             });
+            setNewAccountName("");
 
             setShowCreate(false);
 
@@ -199,14 +212,12 @@ export default function Opportunities() {
                 <div className="opportunities-header-actions">
                     {activeRole === ROLES.SALES_EXECUTIVE && (
                         <Button
+                            variant={showCreate ? "danger" : "primary"}
                             onClick={() =>
                                 setShowCreate((value) => !value)
                             }
                         >
-                            <Plus size={15} />
-                            {showCreate
-                                ? "Close"
-                                : "New Opportunity"}
+                            {showCreate ? "Close" : "New Opportunity"}
                         </Button>
                     )}
 
@@ -336,7 +347,25 @@ export default function Opportunities() {
                                                 {a.account_name}
                                             </option>
                                         ))}
+
+                                        <option value="other">
+                                            Other — enter account name
+                                        </option>
                                     </select>
+
+                                    {form.account_id === "other" && (
+                                        <input
+                                            required
+                                            minLength={2}
+                                            maxLength={200}
+                                            value={newAccountName}
+                                            onChange={(e) =>
+                                                setNewAccountName(e.target.value)
+                                            }
+                                            placeholder="Type account name"
+                                            aria-label="New account name"
+                                        />
+                                    )}
                                 </label>
 
                                 <label className="field-label">

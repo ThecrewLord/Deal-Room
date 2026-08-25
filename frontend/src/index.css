@@ -4,6 +4,8 @@
 @import "./styles/dashboard.css";
 @import "./styles/admin.css";
 @import "./styles/sales-executive.css";
+@import "./styles/business-workspaces.css";
+@import "./styles/role-workspaces.css";
 
 * {
     box-sizing: border-box;

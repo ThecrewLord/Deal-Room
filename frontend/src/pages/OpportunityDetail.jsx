@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
+import "../styles/business-workspaces.css";
+import { useEffect, useMemo, useState } from "react";
 import {
     ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock3, DollarSign,
-    Edit3, FileText, History, Layers3, Link2, MessageSquare, Pencil,
-    RefreshCw, Save, ShieldCheck, Target, Users, XCircle, Zap
+    Edit3, FileText, History, Link2, MessageSquare, RefreshCw, Save,
+    ShieldCheck, Target, Users, XCircle, Zap, UserRound, FlaskConical
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import StakeholderForm from "../components/StakeholderForm";
 import {
-    getPocsByOpportunity, requestPoc, startPocExecution, submitPocResult,
-    completePoc
+    getPocsByOpportunity, requestPoc, startPocExecution, submitPocResult, completePoc
 } from "../api/pocApi";
 import { getStakeholdersByOpportunity } from "../api/stakeholderApi";
 import {
@@ -21,37 +21,41 @@ import { ROLES } from "../auth/roles";
 import { useAuth } from "../context/AuthContext";
 import { getUser } from "../auth/authStorage";
 import Button from "../components/ui/Button";
-import Card from "../components/ui/Card";
 import PageHeader from "../components/ui/PageHeader";
+import SectionCard from "../components/ui/SectionCard";
+import KpiCard from "../components/ui/KpiCard";
+import StatusBadge from "../components/ui/StatusBadge";
+import LoadingState from "../components/ui/LoadingState";
+import ErrorState from "../components/ui/ErrorState";
+import EmptyState from "../components/ui/EmptyState";
 
 const money = (value) => {
-    const n = Number(value || 0);
-    if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
-    if (n >= 1000) return `$${(n / 1000).toFixed(0)}K`;
+    if (value === null || value === undefined || value === "") return "—";
+    const n = Number(value);
+    if (Number.isNaN(n)) return String(value);
+    if (Math.abs(n) >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
+    if (Math.abs(n) >= 1000) return `$${(n / 1000).toFixed(0)}K`;
     return `$${n.toLocaleString()}`;
 };
 
-const statusClass = (value = "") => `ui-status-badge ui-status-${value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
-const dateLabel = (value) => value ? new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—";
+const dateLabel = (value) =>
+    value ? new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—";
 
-function SectionHeader({ icon: Icon, title, description, action }) {
+function InfoGrid({ children }) {
+    return <div className="opportunity-info-grid">{children}</div>;
+}
+
+function InfoItem({ label, value, icon: Icon }) {
     return (
-        <div className="opp-section-head">
-            <div className="opp-section-title">
-                <span className="opp-section-icon"><Icon size={16} /></span>
-                <div><h2>{title}</h2>{description && <p>{description}</p>}</div>
-            </div>
-            {action}
+        <div className="opportunity-info-item">
+            <span>{Icon && <Icon size={13} />}{label}</span>
+            <strong>{value || "—"}</strong>
         </div>
     );
 }
 
-function InfoItem({ label, value, icon: Icon }) {
-    return <div className="opp-info-item"><span>{Icon && <Icon size={13} />}{label}</span><strong>{value || "—"}</strong></div>;
-}
-
-function Empty({ children }) {
-    return <div className="opp-empty"><div className="opp-empty-icon"><Layers3 size={17} /></div><span>{children}</span></div>;
+function ActionNote({ children }) {
+    return <span className="opportunity-action-note">{children}</span>;
 }
 
 export default function OpportunityDetail() {
@@ -64,9 +68,16 @@ export default function OpportunityDetail() {
     const [opportunity, setOpportunity] = useState(null);
     const [history, setHistory] = useState([]);
     const [pocs, setPocs] = useState([]);
-    const [design, setDesign] = useState(null);
     const [stakeholders, setStakeholders] = useState([]);
+    const [design, setDesign] = useState(null);
     const [error, setError] = useState("");
+    const [sectionErrors, setSectionErrors] = useState({
+        history: null,
+        stakeholders: null,
+        pocs: null,
+        design: null,
+    });
+    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [edit, setEdit] = useState(null);
     const [editingSales, setEditingSales] = useState(false);
@@ -77,9 +88,128 @@ export default function OpportunityDetail() {
     });
     const [resultForms, setResultForms] = useState({});
 
+    const technicalRole = activeRole === ROLES.SOLUTION_ENGINEER || activeRole === ROLES.PRE_SALES_MANAGER;
+    const canLoadPocData = activeRole === ROLES.SOLUTION_ENGINEER || activeRole === ROLES.PRE_SALES_MANAGER;
+
+    const describeSectionError = (err, fallback) => {
+        const statusCode = err?.response?.status;
+        const message = err?.response?.data?.message;
+
+        if (statusCode === 403) {
+            return {
+                status: 403,
+                message: message || "You do not have permission to view this section.",
+            };
+        }
+        if (statusCode === 401) {
+            return {
+                status: 401,
+                message: message || "Your session could not be authorized. Please sign in again if prompted.",
+            };
+        }
+        if (statusCode >= 500 || !err?.response) {
+            return {
+                status: statusCode || "network",
+                message: message || fallback,
+            };
+        }
+        return {
+            status: statusCode || "error",
+            message: message || fallback,
+        };
+    };
+
+    const setSectionError = (section, value) => {
+        setSectionErrors((current) => ({ ...current, [section]: value }));
+    };
+
+    const loadOptionalSections = async () => {
+        const requests = {
+            history: getOpportunityStageHistory(opportunityId),
+            stakeholders: getStakeholdersByOpportunity(opportunityId),
+            ...(canLoadPocData ? { pocs: getPocsByOpportunity(opportunityId) } : {}),
+            ...(technicalRole ? { design: getSolutionDesign(opportunityId) } : {}),
+        };
+
+        const entries = Object.entries(requests);
+        const results = await Promise.allSettled(entries.map(([, request]) => request));
+
+        results.forEach((result, index) => {
+            const [section] = entries[index];
+
+            if (result.status === "fulfilled") {
+                setSectionError(section, null);
+
+                if (section === "history") {
+                    setHistory(Array.isArray(result.value) ? result.value : []);
+                } else if (section === "stakeholders") {
+                    setStakeholders(Array.isArray(result.value) ? result.value : []);
+                } else if (section === "pocs") {
+                    setPocs(Array.isArray(result.value) ? result.value : []);
+                } else if (section === "design") {
+                    // A 200 response is the actual design. A missing design is handled
+                    // by the rejected 404 branch below as a normal empty state.
+                    const nextDesign = result.value || null;
+                    setDesign(nextDesign);
+                    setDesignEdit(nextDesign || {
+                        solution_summary: "", technical_approach: "", technical_requirements: "",
+                        architecture_notes: "", risks: "", assumptions: ""
+                    });
+                }
+                return;
+            }
+
+            const err = result.reason;
+
+            // A missing Solution Design is expected before the technical design is
+            // created. It must never make the opportunity itself fail to load.
+            if (section === "design" && err?.response?.status === 404) {
+                setDesign(null);
+                setDesignEdit({
+                    solution_summary: "",
+                    technical_approach: "",
+                    technical_requirements: "",
+                    architecture_notes: "",
+                    risks: "",
+                    assumptions: "",
+                });
+                setSectionError("design", null);
+                return;
+            }
+
+            // An absent POC is also a valid empty state. The backend normally returns
+            // an empty list, but keep a 404 non-fatal if an older backend does so.
+            if (section === "pocs" && err?.response?.status === 404) {
+                setPocs([]);
+                setSectionError("pocs", null);
+                return;
+            }
+
+            setSectionError(section, describeSectionError(
+                err,
+                `Unable to load ${section === "design" ? "the solution design" : section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : "stage history"}.`
+            ));
+        });
+    };
+
     const load = async () => {
+        if (Number.isNaN(opportunityId)) {
+            setError("Invalid opportunity ID.");
+            setLoading(false);
+            return;
+        }
+
         try {
+            setLoading(true);
             setError("");
+            setSectionErrors({
+                history: null,
+                stakeholders: null,
+                pocs: null,
+                design: null,
+            });
+
+            // The opportunity itself is the only page-critical request.
             const data = await getOpportunity(opportunityId);
             setOpportunity(data);
             setEdit({
@@ -90,43 +220,97 @@ export default function OpportunityDetail() {
                 expected_close_date: data.expected_close_date || "",
             });
 
-            const technical = activeRole === ROLES.SOLUTION_ENGINEER;
-            const [stageHistory, p, s, d] = await Promise.all([
-                getOpportunityStageHistory(opportunityId).catch(() => []),
-                getPocsByOpportunity(opportunityId).catch(() => []),
-                getStakeholdersByOpportunity(opportunityId).catch(() => []),
-                technical ? getSolutionDesign(opportunityId).catch(() => null) : Promise.resolve(null),
-            ]);
-            setHistory(stageHistory);
-            setPocs(p);
-            setStakeholders(s);
-            setDesign(d);
-            setDesignEdit(d || {
-                solution_summary: "", technical_approach: "", technical_requirements: "",
-                architecture_notes: "", risks: "", assumptions: ""
-            });
+            if (technicalRole) {
+                setDesign(null);
+                setDesignEdit({
+                    solution_summary: "", technical_approach: "", technical_requirements: "",
+                    architecture_notes: "", risks: "", assumptions: ""
+                });
+            } else {
+                setDesign(null);
+                setDesignEdit(null);
+            }
+
+            // Secondary data is intentionally isolated from the page-critical
+            // opportunity request. One failed section must not blank the page.
+            await loadOptionalSections();
         } catch (err) {
-            setError(err?.response?.data?.message || "Unable to load opportunity.");
+            setError(err?.response?.data?.message || "Unable to load this opportunity. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const retrySection = async (section) => {
+        const requests = {
+            history: getOpportunityStageHistory(opportunityId),
+            stakeholders: getStakeholdersByOpportunity(opportunityId),
+            pocs: getPocsByOpportunity(opportunityId),
+            design: getSolutionDesign(opportunityId),
+        };
+
+        if (section === "pocs" && !canLoadPocData) return;
+        if (section === "design" && !technicalRole) return;
+
+        setSectionError(section, null);
+
+        try {
+            const value = await requests[section];
+            if (section === "history") setHistory(Array.isArray(value) ? value : []);
+            if (section === "stakeholders") setStakeholders(Array.isArray(value) ? value : []);
+            if (section === "pocs") setPocs(Array.isArray(value) ? value : []);
+            if (section === "design") {
+                const nextDesign = value || null;
+                setDesign(nextDesign);
+                setDesignEdit(nextDesign || {
+                    solution_summary: "", technical_approach: "", technical_requirements: "",
+                    architecture_notes: "", risks: "", assumptions: ""
+                });
+            }
+        } catch (err) {
+            if (section === "design" && err?.response?.status === 404) {
+                setDesign(null);
+                setDesignEdit({
+                    solution_summary: "", technical_approach: "", technical_requirements: "",
+                    architecture_notes: "", risks: "", assumptions: ""
+                });
+                return;
+            }
+            if (section === "pocs" && err?.response?.status === 404) {
+                setPocs([]);
+                return;
+            }
+            setSectionError(section, describeSectionError(
+                err,
+                `Unable to load ${section === "design" ? "the solution design" : section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : "stage history"}.`
+            ));
         }
     };
 
     useEffect(() => {
-        if (!Number.isNaN(opportunityId)) load();
+        load();
     }, [opportunityId, activeRole]);
 
     const assignedSE = opportunity?.team_members?.some(
-        m => m.role === ROLES.SOLUTION_ENGINEER && m.user_id === currentUserId
+        (member) => member.role === ROLES.SOLUTION_ENGINEER && member.user_id === currentUserId
     );
+
+    const stageName = opportunity?.current_stage?.stage_name || "—";
+    const status = opportunity?.status || "—";
+    const probability = Number(opportunity?.probability || 0);
+    const isClosed = ["Closed Won", "Closed Lost"].includes(stageName) || status === "Closed";
 
     const canEditSales =
         activeRole === ROLES.SALES_EXECUTIVE &&
         opportunity?.created_by === currentUserId &&
         opportunity?.status === "Open" &&
         opportunity?.is_active &&
-        ["Lead / Identified", "Qualification"].includes(opportunity?.current_stage?.stage_name);
+        ["Lead / Identified", "Qualification"].includes(stageName);
 
-    const technicalStage = opportunity?.current_stage?.stage_name;
-    const canEditDesign = activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity?.is_active;
+    const canEditDesign =
+        activeRole === ROLES.SOLUTION_ENGINEER &&
+        assignedSE &&
+        opportunity?.is_active;
 
     const run = async (fn) => {
         try {
@@ -134,8 +318,8 @@ export default function OpportunityDetail() {
             setError("");
             await fn();
             await load();
-        } catch (e) {
-            setError(e?.response?.data?.message || e?.message || "Action failed.");
+        } catch (err) {
+            setError(err?.response?.data?.message || err?.message || "Action failed. Please try again.");
         } finally {
             setSaving(false);
         }
@@ -152,178 +336,361 @@ export default function OpportunityDetail() {
         setEditingSales(false);
     });
 
-    const saveDesign = () => run(() => updateSolutionDesign(opportunityId, { ...designEdit, updated_at: opportunity.updated_at }));
+    const saveDesign = () =>
+        run(() => updateSolutionDesign(opportunityId, { ...designEdit, updated_at: opportunity.updated_at }));
 
     const submitPocRequest = () => run(async () => {
         await requestPoc({ opportunity_id: opportunityId, ...pocForm });
-        setPocForm({ poc_name: "", objective: "", success_metric: "", exit_criteria: "", target_date: "", failure_condition: "", remarks: "" });
+        setPocForm({
+            poc_name: "", objective: "", success_metric: "", exit_criteria: "",
+            target_date: "", failure_condition: "", remarks: ""
+        });
     });
-
-    const stage = (target_stage) => run(() => transitionTechnicalStage(opportunityId, { target_stage, updated_at: opportunity.updated_at }));
 
     const close = (won) => {
         const reason = window.prompt(won ? "Optional close remarks" : "Closed Lost reason");
         if (!won && !reason?.trim()) return;
-        return run(() => (won ? closeWon : closeLost)(opportunityId, { reason: reason || "", updated_at: opportunity.updated_at }));
+        return run(() => (won ? closeWon : closeLost)(
+            opportunityId,
+            { reason: reason || "", updated_at: opportunity.updated_at }
+        ));
     };
 
-    if (!opportunity) {
-        return <div className="standard-page"><div className="opp-loading">{error || "Loading opportunity…"}</div>{error && <Button onClick={load}><RefreshCw size={14} /> Retry</Button>}</div>;
+    const stageSteps = ["Qualification", "Discovery", "POC / Technical Evaluation", "Proposal", "Negotiation"];
+    const currentStageIndex = stageSteps.indexOf(stageName);
+
+    const salesOwner = opportunity?.sales_owner?.full_name || "Pending assignment";
+    const createdBy = opportunity?.created_by_user?.full_name || "Not recorded";
+    const seMembers = (opportunity?.team_members || []).filter(
+        (member) => member.role === ROLES.SOLUTION_ENGINEER
+    );
+
+    const teamMembers = useMemo(() => {
+        const members = [];
+        if (opportunity?.sales_owner) members.push({ key: `sales-${opportunity.sales_owner.user_id}`, label: "Sales Owner", name: opportunity.sales_owner.full_name });
+        if (opportunity?.created_by_user && opportunity.created_by_user.user_id !== opportunity.sales_owner?.user_id) {
+            members.push({ key: `creator-${opportunity.created_by_user.user_id}`, label: "Created By", name: opportunity.created_by_user.full_name });
+        }
+        seMembers.forEach((member) => members.push({
+            key: `se-${member.team_id}`,
+            label: "Solution Engineer",
+            name: member.user?.full_name || `User #${member.user_id}`
+        }));
+        return members;
+    }, [opportunity, seMembers]);
+
+    if (loading && !opportunity) {
+        return <div className="standard-page"><LoadingState message="Loading opportunity…" /></div>;
     }
 
-    const team = opportunity.team_members || [];
-    const seMembers = team.filter(m => m.role === ROLES.SOLUTION_ENGINEER);
-    const stageName = technicalStage || "—";
-    const status = opportunity.status || "—";
-    const probability = Number(opportunity.probability || 0);
-    const isClosed = ["Closed Won", "Closed Lost"].includes(stageName) || status === "Closed";
+    if (error && !opportunity) {
+        return (
+            <div className="standard-page">
+                <PageHeader title="Opportunity Detail" description="Unable to load the requested opportunity." />
+                <ErrorState message={error} onRetry={load} />
+            </div>
+        );
+    }
+
+    if (!opportunity) return null;
 
     return (
-        <div className="standard-page opp-detail-page fade-in">
+        <div className="standard-page opportunity-detail-page fade-in">
             <PageHeader
-                title="Opportunity Detail"
-                description="Commercial context, technical execution and deal progress."
-                actions={<>
-                    <Button variant="secondary" onClick={() => navigate(-1)}><ArrowLeft size={14} /> Back</Button>
-                    <Button variant="secondary" onClick={load}><RefreshCw size={14} /> Refresh</Button>
-                </>}
+                title={opportunity.opportunity_name}
+                description={`Opportunity #${opportunityId} · ${opportunity.account_name || `Account #${opportunity.account_id}`}`}
+                actions={
+                    <>
+                        <Button variant="secondary" onClick={() => navigate(-1)}><ArrowLeft size={14} /> Back</Button>
+                        <Button variant="secondary" onClick={load} disabled={loading}><RefreshCw size={14} /> Refresh</Button>
+                    </>
+                }
             />
 
-            {error && <div className="standard-error">{error}</div>}
+            {error && <ErrorState message={error} onRetry={load} />}
 
-            <Card className="opp-hero" padding={false}>
-                <div className="opp-hero-main">
-                    <div className="opp-eyebrow">Opportunity #{opportunityId}</div>
-                    <div className="opp-title-row">
-                        <div><h1>{opportunity.opportunity_name}</h1><p>{opportunity.account_name || `Account #${opportunity.account_id}`}</p></div>
-                        <div className="opp-badges"><span className={statusClass(status)}>{status}</span><span className={statusClass(stageName)}>{stageName}</span></div>
+            <SectionCard className="opportunity-hero-card">
+                <div className="opportunity-hero-heading">
+                    <div>
+                        <span className="opportunity-eyebrow">Opportunity #{opportunityId}</span>
+                        <h2>{opportunity.opportunity_name}</h2>
+                        <p>{opportunity.account_name || `Account #${opportunity.account_id}`}</p>
                     </div>
-                    <div className="opp-hero-stats">
-                        <div><span>Estimated value</span><strong>{money(opportunity.estimated_value)}</strong></div>
-                        <div><span>Probability</span><strong>{probability}%</strong></div>
-                        <div><span>Expected close</span><strong>{dateLabel(opportunity.expected_close_date)}</strong></div>
-                        <div><span>Lifecycle</span><strong>{opportunity.lifecycle_state || stageName}</strong></div>
+                    <div className="opportunity-badge-stack">
+                        <StatusBadge status={status} />
+                        <StatusBadge status={stageName} />
                     </div>
                 </div>
-                <div className="opp-hero-side">
-                    <div className="opp-progress-ring"><span>{probability}%</span><small>probability</small></div>
-                    <div><span>Sales owner</span><strong>{opportunity.sales_owner?.full_name || "Pending assignment"}</strong></div>
-                    <div><span>Created by</span><strong>{opportunity.created_by_user?.full_name || "Not recorded"}</strong></div>
-                </div>
-            </Card>
+            </SectionCard>
 
-            <div className="opp-detail-grid">
-                <Card>
-                    <SectionHeader icon={FileText} title="Deal Overview" description="Core commercial information for this opportunity." action={canEditSales && <Button variant="ghost" size="sm" onClick={() => setEditingSales(v => !v)}><Edit3 size={13} /> {editingSales ? "Cancel" : "Edit"}</Button>} />
+            <div className="ui-kpi-grid opportunity-summary-grid">
+                <KpiCard icon={DollarSign} label="Estimated Value" value={money(opportunity.estimated_value)} description="Commercial value" />
+                <KpiCard icon={Target} label="Probability" value={`${probability}%`} description="Current win probability" />
+                <KpiCard icon={CalendarDays} label="Expected Close" value={dateLabel(opportunity.expected_close_date)} description="Target close date" />
+                <KpiCard icon={Layers3Icon} label="Stage" value={stageName} description={status} />
+            </div>
+
+            <div className="opportunity-two-column">
+                <SectionCard
+                    title="Deal Overview"
+                    description="Commercial context and opportunity metadata."
+                    icon={FileText}
+                    action={canEditSales && <Button variant="ghost" size="sm" onClick={() => setEditingSales((value) => !value)}><Edit3 size={13} />{editingSales ? "Cancel" : "Edit"}</Button>}
+                >
                     {editingSales ? (
-                        <div className="opp-form-grid">
-                            <label className="field-label"><span>Opportunity name</span><input value={edit.opportunity_name} onChange={e => setEdit({ ...edit, opportunity_name: e.target.value })} /></label>
-                            <label className="field-label"><span>Expected close</span><input type="date" value={edit.expected_close_date} onChange={e => setEdit({ ...edit, expected_close_date: e.target.value })} /></label>
-                            <label className="field-label"><span>Estimated value</span><input type="number" value={edit.estimated_value} onChange={e => setEdit({ ...edit, estimated_value: e.target.value })} /></label>
-                            <label className="field-label"><span>Probability</span><input type="number" min="0" max="100" value={edit.probability} onChange={e => setEdit({ ...edit, probability: e.target.value })} /></label>
-                            <label className="field-label opp-full"><span>Description</span><textarea rows="4" value={edit.description} onChange={e => setEdit({ ...edit, description: e.target.value })} /></label>
-                            <div className="opp-form-actions opp-full"><Button disabled={saving} onClick={saveSales}><Save size={14} /> Save changes</Button></div>
+                        <div className="field-grid">
+                            <label className="field-label"><span>Opportunity name</span><input value={edit.opportunity_name} onChange={(e) => setEdit({ ...edit, opportunity_name: e.target.value })} /></label>
+                            <label className="field-label"><span>Expected close</span><input type="date" value={edit.expected_close_date} onChange={(e) => setEdit({ ...edit, expected_close_date: e.target.value })} /></label>
+                            <label className="field-label"><span>Estimated value</span><input type="number" value={edit.estimated_value} onChange={(e) => setEdit({ ...edit, estimated_value: e.target.value })} /></label>
+                            <label className="field-label"><span>Probability</span><input type="number" min="0" max="100" value={edit.probability} onChange={(e) => setEdit({ ...edit, probability: e.target.value })} /></label>
+                            <label className="field-label opportunity-field-full"><span>Description</span><textarea rows="5" value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></label>
+                            <div className="opportunity-form-actions opportunity-field-full"><Button disabled={saving} onClick={saveSales}><Save size={14} /> Save changes</Button></div>
                         </div>
                     ) : (
                         <>
-                            <div className="opp-info-grid">
+                            <InfoGrid>
                                 <InfoItem icon={DollarSign} label="Estimated value" value={money(opportunity.estimated_value)} />
                                 <InfoItem icon={Target} label="Probability" value={`${probability}%`} />
                                 <InfoItem icon={CalendarDays} label="Expected close" value={dateLabel(opportunity.expected_close_date)} />
-                                <InfoItem icon={Users} label="Sales owner" value={opportunity.sales_owner?.full_name || "Pending assignment"} />
+                                <InfoItem icon={Users} label="Sales owner" value={salesOwner} />
+                            </InfoGrid>
+                            <div className="opportunity-description">
+                                <span>Description</span>
+                                <p>{opportunity.description || "No description provided."}</p>
                             </div>
-                            <div className="opp-description"><span>Description</span><p>{opportunity.description || "No description has been added yet."}</p></div>
                         </>
                     )}
-                </Card>
+                </SectionCard>
 
-                <Card>
-                    <SectionHeader icon={Users} title="Ownership & Team" description="People currently contributing to this opportunity." />
-                    <div className="opp-owner-list">
-                        <div className="opp-person"><span className="opp-avatar">{(opportunity.sales_owner?.full_name || "S").charAt(0)}</span><div><small>Sales owner</small><strong>{opportunity.sales_owner?.full_name || "Pending assignment"}</strong></div></div>
-                        {seMembers.map(member => <div className="opp-person" key={member.team_id}><span className="opp-avatar technical">{(member.user?.full_name || "S").charAt(0)}</span><div><small>Solution Engineer</small><strong>{member.user?.full_name || `User #${member.user_id}`}</strong></div></div>)}
-                        {!seMembers.length && <Empty>No Solution Engineer is assigned yet.</Empty>}
+                <SectionCard title="Ownership & Team" description="People currently associated with the opportunity." icon={Users}>
+                    <div className="opportunity-team-list">
+                        {teamMembers.length ? teamMembers.map((member) => (
+                            <div className="opportunity-team-member" key={member.key}>
+                                <span className="opportunity-avatar">{member.name?.charAt(0)?.toUpperCase() || "?"}</span>
+                                <div><small>{member.label}</small><strong>{member.name}</strong></div>
+                            </div>
+                        )) : <EmptyState message="No team members are recorded." />}
                     </div>
-                </Card>
+                </SectionCard>
             </div>
 
+            <SectionCard title="Stage & Progression" description="Current stage and recorded stage history." icon={History}>
+                <div className="opportunity-stage-summary">
+                    <div>
+                        <span>Current stage</span>
+                        <strong>{stageName}</strong>
+                    </div>
+                    <div>
+                        <span>Status</span>
+                        <StatusBadge status={status} />
+                    </div>
+                    <div>
+                        <span>Lifecycle</span>
+                        <strong>{opportunity.lifecycle_state || "—"}</strong>
+                    </div>
+                </div>
+                {currentStageIndex >= 0 && (
+                    <div className="opportunity-stage-rail">
+                        {stageSteps.map((stage, index) => (
+                            <div className={index === currentStageIndex ? "is-current" : index < currentStageIndex ? "is-done" : ""} key={stage}>
+                                <span>{index + 1}</span><small>{stage}</small>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {sectionErrors.history ? (
+                    <ErrorState
+                        title="Unable to load stage history"
+                        message={sectionErrors.history.message}
+                        onRetry={() => retrySection("history")}
+                    />
+                ) : history.length ? (
+                    <div className="opportunity-history">
+                        {history.map((entry, index) => (
+                            <div className="opportunity-history-row" key={entry.history_id || index}>
+                                <span className="opportunity-history-dot" />
+                                <div>
+                                    <strong>{entry.stage?.stage_name || `Stage #${entry.stage_id}`}</strong>
+                                    <span>{dateLabel(entry.created_at)} · {entry.user?.full_name || "System"}{entry.remarks ? ` · ${entry.remarks}` : ""}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : <EmptyState message="No stage history recorded." />}
+            </SectionCard>
+
             {activeRole === ROLES.SALES_EXECUTIVE && opportunity.created_by === currentUserId && opportunity.status === "Open" && (
-                <Card>
-                    <SectionHeader icon={Zap} title="Sales Actions" description="Move the opportunity into the next commercial stage." />
-                    <div className="opp-action-row">
+                <SectionCard title="Sales Actions" description="Commercial actions available for this opportunity." icon={Zap}>
+                    <div className="opportunity-action-row">
                         {stageName === "Lead / Identified" && <Button disabled={saving} onClick={() => run(() => qualifyOpportunity(opportunityId))}><ArrowRight size={14} /> Qualify opportunity</Button>}
                         {stageName === "Qualification" && <Button disabled={saving} onClick={() => run(() => submitOpportunityForReview(opportunityId))}><ShieldCheck size={14} /> Submit for Sales Manager Review</Button>}
-                        {!['Lead / Identified', 'Qualification'].includes(stageName) && <span className="opp-action-note">No sales action is required at the current stage.</span>}
+                        {!["Lead / Identified", "Qualification"].includes(stageName) && <ActionNote>No sales action is required at the current stage.</ActionNote>}
                     </div>
-                </Card>
+                </SectionCard>
             )}
 
             {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && (
-                <Card>
-                    <SectionHeader icon={Zap} title="Technical Progress" description="Control the technical lifecycle without manager approval gates." />
-                    <div className="opp-stage-rail">
-                        {['Qualification', 'Discovery', 'POC / Technical Evaluation', 'Proposal', 'Negotiation'].map((stageLabel, index) => <div className={stageName === stageLabel ? "active" : index < ['Qualification', 'Discovery', 'POC / Technical Evaluation', 'Proposal', 'Negotiation'].indexOf(stageName) ? "done" : ""} key={stageLabel}><span>{index + 1}</span><small>{stageLabel}</small></div>)}
-                    </div>
-                    <div className="opp-action-row">
-                        {stageName === "Qualification" && <Button disabled={saving} onClick={() => stage("Discovery")}><ArrowRight size={14} /> Start Discovery</Button>}
-                        {stageName === "Discovery" && <><Button disabled={saving} onClick={() => stage("POC / Technical Evaluation")}><ArrowRight size={14} /> Move to POC Evaluation</Button><Button variant="secondary" disabled={saving} onClick={() => stage("Proposal")}>Continue to Proposal</Button></>}
-                        {stageName === "POC / Technical Evaluation" && <Button disabled={saving} onClick={() => stage("Proposal")}><ArrowRight size={14} /> Move to Proposal</Button>}
-                        {stageName === "Proposal" && <Button disabled={saving} onClick={() => stage("Negotiation")}><ArrowRight size={14} /> Move to Negotiation</Button>}
+                <SectionCard title="Technical Progress" description="Technical lifecycle actions for the assigned Solution Engineer." icon={Zap}>
+                    <div className="opportunity-action-row">
+                        {stageName === "Qualification" && <Button disabled={saving} onClick={() => run(() => transitionTechnicalStage(opportunityId, { target_stage: "Discovery", updated_at: opportunity.updated_at }))}><ArrowRight size={14} /> Start Discovery</Button>}
+                        {stageName === "Discovery" && <Button disabled={saving} onClick={() => run(() => transitionTechnicalStage(opportunityId, { target_stage: "POC / Technical Evaluation", updated_at: opportunity.updated_at }))}><ArrowRight size={14} /> Move to POC Evaluation</Button>}
+                        {stageName === "POC / Technical Evaluation" && <Button disabled={saving} onClick={() => run(() => transitionTechnicalStage(opportunityId, { target_stage: "Proposal", updated_at: opportunity.updated_at }))}><ArrowRight size={14} /> Move to Proposal</Button>}
+                        {stageName === "Proposal" && <Button disabled={saving} onClick={() => run(() => transitionTechnicalStage(opportunityId, { target_stage: "Negotiation", updated_at: opportunity.updated_at }))}><ArrowRight size={14} /> Move to Negotiation</Button>}
                         {stageName === "Negotiation" && <><Button disabled={saving} onClick={() => close(true)}><CheckCircle2 size={14} /> Close Won</Button><Button variant="danger" disabled={saving} onClick={() => close(false)}><XCircle size={14} /> Close Lost</Button></>}
-                        {isClosed && <span className="opp-action-note">This opportunity is closed.</span>}
+                        {isClosed && <ActionNote>This opportunity is closed.</ActionNote>}
                     </div>
-                </Card>
+                </SectionCard>
             )}
 
-            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && (
-                <div className="opp-detail-grid">
-                    <Card>
-                        <SectionHeader icon={FileText} title="Solution Design" description="Technical solution owned by the Solution Engineer." />
-                        {canEditDesign ? <div className="opp-form-grid">
-                            {[['solution_summary', 'Solution summary'], ['technical_approach', 'Technical approach'], ['technical_requirements', 'Technical requirements'], ['architecture_notes', 'Architecture / notes'], ['risks', 'Risks'], ['assumptions', 'Assumptions']].map(([key, label]) => <label className="field-label" key={key}><span>{label}</span><textarea rows="3" value={designEdit?.[key] || ""} onChange={e => setDesignEdit({ ...designEdit, [key]: e.target.value })} /></label>)}
-                            <div className="opp-form-actions opp-full"><Button disabled={saving} onClick={saveDesign}><Save size={14} /> Save technical design</Button></div>
-                        </div> : design ? <div className="opp-detail-text-grid">{[['Solution summary', design.solution_summary], ['Technical approach', design.technical_approach], ['Technical requirements', design.technical_requirements], ['Architecture / notes', design.architecture_notes], ['Risks', design.risks], ['Assumptions', design.assumptions]].map(([label, value]) => <div key={label}><span>{label}</span><p>{value || "—"}</p></div>)}</div> : <Empty>No solution design has been recorded.</Empty>}
-                    </Card>
+            {technicalRole && (
+                <div className="opportunity-two-column">
+                    <SectionCard title="Solution Design" description="Technical solution information available to technical management roles." icon={FileText}>
+                        {sectionErrors.design ? (
+                            <ErrorState
+                                title={sectionErrors.design.status === 403 ? "Technical design is read-only" : "Unable to load solution design"}
+                                message={sectionErrors.design.message}
+                                onRetry={sectionErrors.design.status === 403 ? undefined : () => retrySection("design")}
+                            />
+                        ) : canEditDesign ? (
+                            <div className="field-grid">
+                                {[
+                                    ["solution_summary", "Solution summary"],
+                                    ["technical_approach", "Technical approach"],
+                                    ["technical_requirements", "Technical requirements"],
+                                    ["architecture_notes", "Architecture / notes"],
+                                    ["risks", "Risks"],
+                                    ["assumptions", "Assumptions"],
+                                ].map(([key, label]) => (
+                                    <label className="field-label" key={key}><span>{label}</span><textarea rows="3" value={designEdit?.[key] || ""} onChange={(e) => setDesignEdit({ ...designEdit, [key]: e.target.value })} /></label>
+                                ))}
+                                <div className="opportunity-form-actions opportunity-field-full"><Button disabled={saving} onClick={saveDesign}><Save size={14} /> Save technical design</Button></div>
+                            </div>
+                        ) : design ? (
+                            <div className="opportunity-detail-text-grid">
+                                {[
+                                    ["Solution summary", design.solution_summary],
+                                    ["Technical approach", design.technical_approach],
+                                    ["Technical requirements", design.technical_requirements],
+                                    ["Architecture / notes", design.architecture_notes],
+                                    ["Risks", design.risks],
+                                    ["Assumptions", design.assumptions],
+                                ].map(([label, value]) => <div key={label}><span>{label}</span><p>{value || "—"}</p></div>)}
+                            </div>
+                        ) : <EmptyState message="No solution design has been recorded." />}
+                    </SectionCard>
 
-                    <Card>
-                        <SectionHeader icon={Target} title="Request a POC" description="POCs are created directly as Approved; manager approval is no longer required." />
-                        <div className="opp-form-stack">
-                            {[['poc_name', 'POC name'], ['objective', 'Objective'], ['success_metric', 'Success criteria'], ['exit_criteria', 'Exit criteria'], ['failure_condition', 'Failure condition'], ['remarks', 'Technical remarks']].map(([key, label]) => <label className="field-label" key={key}><span>{label}</span><textarea rows={key === 'poc_name' ? 1 : 2} value={pocForm[key]} onChange={e => setPocForm({ ...pocForm, [key]: e.target.value })} /></label>)}
-                            <label className="field-label"><span>Target date</span><input type="date" value={pocForm.target_date} onChange={e => setPocForm({ ...pocForm, target_date: e.target.value })} /></label>
-                            <Button disabled={saving || !['Discovery', 'POC / Technical Evaluation'].includes(stageName)} onClick={submitPocRequest}><Zap size={14} /> Create POC</Button>
-                        </div>
-                    </Card>
+                    <SectionCard title="POC Execution" description="POCs associated with this opportunity. Manager approval is not part of the lifecycle." icon={FlaskConical}>
+                        {sectionErrors.pocs ? (
+                            <ErrorState
+                                title={sectionErrors.pocs.status === 403 ? "POC data is read-only" : "Unable to load POCs"}
+                                message={sectionErrors.pocs.message}
+                                onRetry={sectionErrors.pocs.status === 403 ? undefined : () => retrySection("pocs")}
+                            />
+                        ) : pocs.length ? (
+                            <div className="opportunity-poc-list">
+                                {pocs.map((poc) => {
+                                    const form = resultForms[poc.poc_id] || {
+                                        poc_access_link: poc.poc_access_link || "",
+                                        outcome: poc.outcome || "Success",
+                                        outcome_notes: poc.outcome_notes || "",
+                                        remarks: poc.remarks || ""
+                                    };
+                                    return (
+                                        <article className="opportunity-poc-card" key={poc.poc_id}>
+                                            <div className="opportunity-poc-heading">
+                                                <div><strong>{poc.poc_name}</strong><span>{poc.objective || "No objective provided."}</span></div>
+                                                <StatusBadge status={poc.status} />
+                                            </div>
+                                            <div className="opportunity-poc-meta">
+                                                <span><Target size={12} />{poc.success_metric || "No success criteria"}</span>
+                                                <span><CalendarDays size={12} />{dateLabel(poc.target_date)}</span>
+                                                <span><Clock3 size={12} />{poc.outcome || "Not completed"}</span>
+                                            </div>
+                                            <div className="opportunity-detail-text-grid">
+                                                <div><span>Exit criteria</span><p>{poc.exit_criteria || "—"}</p></div>
+                                                <div><span>Failure condition</span><p>{poc.failure_condition || "—"}</p></div>
+                                                <div><span>Outcome notes</span><p>{poc.outcome_notes || "—"}</p></div>
+                                            </div>
+                                            {poc.poc_access_link && <a className="opportunity-poc-link" href={poc.poc_access_link} target="_blank" rel="noreferrer"><Link2 size={13} /> Open POC access</a>}
+                                            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "Approved" && (
+                                                <Button size="sm" disabled={saving} onClick={() => run(() => startPocExecution(poc.poc_id, { updated_at: poc.updated_at }))}><Zap size={13} /> Start POC</Button>
+                                            )}
+                                            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "In Progress" && (
+                                                <div className="opportunity-poc-result">
+                                                    <input placeholder="POC access link" value={form.poc_access_link} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, poc_access_link: e.target.value } })} />
+                                                    <select value={form.outcome} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, outcome: e.target.value } })}>
+                                                        {["Success", "Failure", "Ongoing", "Abandoned"].map((value) => <option key={value}>{value}</option>)}
+                                                    </select>
+                                                    <textarea placeholder="Outcome notes" value={form.outcome_notes} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, outcome_notes: e.target.value } })} />
+                                                    <textarea placeholder="Execution remarks" value={form.remarks} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, remarks: e.target.value } })} />
+                                                    <Button disabled={saving} onClick={() => run(() => submitPocResult(poc.poc_id, { ...form, execution_status: "Submitted", updated_at: poc.updated_at }))}><MessageSquare size={13} /> Submit result</Button>
+                                                </div>
+                                            )}
+                                            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "Submitted" && (
+                                                <Button size="sm" disabled={saving} onClick={() => run(() => completePoc(poc.poc_id, { updated_at: poc.updated_at }))}><CheckCircle2 size={13} /> Complete POC</Button>
+                                            )}
+                                        </article>
+                                    );
+                                })}
+                            </div>
+                        ) : <EmptyState message="No POCs have been created for this opportunity." />}
+                    </SectionCard>
                 </div>
             )}
 
-            <Card>
-                <SectionHeader icon={Target} title="POC Execution" description="Track every technical proof of concept from request through completion." />
-                {!pocs.length ? <Empty>No POCs have been created for this opportunity.</Empty> : <div className="opp-poc-list">
-                    {pocs.map(poc => {
-                        const form = resultForms[poc.poc_id] || { poc_access_link: poc.poc_access_link || "", outcome: poc.outcome || "Success", outcome_notes: poc.outcome_notes || "", remarks: poc.remarks || "" };
-                        return <div className="opp-poc-card" key={poc.poc_id}>
-                            <div className="opp-poc-head"><div><h3>{poc.poc_name}</h3><p>{poc.objective || "No objective provided."}</p></div><span className={statusClass(poc.status)}>{poc.status}</span></div>
-                            <div className="opp-poc-meta"><span><Target size={12} /> {poc.success_metric || "No success criteria"}</span><span><CalendarDays size={12} /> {dateLabel(poc.target_date)}</span><span><Clock3 size={12} /> {poc.outcome || "Not completed"}</span></div>
-                            <div className="opp-poc-grid"><div><span>Exit criteria</span><p>{poc.exit_criteria || "—"}</p></div><div><span>Failure condition</span><p>{poc.failure_condition || "—"}</p></div>{poc.outcome_notes && <div><span>Outcome notes</span><p>{poc.outcome_notes}</p></div>}</div>
-                            {poc.poc_access_link && <a className="opp-poc-link" href={poc.poc_access_link} target="_blank" rel="noreferrer"><Link2 size={13} /> Open POC access</a>}
-                            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "Approved" && <Button size="sm" disabled={saving} onClick={() => run(() => startPocExecution(poc.poc_id, { updated_at: poc.updated_at }))}><Zap size={13} /> Start POC</Button>}
-                            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "In Progress" && <div className="opp-poc-result"><input placeholder="POC access link" value={form.poc_access_link} onChange={e => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, poc_access_link: e.target.value } })} /><select value={form.outcome} onChange={e => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, outcome: e.target.value } })}>{['Success', 'Failure', 'Ongoing', 'Abandoned'].map(x => <option key={x}>{x}</option>)}</select><textarea placeholder="Outcome notes" value={form.outcome_notes} onChange={e => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, outcome_notes: e.target.value } })} /><textarea placeholder="Execution remarks" value={form.remarks} onChange={e => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, remarks: e.target.value } })} /><Button disabled={saving} onClick={() => run(() => submitPocResult(poc.poc_id, { ...form, execution_status: "Submitted", updated_at: poc.updated_at }))}><MessageSquare size={13} /> Submit result</Button></div>}
-                            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "Submitted" && <Button size="sm" disabled={saving} onClick={() => run(() => completePoc(poc.poc_id, { updated_at: poc.updated_at }))}><CheckCircle2 size={13} /> Complete after review</Button>}
-                        </div>;
-                    })}
-                </div>}
-            </Card>
+            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && (
+                <SectionCard title="Request a POC" description="POCs are created directly as Approved; manager approval is not required." icon={Target}>
+                    <div className="field-grid">
+                        <label className="field-label"><span>POC name</span><input value={pocForm.poc_name} onChange={(e) => setPocForm({ ...pocForm, poc_name: e.target.value })} /></label>
+                        <label className="field-label"><span>Target date</span><input type="date" value={pocForm.target_date} onChange={(e) => setPocForm({ ...pocForm, target_date: e.target.value })} /></label>
+                        {[
+                            ["objective", "Objective"], ["success_metric", "Success criteria"],
+                            ["exit_criteria", "Exit criteria"], ["failure_condition", "Failure condition"],
+                            ["remarks", "Technical remarks"]
+                        ].map(([key, label]) => <label className="field-label opportunity-field-full" key={key}><span>{label}</span><textarea rows="2" value={pocForm[key]} onChange={(e) => setPocForm({ ...pocForm, [key]: e.target.value })} /></label>)}
+                        <div className="opportunity-form-actions opportunity-field-full">
+                            <Button disabled={saving || !["Discovery", "POC / Technical Evaluation"].includes(stageName)} onClick={submitPocRequest}><Zap size={14} /> Create POC</Button>
+                            {!["Discovery", "POC / Technical Evaluation"].includes(stageName) && <ActionNote>POCs can be requested from Discovery or POC / Technical Evaluation.</ActionNote>}
+                        </div>
+                    </div>
+                </SectionCard>
+            )}
 
-            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && <Card>
-                <SectionHeader icon={Users} title="Stakeholders" description="Customer contacts connected to this opportunity." />
-                <StakeholderForm opportunityId={opportunityId} />
-                <div className="opp-stakeholder-list">{stakeholders.map(s => <div className="opp-stakeholder" key={s.stakeholder_id}><span>{(s.stakeholder_name || "?").charAt(0)}</span><div><strong>{s.stakeholder_name}</strong><small>{s.designation || "Role not provided"}</small></div><small>{s.email || s.phone || "No contact details"}</small></div>)}{!stakeholders.length && <Empty>No stakeholders recorded.</Empty>}</div>
-            </Card>}
-
-            <Card>
-                <SectionHeader icon={History} title="Stage History" description="Chronological record of opportunity movement." />
-                {!history.length ? <Empty>No stage history recorded.</Empty> : <div className="opp-history">{history.map((entry, index) => <div className="opp-history-row" key={entry.history_id || index}><span className="opp-history-dot" /><div><strong>{entry.stage?.stage_name || `Stage #${entry.stage_id}`}</strong><small>{entry.user?.full_name || "System"}{entry.remarks ? ` · ${entry.remarks}` : ""}</small></div></div>)}</div>}
-            </Card>
+            <SectionCard title="Stakeholders" description="Customer contacts connected to this opportunity." icon={Users}>
+                {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && <StakeholderForm opportunityId={opportunityId} />}
+                {sectionErrors.stakeholders ? (
+                    <ErrorState
+                        title={sectionErrors.stakeholders.status === 403 ? "Stakeholders are read-only" : "Unable to load stakeholders"}
+                        message={sectionErrors.stakeholders.message}
+                        onRetry={sectionErrors.stakeholders.status === 403 ? undefined : () => retrySection("stakeholders")}
+                    />
+                ) : stakeholders.length ? (
+                    <div className="opportunity-stakeholder-list">
+                        {stakeholders.map((stakeholder) => (
+                            <div className="opportunity-stakeholder" key={stakeholder.stakeholder_id}>
+                                <span className="opportunity-avatar">{(stakeholder.stakeholder_name || "?").charAt(0).toUpperCase()}</span>
+                                <div>
+                                    <strong>{stakeholder.stakeholder_name || "Unnamed stakeholder"}</strong>
+                                    <small>{stakeholder.designation || "Role not provided"}</small>
+                                </div>
+                                <div className="opportunity-stakeholder-contact">
+                                    {stakeholder.email && <span><UserRound size={12} />{stakeholder.email}</span>}
+                                    {stakeholder.phone && <span><PhoneIcon size={12} />{stakeholder.phone}</span>}
+                                    {stakeholder.influence_level && <StatusBadge status={stakeholder.influence_level} />}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : <EmptyState message="No stakeholders recorded." />}
+            </SectionCard>
         </div>
     );
+}
+
+function Layers3Icon(props) {
+    return <span {...props}>▱</span>;
+}
+
+function PhoneIcon({ size = 12 }) {
+    return <span style={{ fontSize: size }}>☎</span>;
 }

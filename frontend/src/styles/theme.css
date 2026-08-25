@@ -46,3 +46,14 @@
     --transition:
         all 0.15s ease;
 } 
+/* Phase 4.1 — Opportunities visual tokens */
+:root {
+    --color-primary-soft: #eff6ff;
+    --color-success-soft: #ecfdf5;
+    --color-danger-soft: #fef2f2;
+    --color-warning-soft: #fff7ed;
+    --color-page: #f6f8fc;
+    --color-page-tint: rgba(219, 234, 254, 0.55);
+    --color-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.025), 0 8px 24px rgba(15, 23, 42, 0.035);
+    --radius-control: 10px;
+}

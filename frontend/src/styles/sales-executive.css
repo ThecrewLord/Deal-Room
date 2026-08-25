@@ -77,11 +77,6 @@
 @media (max-width:760px) { .exec-kpi-grid { grid-template-columns:repeat(2,1fr); } .exec-overview-stats,.exec-performance-grid { grid-template-columns:repeat(2,1fr); } .exec-donut-wrap { grid-template-columns:1fr; } .exec-opportunity-list button { grid-template-columns:minmax(0,1fr) auto; } .exec-opportunity-value,.exec-opportunity-list button > .exec-status { display:none; } }
 @media (max-width:520px) { .exec-kpi-grid,.exec-overview-stats,.exec-performance-grid { grid-template-columns:1fr; } .exec-stage-row { grid-template-columns:28px minmax(0,1fr); } .exec-stage-value { grid-column:2; text-align:left; } .exec-funnel-row { grid-template-columns:82px minmax(0,1fr) 24px; } }
 .exec-record-page .page-header { margin-bottom:16px; }
-.exec-record-kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
-.exec-record-kpis > div { background:var(--color-surface); border:1px solid var(--color-border); border-radius:13px; padding:14px; box-shadow:var(--shadow-sm); }
-.exec-record-kpis svg { color:var(--color-primary); margin-bottom:9px; }
-.exec-record-kpis span { display:block; color:var(--color-text-muted); font-size:11px; }
-.exec-record-kpis strong { display:block; font-size:20px; margin-top:4px; }
 .exec-create-card { margin-bottom:16px; }
 .exec-record-toolbar { padding:14px; display:flex; gap:12px; align-items:center; justify-content:space-between; border-bottom:1px solid var(--color-border-light); }
 .exec-filter-row { display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end; }
@@ -100,5 +95,5 @@
 .exec-account-grid strong { font-size:13px; }
 .exec-account-grid span { margin-top:3px; color:var(--color-text-secondary); font-size:11px; }
 .exec-account-grid small { margin-top:3px; color:var(--color-text-muted); font-size:10px; }
-@media (max-width:1000px){.exec-record-kpis{grid-template-columns:repeat(2,1fr)}.exec-record-toolbar{align-items:stretch;flex-direction:column}.exec-filter-row{justify-content:flex-start}.exec-opportunity-table>button{grid-template-columns:minmax(0,1fr) 90px 80px 18px}.exec-opportunity-table>button>div:nth-child(4),.exec-opportunity-table>button>div:nth-child(5){display:none}.exec-account-grid{grid-template-columns:1fr}}
-@media (max-width:600px){.exec-record-kpis{grid-template-columns:1fr}.exec-opportunity-table>button{grid-template-columns:minmax(0,1fr) 18px}.exec-opportunity-table>button>div:not(.exec-opportunity-main){display:none}}
+@media (max-width:1000px){.exec-record-toolbar{align-items:stretch;flex-direction:column}.exec-filter-row{justify-content:flex-start}.exec-opportunity-table>button{grid-template-columns:minmax(0,1fr) 90px 80px 18px}.exec-opportunity-table>button>div:nth-child(4),.exec-opportunity-table>button>div:nth-child(5){display:none}.exec-account-grid{grid-template-columns:1fr}}
+@media (max-width:600px){.exec-opportunity-table>button{grid-template-columns:minmax(0,1fr) 18px}.exec-opportunity-table>button>div:not(.exec-opportunity-main){display:none}}

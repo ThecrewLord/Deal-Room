@@ -177,37 +177,7 @@ export default function Sidebar() {
                 )}
             </nav>
 
-            {/* Role */}
-            <div className="sidebar-user-area">
-                <div className="sidebar-user">
-                    <div className="sidebar-avatar">
-                        {getInitials(role)}
-                    </div>
-
-                    <div className="sidebar-user-info">
-                        <p className="sidebar-user-name">
-                            {role || "User"}
-                        </p>
-
-                        <p className="sidebar-user-role">
-                            Active Role
-                        </p>
-                    </div>
-                </div>
-            </div>
         </aside>
     );
 }
 
-function getInitials(value) {
-    if (!value) {
-        return "U";
-    }
-
-    return value
-        .split(" ")
-        .map((word) => word[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase();
-}

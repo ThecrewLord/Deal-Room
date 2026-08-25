@@ -6,7 +6,7 @@ import PendingAccess from "./pages/auth/PendingAccess";
 import RevokedAccess from "./pages/auth/RevokedAccess";
 import RoleSelection from "./pages/auth/RoleSelection";
 
-import Dashboard from "./pages/dashboard/Dashboard";
+import Dashboard from "./pages/dashboard/dashboard";
 import DashboardLayout from "./layouts/DashboardLayout";
 
 import OpportunityDetail from "./pages/OpportunityDetail";

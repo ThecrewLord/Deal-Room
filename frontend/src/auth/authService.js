@@ -1,41 +1,27 @@
 import authApi from "./authApi";
-import authStorage from "./authStorage";
 
 const authService = {
 
-    async login(data) {
-        const res = await authApi.login(data);
-
-        authStorage.saveTokens(
-            res.access_token,
-            res.refresh_token,
-        );
-
-        return res;
+    login(credentials) {
+        return authApi.login(credentials);
     },
 
-    async signup(data) {
-        return authApi.signup(data);
+    signup(payload) {
+        return authApi.signup(payload);
     },
 
-    async me() {
+    selectRole(role) {
+        return authApi.selectRole(role);
+    },
+
+    me() {
         return authApi.me();
     },
 
-    async refresh() {
-
-        const token = await authApi.refresh();
-
-        authStorage.setAccessToken(
-            token.access_token,
-        );
-
-        return token;
+    logout() {
+        return authApi.logout();
     },
 
-    logoutLocal() {
-        authStorage.clear();
-    },
 };
 
 export default authService;

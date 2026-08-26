@@ -1,3 +1,5 @@
+from app.constants.roles import ADMIN
+
 ACCESS_TOKEN_EXPIRES_MINUTES = 20
 
 REFRESH_TOKEN_EXPIRES_DAYS = 7
@@ -10,4 +12,5 @@ STATUS_APPROVED = "APPROVED"
 
 STATUS_REVOKED = "REVOKED"
 
-ROLE_ADMIN = "Admin"
+# Backward-compatible import name used by existing authentication code.
+ROLE_ADMIN = ADMIN

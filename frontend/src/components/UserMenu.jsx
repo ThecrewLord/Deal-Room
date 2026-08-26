@@ -1,44 +1,36 @@
 import { useNavigate } from "react-router-dom";
 
-import { getUser } from "../auth/authStorage";
-import { logout } from "../auth/authService";
+import { useAuth } from "../context/AuthContext";
 
 export default function UserMenu() {
-
     const navigate = useNavigate();
 
-    const user = getUser();
+    const {
+        user,
+        logout,
+    } = useAuth();
 
     const handleLogout = async () => {
-
-        await logout();
-
-        navigate("/login", {
-            replace: true,
-        });
-
+        try {
+            await logout();
+        } finally {
+            navigate("/login", {
+                replace: true,
+            });
+        }
     };
 
     return (
-
         <div className="user-menu">
-
             <span>
-
-                {user?.firstName} {user?.lastName}
-
+                {user?.full_name}
             </span>
 
             <button
                 onClick={handleLogout}
             >
-
                 Logout
-
             </button>
-
         </div>
-
     );
-
 }

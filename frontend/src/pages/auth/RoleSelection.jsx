@@ -1,86 +1,110 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { createSession } from "../../auth/authService";
+import { useAuth } from "../../context/AuthContext";
+import { AVAILABLE_ROLES } from "../../auth/roles";
 
 import "../../styles/auth.css";
 
-export default function RoleSelection(){
+export default function RoleSelection() {
+    const navigate = useNavigate();
+    const { selectRole } = useAuth();
 
-    const navigate=useNavigate();
+    const storedResponse =
+        sessionStorage.getItem("login_response");
 
-    const loginResponse=JSON.parse(
-        sessionStorage.getItem("login_response")
-    );
+    let loginResponse = null;
 
-    const [role,setRole]=useState("");
-
-    if(!loginResponse){
-
-        navigate("/login");
-
-        return null;
-
+    try {
+        loginResponse = storedResponse
+            ? JSON.parse(storedResponse)
+            : null;
+    } catch {
+        loginResponse = null;
     }
 
-    const submit=()=>{
+    const [role, setRole] = useState("");
+    const [error, setError] = useState("");
 
-        if(!role)return;
+    if (!loginResponse?.roles?.length) {
+        navigate("/login", { replace: true });
+        return null;
+    }
 
-        createSession({
+    // The backend is authoritative; this filter only prevents stale/unknown
+    // role values from becoming selectable UI options.
+    const assignedRoles = loginResponse.roles.filter(
+        (candidate) => AVAILABLE_ROLES.includes(candidate)
+    );
 
-            token:loginResponse.token,
-            user:loginResponse.user,
-            activeRole:role
+    async function submit() {
+        if (!role) {
+            setError("Please select a role.");
+            return;
+        }
 
-        });
+        if (!assignedRoles.includes(role)) {
+            setError("Please select an assigned role.");
+            return;
+        }
 
-        sessionStorage.removeItem("login_response");
+        try {
+            await selectRole(role);
 
-        navigate("/dashboard");
+            sessionStorage.removeItem("login_response");
 
-    };
+            navigate("/dashboard", { replace: true });
+        } catch (err) {
+            const message = err.response?.data?.message || "Unable to select role.";
+            if (message.toLowerCase().includes("revoked")) {
+                sessionStorage.removeItem("login_response");
+                navigate("/revoked", { replace: true });
+                return;
+            }
+            if (message.toLowerCase().includes("stale")) {
+                sessionStorage.removeItem("login_response");
+                navigate("/login", { replace: true });
+                return;
+            }
+            setError(message);
+        }
+    }
 
-    return(
-
+    return (
         <div className="auth-container">
-
             <div className="auth-card">
-
                 <h2>Select Role</h2>
 
                 <div className="auth-form">
-
-                    {loginResponse.roles.map(r=>(
-
-                        <label key={r}>
-
+                    {assignedRoles.map((candidate) => (
+                        <label key={candidate}>
                             <input
                                 type="radio"
-                                name="role"
-                                value={r}
-                                onChange={()=>setRole(r)}
+                                value={candidate}
+                                checked={role === candidate}
+                                onChange={() => setRole(candidate)}
                             />
-
                             {" "}
-                            {r}
-
+                            {candidate}
                         </label>
-
                     ))}
 
-                    <button onClick={submit}>
+                    {assignedRoles.length === 0 && (
+                        <p>
+                            No valid roles are assigned to this account.
+                        </p>
+                    )}
 
+                    {error && <p>{error}</p>}
+
+                    <button
+                        onClick={submit}
+                        disabled={assignedRoles.length === 0}
+                    >
                         Continue
-
                     </button>
-
                 </div>
-
             </div>
-
         </div>
-
     );
-
 }

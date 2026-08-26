@@ -1,79 +1,41 @@
+import { ROLES } from "../auth/roles";
+
 const navigation = {
-
-    Admin: [
-        {
-            name: "Dashboard",
-            path: "/dashboard",
-        },
-        {
-            name: "User Management",
-            path: "/admin/users",
-        },
-        {
-            name: "Role Management",
-            path: "/admin/roles",
-        },
-        {
-            name: "Access Management",
-            path: "/admin/access",
-        },
+    [ROLES.ADMIN]: [
+        { name: "Dashboard", path: "/dashboard" },
+        { name: "Pending Approvals", path: "/admin/approval" },
+        { name: "Users", path: "/admin/users" },
+        { name: "Role Management", path: "/admin/roles" },
+        { name: "Access Management", path: "/admin/access" },
     ],
 
-    Sales: [
-        {
-            name: "Dashboard",
-            path: "/dashboard",
-        },
-        {
-            name: "Opportunities",
-            path: "/opportunities",
-        },
-        {
-            name: "Accounts",
-            path: "/accounts",
-        },
-        {
-            name: "Reports",
-            path: "/reports",
-        },
+    [ROLES.SALES_EXECUTIVE]: [
+        { name: "Dashboard", path: "/dashboard" },
+        { name: "Opportunities", path: "/opportunities" },
+        { name: "Accounts", path: "/accounts" },
     ],
 
-    "Solution Engineer": [
-        {
-            name: "Dashboard",
-            path: "/dashboard",
-        },
-        {
-            name: "POCs",
-            path: "/pocs",
-        },
-        {
-            name: "OEM Registry",
-            path: "/oem-registry",
-        },
-        {
-            name: "Stakeholders",
-            path: "/stakeholders",
-        },
+    [ROLES.SALES_MANAGER]: [
+        { name: "Dashboard", path: "/dashboard" },
+        { name: "Review Queue", path: "/sales-manager/review" },
+        { name: "Team Performance", path: "/sales-manager/team-performance" },
+        { name: "Opportunities", path: "/opportunities" },
+        { name: "Accounts", path: "/accounts" },
     ],
 
-    Delivery: [
-        {
-            name: "Dashboard",
-            path: "/dashboard",
-        },
-        {
-            name: "Projects",
-            path: "/projects",
-        },
-        {
-            name: "POCs",
-            path: "/pocs",
-        },
-        {
-            name: "Activity Log",
-            path: "/activity-log",
-        },
+    [ROLES.PRE_SALES_MANAGER]: [
+        { name: "Dashboard", path: "/dashboard" },
+        { name: "Pending Technical Assignment", path: "/pre-sales/assignments" },
+        { name: "Team Performance", path: "/pre-sales/team-performance" },
+        { name: "Opportunities", path: "/opportunities" },
+    ],
+
+    [ROLES.SOLUTION_ENGINEER]: [
+        { name: "Dashboard", path: "/dashboard" },
+        { name: "Opportunities", path: "/opportunities" },
+        { name: "POCs", path: "/pocs" },
+        { name: "Stakeholders", path: "/stakeholders" },
+        { name: "OEM Registry", path: "/oem-registry" },
     ],
 
 };

@@ -21,6 +21,8 @@ class DashboardSchema(Schema):
         fields.Dict()
     )
 
+    average_stage_ageing = fields.Float()
+
     stalled_deals = fields.Int()
 
     active_pocs = fields.Int()
@@ -28,4 +30,19 @@ class DashboardSchema(Schema):
     win_loss_ratio = fields.Float()
 
     partner_contribution = fields.Int()
-    
+
+    pipeline_by_stage = fields.List(
+        fields.Dict()
+    )
+
+    recent_opportunities = fields.List(
+        fields.Dict()
+    )
+
+    upcoming_pocs = fields.List(
+        fields.Dict()
+    )
+
+    recent_activity = fields.List(
+        fields.Dict()
+    )

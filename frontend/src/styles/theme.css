@@ -1,52 +1,59 @@
 :root {
-
-    /* Primary */
     --color-primary: #2563eb;
     --color-primary-hover: #1d4ed8;
 
-    /* Secondary */
-    --color-secondary: #64748b;
+    --color-sidebar: #0f172a;
+    --color-sidebar-hover: #1e293b;
 
-    /* Success */
-    --color-success: #16a34a;
-
-    /* Warning */
-    --color-warning: #f59e0b;
-
-    /* Danger */
-    --color-danger: #dc2626;
-
-    /* Backgrounds */
-    --color-bg: #f5f6fa;
+    --color-bg: #f8fafc;
     --color-surface: #ffffff;
-    --color-sidebar: #1e293b;
 
-    /* Text */
-    --color-text: #1f2937;
-    --color-text-light: #6b7280;
-    --color-text-white: #ffffff;
+    --color-text: #0f172a;
+    --color-text-secondary: #64748b;
+    --color-text-muted: #94a3b8;
 
-    /* Borders */
-    --color-border: #d1d5db;
+    --color-border: #e2e8f0;
+    --color-border-light: #f1f5f9;
 
-    /* Inputs */
-    --color-input-bg: #ffffff;
-    --color-input-border: #cbd5e1;
-    --color-input-focus: #2563eb;
+    --color-success: #16a34a;
+    --color-warning: #d97706;
+    --color-danger: #dc2626;
+    --color-info: #0891b2;
 
-    /* Shadows */
-    --shadow-sm: 0 2px 6px rgba(0,0,0,.08);
-    --shadow-md: 0 8px 24px rgba(0,0,0,.12);
+    /* Dashboard chart accents */
+    --color-chart-purple: #7c3aed;
+    --color-chart-purple-light: #a78bfa;
+    --color-chart-orange: #ea580c;
+    --color-chart-teal: #0f766e;
+    --color-chart-blue-light: #3b82f6;
+    --color-chart-blue-soft: #60a5fa;
 
-    /* Radius */
-    --radius-sm: 4px;
-    --radius-md: 8px;
+    --header-height: 56px;
+    --sidebar-width: 232px;
+
+    --radius-sm: 8px;
+    --radius-md: 10px;
     --radius-lg: 12px;
+    --radius-xl: 16px;
 
-    /* Transition */
-    --transition: all .2s ease;
+    --shadow-sm:
+        0 1px 3px rgba(0, 0, 0, 0.06),
+        0 1px 2px rgba(0, 0, 0, 0.04);
 
-    /* Layout */
-    --header-height: 64px;
-    --sidebar-width: 260px;
+    --shadow-md:
+        0 4px 12px rgba(0, 0, 0, 0.08);
+
+    --transition:
+        all 0.15s ease;
+} 
+/* Phase 4.1 — Opportunities visual tokens */
+:root {
+    --color-primary-soft: #eff6ff;
+    --color-success-soft: #ecfdf5;
+    --color-danger-soft: #fef2f2;
+    --color-warning-soft: #fff7ed;
+    --color-page: #f6f8fc;
+    --color-page-tint: rgba(219, 234, 254, 0.55);
+    --color-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.025), 0 8px 24px rgba(15, 23, 42, 0.035);
+    --radius-control: 10px;
 }

@@ -1,189 +1,481 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
 
+/* New POC form — aligned to the Opportunities design system */
 .poc-form-wrap {
-  display: flex;
-  gap: 32px;
-  max-width: 720px;
-  font-family: 'Inter', sans-serif;
-  color: #1B1F23;
-}
-
-.poc-rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 6px;
-  flex-shrink: 0;
-}
-
-.poc-rail-count {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  color: #6B7280;
-  margin-bottom: 14px;
-  writing-mode: horizontal-tb;
-  white-space: nowrap;
-}
-
-.poc-rail-dots {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  position: relative;
-}
-
-.poc-rail-dots::before {
-  content: "";
-  position: absolute;
-  left: 5px;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  background: #E4E4E1;
-  z-index: 0;
-}
-
-.poc-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid #D1D3D6;
-  background: #FFFFFF;
-  z-index: 1;
-  transition: all 0.2s ease;
-}
-
-.poc-dot.filled {
-  background: #157F5B;
-  border-color: #157F5B;
+  width: 100%;
+  color: var(--color-text);
 }
 
 .poc-card {
-  background: #FFFFFF;
-  border: 1px solid #E4E4E1;
-  border-radius: 12px;
-  padding: 28px 32px;
-  flex: 1;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  width: 100%;
+  margin: 0;
+  padding: 28px 30px 24px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--color-card-shadow);
+}
+
+.poc-form-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.poc-eyebrow,
+.stakeholder-eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--color-text-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .13em;
+  text-transform: uppercase;
 }
 
 .poc-card h3 {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 4px 0;
-  color: #14171A;
+  margin: 0;
+  color: var(--color-text);
+  font-size: 23px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -.035em;
 }
 
 .poc-card .poc-subtitle {
-  font-size: 13px;
-  color: #6B7280;
-  margin: 0 0 24px 0;
+  margin: 7px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.poc-progress {
+  min-width: 108px;
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: #fbfdff;
+}
+
+.poc-progress strong {
+  color: var(--color-primary);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.poc-progress span {
+  color: var(--color-text-muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.poc-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 16px;
+  padding-top: 22px;
 }
 
 .poc-field {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 18px;
+  gap: 7px;
+}
+
+.poc-field-full {
+  grid-column: 1 / -1;
 }
 
 .poc-field label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .poc-field .optional-tag {
+  color: var(--color-text-muted);
   font-weight: 400;
-  color: #9CA3AF;
   margin-left: 4px;
 }
 
 .poc-field input[type="text"],
 .poc-field input[type="date"],
 .poc-field textarea {
-  font-family: 'Inter', sans-serif;
-  font-size: 14px;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
   padding: 10px 12px;
-  border: 1px solid #D1D3D6;
-  border-radius: 8px;
-  background: #FBFBFA;
-  color: #1B1F23;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--color-text);
+  font-size: 12px;
+  outline: 0;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
 }
 
-.poc-field input[type="text"]:focus,
-.poc-field input[type="date"]:focus,
-.poc-field textarea:focus {
-  outline: none;
-  border-color: #2451D6;
-  box-shadow: 0 0 0 3px rgba(36, 81, 214, 0.12);
-  background: #FFFFFF;
+.poc-field input[type="date"] {
+  appearance: auto;
 }
 
 .poc-field textarea {
+  min-height: 82px;
   resize: vertical;
-  min-height: 60px;
+  line-height: 1.5;
+}
+
+.poc-field input::placeholder,
+.poc-field textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.poc-field input:focus,
+.poc-field textarea:focus,
+.poc-search-control:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 10%, transparent);
+  background: #fff;
 }
 
 .poc-field .hint {
+  color: var(--color-text-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+/* Searchable existing-opportunity picker */
+.poc-opportunity-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.poc-search-control {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--color-text-muted);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.poc-search-control svg:last-child {
+  flex: 0 0 auto;
+  transition: transform .15s ease;
+}
+
+.poc-search-control svg:last-child.is-open {
+  transform: rotate(180deg);
+}
+
+.poc-search-control input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
   font-size: 12px;
-  color: #9CA3AF;
+}
+
+.poc-opportunity-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 270px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  box-shadow: var(--shadow-md);
+}
+
+.poc-opportunity-option {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+}
+
+.poc-opportunity-option:hover {
+  background: var(--color-primary-soft);
+}
+
+.poc-option-check {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.poc-opportunity-option:hover .poc-option-check {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.poc-option-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.poc-option-main strong {
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.poc-option-main span {
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: 9px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.poc-opportunity-empty {
+  padding: 18px 12px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.poc-selected-opportunity {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  border-radius: var(--radius-control);
+  background: var(--color-primary-soft);
+}
+
+.poc-selected-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.poc-selected-main strong {
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.poc-selected-main span {
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: 9px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.poc-clear-selection {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--color-text-secondary);
+}
+
+.poc-clear-selection:hover:not(:disabled) {
+  color: var(--color-danger);
+  border-color: #fecaca;
+  background: var(--color-danger-soft);
 }
 
 .poc-checkbox-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 22px;
+  gap: 9px;
+  margin-top: 20px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 550;
 }
 
 .poc-checkbox-row input {
   width: 16px;
   height: 16px;
-  accent-color: #157F5B;
-}
-
-.poc-checkbox-row label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #374151;
+  accent-color: var(--color-primary);
 }
 
 .poc-error {
-  background: #FEF2F2;
-  border: 1px solid #FCA5A5;
-  color: #B91C1C;
-  font-size: 13px;
+  margin-top: 16px;
   padding: 10px 12px;
-  border-radius: 8px;
-  margin-bottom: 16px;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.poc-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.poc-cancel,
+.poc-submit {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.poc-cancel {
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text-secondary);
+}
+
+.poc-cancel:hover:not(:disabled) {
+  border-color: #cbd5e1;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 .poc-submit {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  color: #FFFFFF;
-  background: #2451D6;
-  border: none;
-  padding: 11px 22px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+  box-shadow: 0 2px 5px rgba(37, 99, 235, .12);
 }
 
 .poc-submit:hover:not(:disabled) {
-  background: #1E42B3;
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
-.poc-submit:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.poc-submit:disabled {
-  background: #A9B7E8;
+.poc-submit:disabled,
+.poc-cancel:disabled {
+  opacity: .55;
   cursor: not-allowed;
+}
+
+/* Modal wrapper used by the POC page */
+.poc-modal-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(15, 23, 42, .42);
+  backdrop-filter: blur(2px);
+}
+
+.poc-modal {
+  width: min(960px, 100%);
+  max-height: calc(100vh - 56px);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-page);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, .22);
+}
+
+.poc-modal-header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 26px;
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(255,255,255,.96);
+  backdrop-filter: blur(8px);
+}
+
+.poc-modal-header h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -.035em;
+}
+
+.poc-modal-header p {
+  margin: 6px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.poc-modal-close {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--color-text-secondary);
+  font-size: 18px;
+}
+
+.poc-modal-close:hover:not(:disabled) {
+  border-color: #fecaca;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.poc-modal .poc-form-wrap {
+  padding: 20px;
+}
+
+.poc-modal .poc-card {
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .poc-modal-backdrop { padding: 12px; }
+  .poc-modal { max-height: calc(100vh - 24px); }
+  .poc-modal-header { padding: 18px; }
+  .poc-modal .poc-form-wrap { padding: 12px; }
+  .poc-form-heading { flex-direction: column; }
+  .poc-progress { justify-items: start; }
+  .poc-form-grid { grid-template-columns: 1fr; }
+  .poc-field-full { grid-column: auto; }
 }

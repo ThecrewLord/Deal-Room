@@ -1,34 +1,21 @@
 import Header from "../components/Header";
 import Sidebar from "../components/Sidebar";
 
-import "../styles/dashboard.css";
 
 export default function DashboardLayout({
-
     children,
-
 }) {
-
     return (
-
         <div className="dashboard-layout">
+            <Sidebar />
 
-            <Header />
-
-            <div className="dashboard-body">
-
-                <Sidebar />
+            <div className="dashboard-main-container">
+                <Header />
 
                 <main className="dashboard-content">
-
                     {children}
-
                 </main>
-
             </div>
-
         </div>
-
     );
-
 }

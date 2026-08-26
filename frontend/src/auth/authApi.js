@@ -1,35 +1,69 @@
+import axios from "axios";
+import API_BASE_URL from "../config/api";
+
 import api from "../api/axiosClient";
 
-export default {
+import {
+    getRefreshToken,
+} from "./authStorage";
 
-    login(data) {
-        return api.post("/auth/login", data)
-            .then(r => r.data);
+const BASE_URL = API_BASE_URL;
+
+const authApi = {
+    login(payload) {
+        return api
+            .post("/auth/login", payload)
+            .then((res) => res.data);
     },
 
-    signup(data) {
-        return api.post("/auth/signup", data)
-            .then(r => r.data);
-    },
-
-    me() {
-        return api.get("/auth/me")
-            .then(r => r.data);
-    },
-
-    refresh() {
-        return api.post("/auth/refresh")
-            .then(r => r.data);
+    signup(payload) {
+        return api
+            .post("/auth/signup", payload)
+            .then((res) => res.data);
     },
 
     logout() {
-        return api.post("/auth/logout");
+        return api
+            .post("/auth/logout", { refresh_token: getRefreshToken() })
+            .then((res) => res.data);
+    },
+
+    refresh() {
+        return axios
+            .post(
+                `${BASE_URL}/auth/refresh`,
+                {},
+                {
+                    headers: {
+                        Authorization: `Bearer ${getRefreshToken()}`,
+                    },
+                }
+            )
+            .then((res) => res.data);
     },
 
     selectRole(role) {
-        return api.post(
-            "/auth/select-role",
-            { role }
-        ).then(r => r.data);
+        // Role selection happens before an access token exists for a
+        // multi-role login, so authenticate this request explicitly with
+        // the refresh token returned by /auth/login.
+        return axios
+            .post(
+                `${BASE_URL}/auth/select-role`,
+                { role },
+                {
+                    headers: {
+                        Authorization: `Bearer ${getRefreshToken()}`,
+                    },
+                }
+            )
+            .then((res) => res.data);
+    },
+
+    me() {
+        return api
+            .get("/auth/me")
+            .then((res) => res.data);
     },
 };
+
+export default authApi;

@@ -60,12 +60,19 @@ class User(db.Model):
         db.Integer,
         db.ForeignKey("users.user_id"),
         nullable=True,
+        index=True,
     )
 
     created_at = db.Column(
         db.DateTime,
         default=datetime.utcnow,
         nullable=False,
+    )
+
+    auth_version = db.Column(
+        db.Integer,
+        nullable=False,
+        default=1,
     )
 
     updated_at = db.Column(
@@ -82,6 +89,13 @@ class User(db.Model):
         cascade="all, delete-orphan",
     )
 
+    manager = db.relationship(
+        "User",
+        remote_side=[user_id],
+        foreign_keys=[manager_id],
+        backref=db.backref("direct_reports", lazy=True),
+    )
+
     def to_dict(self):
         return {
             "user_id": self.user_id,
@@ -90,7 +104,17 @@ class User(db.Model):
             "status": self.status,
             "active": self.active,
             "roles": [role.role for role in self.roles],
+            "manager_id": self.manager_id,
+            "manager_name": self.manager.full_name if self.manager else None,
+            "organization": self.organization(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_login": self.last_login.isoformat() if self.last_login else None,
         }
+
+    def organization(self):
+        from app.constants.organizations import get_organization_for_roles
+        return get_organization_for_roles(self.role_names())
 
     def has_role(self, role_name):
         return any(

@@ -1,33 +1,17 @@
-const BASE_URL = "/api/poc";
+import api from "./axiosClient";
 
-export async function createPoc(pocData) {
-  const res = await fetch(BASE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(pocData),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(JSON.stringify(err));
-  }
-  return res.json();
-}
-
-export async function getPocsByOpportunity(opportunityId) {
-  const res = await fetch(`${BASE_URL}/opportunity/${opportunityId}`);
-  if (!res.ok) throw new Error("Failed to fetch POCs");
-  return res.json();
-}
-
-export async function updatePoc(pocId, pocData) {
-  const res = await fetch(`${BASE_URL}/${pocId}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(pocData),
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(JSON.stringify(err));
-  }
-  return res.json();
-}
+export const requestPoc = async (payload) => (await api.post("/poc/request", payload)).data;
+export const getPoc = async (id) => (await api.get(`/poc/${id}`)).data;
+export const getPocsByOpportunity = async (opportunityId) =>
+    (await api.get(`/poc/opportunity/${opportunityId}`)).data;
+export const updatePocDesign = async (id, payload) =>
+    (await api.patch(`/poc/${id}/design`, payload)).data;
+export const startPocExecution = async (id, payload) =>
+    (await api.post(`/poc/${id}/start-execution`, payload)).data;
+export const submitPocResult = async (id, payload) =>
+    (await api.post(`/poc/${id}/submit-result`, payload)).data;
+export const completePoc = async (id, payload) =>
+    (await api.post(`/poc/${id}/complete`, payload)).data;
+export const deletePoc = async () => {
+    throw new Error("POC deletion is disabled.");
+};

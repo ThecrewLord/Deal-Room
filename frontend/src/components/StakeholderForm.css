@@ -1,0 +1,123 @@
+
+.stakeholder-card {
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+.stakeholder-form-heading {
+  padding-bottom: 16px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.stakeholder-card h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 750;
+}
+
+.stakeholder-card .stakeholder-subtitle {
+  margin: 5px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.stakeholder-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px;
+}
+
+.stakeholder-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stakeholder-field-full {
+  grid-column: 1 / -1;
+}
+
+.stakeholder-field label {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.stakeholder-field input,
+.stakeholder-field select {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--color-text);
+  font-size: 11px;
+  outline: 0;
+}
+
+.stakeholder-field input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.stakeholder-field input:focus,
+.stakeholder-field select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.stakeholder-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.stakeholder-submit {
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-control);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.stakeholder-submit:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.stakeholder-submit:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.stakeholder-error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 700px) {
+  .stakeholder-form-grid { grid-template-columns: 1fr; }
+  .stakeholder-field-full { grid-column: auto; }
+}

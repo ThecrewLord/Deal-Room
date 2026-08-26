@@ -32,8 +32,9 @@ class POCTracker(BaseModel):
 
     status = db.Column(
         db.String(50),
-        default="Planned",
+        default="Draft",
         nullable=False,
+        index=True,
     )
 
     remarks = db.Column(
@@ -76,6 +77,24 @@ class POCTracker(BaseModel):
         db.Text,
         nullable=True,
     )
+
+
+
+    # Phase 6: separate technical design from execution/result.
+    exit_criteria = db.Column(db.Text, nullable=True)
+    poc_access_link = db.Column(db.Text, nullable=True)
+
+    requested_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)
+    approved_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    rejection_reason = db.Column(db.Text, nullable=True)
+
+    submitted_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)
+    submitted_at = db.Column(db.DateTime, nullable=True)
+
+    requester = db.relationship("User", foreign_keys=[requested_by])
+    approver = db.relationship("User", foreign_keys=[approved_by])
+    submitter = db.relationship("User", foreign_keys=[submitted_by])
 
     opportunity = db.relationship(
         "Opportunity",

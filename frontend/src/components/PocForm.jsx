@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, ChevronDown, Check, X } from "lucide-react";
-import { getOpportunities } from "../api/opportunityApi";
+import { getEligiblePocOpportunities } from "../api/pocApi";
 import "./PocForm.css";
 
 const REQUIRED_FIELDS = [
@@ -37,7 +37,7 @@ export default function PocForm({ onSubmit, submitting = false, onCancel }) {
         const loadOpportunities = async () => {
             try {
                 setLoadingOpportunities(true);
-                const data = await getOpportunities();
+                const data = await getEligiblePocOpportunities();
                 setOpportunities(Array.isArray(data) ? data : []);
             } catch (err) {
                 setError(

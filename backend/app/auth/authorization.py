@@ -349,13 +349,17 @@ class AuthorizationService:
             active_role == SOLUTION_ENGINEER
             and bool(opportunity)
             and opportunity.is_active
-            and AuthorizationService.is_assigned_role(user, opportunity, SOLUTION_ENGINEER)
-            and AuthorizationService.can_view_opportunity(user, active_role, opportunity)
-            and opportunity.status == "Active"
+            and AuthorizationService.is_assigned_role(
+                user, opportunity, SOLUTION_ENGINEER
+            )
+            and AuthorizationService.can_view_opportunity(
+                user, active_role, opportunity
+            )
             and opportunity.current_stage is not None
-            and opportunity.current_stage.stage_name in {
-                "Discovery", "POC / Technical Evaluation"
-            }
+            and (
+                opportunity.current_stage.stage_name == "Discovery"
+                or opportunity.current_stage.requires_poc
+            )
         )
 
     @staticmethod

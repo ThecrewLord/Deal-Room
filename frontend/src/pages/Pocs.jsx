@@ -41,7 +41,7 @@ export default function Pocs() {
 
     const [showAddPoc, setShowAddPoc] = useState(false);
     const [creating, setCreating] = useState(false);
-        const load = async () => {
+        const load = async () => {  
         try {
             setLoading(true);
             setError("");

@@ -10,6 +10,16 @@ poc_bp = Blueprint("poc", __name__, url_prefix="/api/poc")
 def request_poc():
     return PocController.request()
 
+@poc_bp.get("/eligible-opportunities")
+@business_access_required
+def eligible_opportunities():
+    return PocController.get_eligible_opportunities()
+
+@poc_bp.get("/<int:poc_id>/download")
+@business_access_required
+def download_poc(poc_id):
+    return PocController.download(poc_id)
+
 @poc_bp.get("/<int:poc_id>")
 @business_access_required
 def get_poc(poc_id):

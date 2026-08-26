@@ -2,13 +2,13 @@ import "../styles/business-workspaces.css";
 import { useEffect, useMemo, useState } from "react";
 import {
     ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock3, DollarSign,
-    Edit3, FileText, History, Link2, MessageSquare, RefreshCw, Save,
-    ShieldCheck, Target, Users, XCircle, Zap, UserRound, FlaskConical
+    Edit3, FileText, History, MessageSquare, RefreshCw, Save,
+    ShieldCheck, Target, Users, XCircle, Zap, UserRound, FlaskConical, Download,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import StakeholderForm from "../components/StakeholderForm";
 import {
-    getPocsByOpportunity, requestPoc, startPocExecution, submitPocResult, completePoc
+    getPocsByOpportunity, startPocExecution, submitPocResult, completePoc, downloadPoc
 } from "../api/pocApi";
 import { getStakeholdersByOpportunity } from "../api/stakeholderApi";
 import {
@@ -544,40 +544,6 @@ export default function OpportunityDetail() {
 
             {technicalRole && (
                 <div className="opportunity-two-column">
-                    <SectionCard title="Solution Design" description="Technical solution information available to technical management roles." icon={FileText}>
-                        {sectionErrors.design ? (
-                            <ErrorState
-                                title={sectionErrors.design.status === 403 ? "Technical design is read-only" : "Unable to load solution design"}
-                                message={sectionErrors.design.message}
-                                onRetry={sectionErrors.design.status === 403 ? undefined : () => retrySection("design")}
-                            />
-                        ) : canEditDesign ? (
-                            <div className="field-grid">
-                                {[
-                                    ["solution_summary", "Solution summary"],
-                                    ["technical_approach", "Technical approach"],
-                                    ["technical_requirements", "Technical requirements"],
-                                    ["architecture_notes", "Architecture / notes"],
-                                    ["risks", "Risks"],
-                                    ["assumptions", "Assumptions"],
-                                ].map(([key, label]) => (
-                                    <label className="field-label" key={key}><span>{label}</span><textarea rows="3" value={designEdit?.[key] || ""} onChange={(e) => setDesignEdit({ ...designEdit, [key]: e.target.value })} /></label>
-                                ))}
-                                <div className="opportunity-form-actions opportunity-field-full"><Button disabled={saving} onClick={saveDesign}><Save size={14} /> Save technical design</Button></div>
-                            </div>
-                        ) : design ? (
-                            <div className="opportunity-detail-text-grid">
-                                {[
-                                    ["Solution summary", design.solution_summary],
-                                    ["Technical approach", design.technical_approach],
-                                    ["Technical requirements", design.technical_requirements],
-                                    ["Architecture / notes", design.architecture_notes],
-                                    ["Risks", design.risks],
-                                    ["Assumptions", design.assumptions],
-                                ].map(([label, value]) => <div key={label}><span>{label}</span><p>{value || "—"}</p></div>)}
-                            </div>
-                        ) : <EmptyState message="No solution design has been recorded." />}
-                    </SectionCard>
 
                     <SectionCard title="POC Execution" description="POCs associated with this opportunity. Manager approval is not part of the lifecycle." icon={FlaskConical}>
                         {sectionErrors.pocs ? (
@@ -590,7 +556,7 @@ export default function OpportunityDetail() {
                             <div className="opportunity-poc-list">
                                 {pocs.map((poc) => {
                                     const form = resultForms[poc.poc_id] || {
-                                        poc_access_link: poc.poc_access_link || "",
+                                        
                                         outcome: poc.outcome || "Success",
                                         outcome_notes: poc.outcome_notes || "",
                                         remarks: poc.remarks || ""
@@ -611,13 +577,38 @@ export default function OpportunityDetail() {
                                                 <div><span>Failure condition</span><p>{poc.failure_condition || "—"}</p></div>
                                                 <div><span>Outcome notes</span><p>{poc.outcome_notes || "—"}</p></div>
                                             </div>
-                                            {poc.poc_access_link && <a className="opportunity-poc-link" href={poc.poc_access_link} target="_blank" rel="noreferrer"><Link2 size={13} /> Open POC access</a>}
-                                            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "Approved" && (
-                                                <Button size="sm" disabled={saving} onClick={() => run(() => startPocExecution(poc.poc_id, { updated_at: poc.updated_at }))}><Zap size={13} /> Start POC</Button>
-                                            )}
+                                            
+                                          {activeRole === ROLES.SOLUTION_ENGINEER &&
+    assignedSE &&
+    poc.status === "Approved" && (
+        <Button
+            size="sm"
+            disabled={saving}
+            onClick={() =>
+                run(() =>
+                    startPocExecution(
+                        poc.poc_id,
+                        { updated_at: poc.updated_at }
+                    )
+                )
+            }
+        >
+            <Zap size={13} /> Start POC
+        </Button>
+    )}
+
+{activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && (
+    <Button
+        size="sm"
+        disabled={saving}
+        onClick={() => run(() => downloadPoc(poc.poc_id))}
+    >
+        <Download size={13} /> Download POC
+    </Button>
+)}
                                             {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "In Progress" && (
                                                 <div className="opportunity-poc-result">
-                                                    <input placeholder="POC access link" value={form.poc_access_link} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, poc_access_link: e.target.value } })} />
+                                                    
                                                     <select value={form.outcome} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, outcome: e.target.value } })}>
                                                         {["Success", "Failure", "Ongoing", "Abandoned"].map((value) => <option key={value}>{value}</option>)}
                                                     </select>
@@ -638,23 +629,6 @@ export default function OpportunityDetail() {
                 </div>
             )}
 
-            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && (
-                <SectionCard title="Request a POC" description="POCs are created directly as Approved; manager approval is not required." icon={Target}>
-                    <div className="field-grid">
-                        <label className="field-label"><span>POC name</span><input value={pocForm.poc_name} onChange={(e) => setPocForm({ ...pocForm, poc_name: e.target.value })} /></label>
-                        <label className="field-label"><span>Target date</span><input type="date" value={pocForm.target_date} onChange={(e) => setPocForm({ ...pocForm, target_date: e.target.value })} /></label>
-                        {[
-                            ["objective", "Objective"], ["success_metric", "Success criteria"],
-                            ["exit_criteria", "Exit criteria"], ["failure_condition", "Failure condition"],
-                            ["remarks", "Technical remarks"]
-                        ].map(([key, label]) => <label className="field-label opportunity-field-full" key={key}><span>{label}</span><textarea rows="2" value={pocForm[key]} onChange={(e) => setPocForm({ ...pocForm, [key]: e.target.value })} /></label>)}
-                        <div className="opportunity-form-actions opportunity-field-full">
-                            <Button disabled={saving || !["Discovery", "POC / Technical Evaluation"].includes(stageName)} onClick={submitPocRequest}><Zap size={14} /> Create POC</Button>
-                            {!["Discovery", "POC / Technical Evaluation"].includes(stageName) && <ActionNote>POCs can be requested from Discovery or POC / Technical Evaluation.</ActionNote>}
-                        </div>
-                    </div>
-                </SectionCard>
-            )}
 
             <SectionCard title="Stakeholders" description="Customer contacts connected to this opportunity." icon={Users}>
                 {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && <StakeholderForm opportunityId={opportunityId} onCreated={() => retrySection("stakeholders")} />}

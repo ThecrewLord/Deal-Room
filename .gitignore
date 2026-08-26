@@ -27,3 +27,5 @@ backend/migrations/__pycache__/
 
 # Zip files
 *.zip
+venv/
+venv/

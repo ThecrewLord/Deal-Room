@@ -1,4 +1,4 @@
-from flask import g, jsonify, request
+from flask import g, jsonify, request, send_file
 from marshmallow import ValidationError
 
 from app.auth.authorization import AuthorizationDenied
@@ -13,6 +13,23 @@ response_list_schema = PocResponseSchema(many=True)
 
 
 class PocController:
+    @staticmethod
+    def download(poc_id):
+        pdf_buffer = PocService.generate_poc_pdf(
+            poc_id,
+            g.auth_user,
+            g.active_role,
+        )
+
+        if not pdf_buffer:
+            return jsonify({"message": "POC not found"}), 404
+
+        return send_file(
+            pdf_buffer,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"POC-{poc_id}.pdf",
+        )
     @staticmethod
     def request():
         try:
@@ -100,6 +117,36 @@ class PocController:
             return jsonify({"message": str(err)}), 409
         except Exception:
             return jsonify({"message": "Failed to reject POC"}), 500
+
+    @staticmethod
+    def get_eligible_opportunities():
+        opportunities = PocService.get_eligible_opportunities(
+            g.auth_user,
+            g.active_role,
+        )
+
+        return jsonify([
+            {
+                "opportunity_id": opportunity.opportunity_id,
+                "opportunity_name": opportunity.opportunity_name,
+                "account_name": (
+                    opportunity.account.account_name
+                    if opportunity.account
+                    else None
+                ),
+                "status": opportunity.status,
+                "is_active": opportunity.is_active,
+                "current_stage": (
+                    {
+                        "stage_id": opportunity.current_stage.stage_id,
+                        "stage_name": opportunity.current_stage.stage_name,
+                    }
+                    if opportunity.current_stage
+                    else None
+                ),
+            }
+            for opportunity in opportunities
+        ]), 200
 
     @staticmethod
     def start_execution(poc_id):

@@ -95,22 +95,16 @@ def request_poc(client,app):
     assert r.status_code==201
     return r.get_json()
 
-def test_se_request_enters_pending_approval(client,app):
-    p=request_poc(client,app); assert p["status"]=="Pending Approval"
+def test_se_request_enters_draft(client,app):
+    p=request_poc(client,app); assert p["status"]=="Draft"
 
-def test_psm_can_approve(client,app):
-    p=request_poc(client,app); t=token_for(client,app.config["P6"]["psm"],PRE_SALES_MANAGER)
-    r=client.post(f"/api/poc/{p['poc_id']}/approve",headers=auth(t),json={"updated_at":p["updated_at"]})
-    assert r.status_code==200 and r.get_json()["status"]=="Approved"
-
-def test_delivery_can_execute_and_submit(client,app):
-    p=request_poc(client,app); tpsm=token_for(client,app.config["P6"]["psm"],PRE_SALES_MANAGER)
-    p=client.post(f"/api/poc/{p['poc_id']}/approve",headers=auth(tpsm),json={"updated_at":p["updated_at"]}).get_json()
-    td=token_for(client,app.config["P6"]["delivery"],DELIVERY)
-    p=client.post(f"/api/poc/{p['poc_id']}/start-execution",headers=auth(td),json={"updated_at":p["updated_at"]}).get_json()
+def test_se_can_execute_and_submit(client,app):
+    p=request_poc(client,app)
+    t=token_for(client,app.config["P6"]["se"],SOLUTION_ENGINEER)
+    p=client.post(f"/api/poc/{p['poc_id']}/start-execution",headers=auth(t),json={"updated_at":p["updated_at"]}).get_json()
     assert p["status"]=="In Progress"
-    r=client.post(f"/api/poc/{p['poc_id']}/submit-result",headers=auth(td),
-                  json={"execution_status":"Submitted","poc_access_link":"client access instructions","outcome":"Success","outcome_notes":"Passed","updated_at":p["updated_at"]})
+    r=client.post(f"/api/poc/{p['poc_id']}/submit-result",headers=auth(t),
+                  json={"execution_status":"Submitted","outcome":"Success","outcome_notes":"Passed","updated_at":p["updated_at"]})
     assert r.status_code==200 and r.get_json()["status"]=="Submitted"
 
 def test_delivery_cannot_edit_poc_design(client,app):

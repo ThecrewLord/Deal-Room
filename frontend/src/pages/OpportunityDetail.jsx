@@ -7,8 +7,9 @@ import {
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import StakeholderForm from "../components/StakeholderForm";
+import PocForm from "../components/PocForm";
 import {
-    getPocsByOpportunity, startPocExecution, submitPocResult, completePoc, downloadPoc
+    getPocsByOpportunity, requestPoc, startPocExecution, submitPocResult, completePoc, downloadPoc
 } from "../api/pocApi";
 import { getStakeholdersByOpportunity } from "../api/stakeholderApi";
 import {
@@ -16,7 +17,6 @@ import {
     qualifyOpportunity, submitOpportunityForReview, transitionTechnicalStage,
     closeWon, closeLost
 } from "../api/opportunityApi";
-import { getSolutionDesign, updateSolutionDesign } from "../api/solutionDesignApi";
 import { ROLES } from "../auth/roles";
 import { useAuth } from "../context/AuthContext";
 import { getUser } from "../auth/authStorage";
@@ -69,23 +69,16 @@ export default function OpportunityDetail() {
     const [history, setHistory] = useState([]);
     const [pocs, setPocs] = useState([]);
     const [stakeholders, setStakeholders] = useState([]);
-    const [design, setDesign] = useState(null);
     const [error, setError] = useState("");
     const [sectionErrors, setSectionErrors] = useState({
         history: null,
         stakeholders: null,
         pocs: null,
-        design: null,
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [edit, setEdit] = useState(null);
     const [editingSales, setEditingSales] = useState(false);
-    const [designEdit, setDesignEdit] = useState(null);
-    const [pocForm, setPocForm] = useState({
-        poc_name: "", objective: "", success_metric: "", exit_criteria: "",
-        target_date: "", failure_condition: "", remarks: ""
-    });
     const [resultForms, setResultForms] = useState({});
 
     const technicalRole = activeRole === ROLES.SOLUTION_ENGINEER || activeRole === ROLES.PRE_SALES_MANAGER;
@@ -128,7 +121,6 @@ export default function OpportunityDetail() {
             history: getOpportunityStageHistory(opportunityId),
             stakeholders: getStakeholdersByOpportunity(opportunityId),
             ...(canLoadPocData ? { pocs: getPocsByOpportunity(opportunityId) } : {}),
-            ...(technicalRole ? { design: getSolutionDesign(opportunityId) } : {}),
         };
 
         const entries = Object.entries(requests);
@@ -146,36 +138,11 @@ export default function OpportunityDetail() {
                     setStakeholders(Array.isArray(result.value) ? result.value : []);
                 } else if (section === "pocs") {
                     setPocs(Array.isArray(result.value) ? result.value : []);
-                } else if (section === "design") {
-                    // A 200 response is the actual design. A missing design is handled
-                    // by the rejected 404 branch below as a normal empty state.
-                    const nextDesign = result.value || null;
-                    setDesign(nextDesign);
-                    setDesignEdit(nextDesign || {
-                        solution_summary: "", technical_approach: "", technical_requirements: "",
-                        architecture_notes: "", risks: "", assumptions: ""
-                    });
                 }
                 return;
             }
 
             const err = result.reason;
-
-            // A missing Solution Design is expected before the technical design is
-            // created. It must never make the opportunity itself fail to load.
-            if (section === "design" && err?.response?.status === 404) {
-                setDesign(null);
-                setDesignEdit({
-                    solution_summary: "",
-                    technical_approach: "",
-                    technical_requirements: "",
-                    architecture_notes: "",
-                    risks: "",
-                    assumptions: "",
-                });
-                setSectionError("design", null);
-                return;
-            }
 
             // An absent POC is also a valid empty state. The backend normally returns
             // an empty list, but keep a 404 non-fatal if an older backend does so.
@@ -187,7 +154,7 @@ export default function OpportunityDetail() {
 
             setSectionError(section, describeSectionError(
                 err,
-                `Unable to load ${section === "design" ? "the solution design" : section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : "stage history"}.`
+                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : "stage history"}.`
             ));
         });
     };
@@ -206,8 +173,7 @@ export default function OpportunityDetail() {
                 history: null,
                 stakeholders: null,
                 pocs: null,
-                design: null,
-            });
+                    });
 
             // The opportunity itself is the only page-critical request.
             const data = await getOpportunity(opportunityId);
@@ -219,17 +185,6 @@ export default function OpportunityDetail() {
                 probability: data.probability ?? 0,
                 expected_close_date: data.expected_close_date || "",
             });
-
-            if (technicalRole) {
-                setDesign(null);
-                setDesignEdit({
-                    solution_summary: "", technical_approach: "", technical_requirements: "",
-                    architecture_notes: "", risks: "", assumptions: ""
-                });
-            } else {
-                setDesign(null);
-                setDesignEdit(null);
-            }
 
             // Secondary data is intentionally isolated from the page-critical
             // opportunity request. One failed section must not blank the page.
@@ -246,12 +201,9 @@ export default function OpportunityDetail() {
             history: getOpportunityStageHistory(opportunityId),
             stakeholders: getStakeholdersByOpportunity(opportunityId),
             pocs: getPocsByOpportunity(opportunityId),
-            design: getSolutionDesign(opportunityId),
         };
 
         if (section === "pocs" && !canLoadPocData) return;
-        if (section === "design" && !technicalRole) return;
-
         setSectionError(section, null);
 
         try {
@@ -259,30 +211,14 @@ export default function OpportunityDetail() {
             if (section === "history") setHistory(Array.isArray(value) ? value : []);
             if (section === "stakeholders") setStakeholders(Array.isArray(value) ? value : []);
             if (section === "pocs") setPocs(Array.isArray(value) ? value : []);
-            if (section === "design") {
-                const nextDesign = value || null;
-                setDesign(nextDesign);
-                setDesignEdit(nextDesign || {
-                    solution_summary: "", technical_approach: "", technical_requirements: "",
-                    architecture_notes: "", risks: "", assumptions: ""
-                });
-            }
         } catch (err) {
-            if (section === "design" && err?.response?.status === 404) {
-                setDesign(null);
-                setDesignEdit({
-                    solution_summary: "", technical_approach: "", technical_requirements: "",
-                    architecture_notes: "", risks: "", assumptions: ""
-                });
-                return;
-            }
             if (section === "pocs" && err?.response?.status === 404) {
                 setPocs([]);
                 return;
             }
             setSectionError(section, describeSectionError(
                 err,
-                `Unable to load ${section === "design" ? "the solution design" : section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : "stage history"}.`
+                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : "stage history"}.`
             ));
         }
     };
@@ -307,10 +243,6 @@ export default function OpportunityDetail() {
         opportunity?.is_active &&
         ["Lead / Identified", "Qualification"].includes(stageName);
 
-    const canEditDesign =
-        activeRole === ROLES.SOLUTION_ENGINEER &&
-        assignedSE &&
-        opportunity?.is_active;
 
     const run = async (fn) => {
         try {
@@ -336,16 +268,20 @@ export default function OpportunityDetail() {
         setEditingSales(false);
     });
 
-    const saveDesign = () =>
-        run(() => updateSolutionDesign(opportunityId, { ...designEdit, updated_at: opportunity.updated_at }));
-
-    const submitPocRequest = () => run(async () => {
-        await requestPoc({ opportunity_id: opportunityId, ...pocForm });
-        setPocForm({
-            poc_name: "", objective: "", success_metric: "", exit_criteria: "",
-            target_date: "", failure_condition: "", remarks: ""
-        });
-    });
+    const submitPocRequest = async (payload) => {
+        try {
+            setSaving(true);
+            setError("");
+            await requestPoc({ ...payload, opportunity_id: opportunityId });
+            await load();
+        } catch (err) {
+            const message = err?.response?.data?.message || err?.message || "Unable to create the POC. Please try again.";
+            setError(message);
+            throw err;
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const close = (won) => {
         const reason = window.prompt(won ? "Optional close remarks" : "Closed Lost reason");
@@ -542,9 +478,17 @@ export default function OpportunityDetail() {
                 </SectionCard>
             )}
 
-            {technicalRole && (
-                <div className="opportunity-two-column">
+            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && stageName === "POC / Technical Evaluation" && (
+                <SectionCard title="Create POC" description="Define the technical proof of concept for this opportunity." icon={FlaskConical}>
+                    <PocForm
+                        fixedOpportunity={opportunity}
+                        onSubmit={submitPocRequest}
+                        submitting={saving}
+                    />
+                </SectionCard>
+            )}
 
+            {technicalRole && (
                     <SectionCard title="POC Execution" description="POCs associated with this opportunity. Manager approval is not part of the lifecycle." icon={FlaskConical}>
                         {sectionErrors.pocs ? (
                             <ErrorState
@@ -580,7 +524,7 @@ export default function OpportunityDetail() {
                                             
                                           {activeRole === ROLES.SOLUTION_ENGINEER &&
     assignedSE &&
-    poc.status === "Approved" && (
+    poc.status === "Draft" && (
         <Button
             size="sm"
             disabled={saving}
@@ -626,7 +570,6 @@ export default function OpportunityDetail() {
                             </div>
                         ) : <EmptyState message="No POCs have been created for this opportunity." />}
                     </SectionCard>
-                </div>
             )}
 
 

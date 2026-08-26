@@ -64,8 +64,13 @@ class StageService:
             return None
         if not AuthorizationService.can_change_technical_stage(user, active_role, opportunity):
             raise AuthorizationDenied("Only an assigned Solution Engineer can change technical stage.")
-        if not opportunity.is_active or opportunity.status != ACTIVE_STATUS:
-            raise ValueError("Opportunity is not in active technical work.")
+        # Imported/live opportunities can still carry the legacy "Open"
+        # operational status after technical ownership has been assigned.
+        # Stage position + is_active are the authoritative technical-work
+        # indicators here. Normalize the status to Active once a technical
+        # transition succeeds.
+        if not opportunity.is_active or opportunity.status not in {OPEN_STATUS, ACTIVE_STATUS}:
+            raise ValueError("Opportunity is not active.")
         if ConcurrencyManager.has_conflict(updated_at, opportunity.updated_at):
             raise RuntimeError("Opportunity changed since it was opened. Refresh before changing stage.")
         target = StageRepository.get_by_name(target_stage_name)
@@ -75,17 +80,9 @@ class StageService:
         allowed = TECHNICAL_TRANSITIONS.get(current.stage_name, set())
         if target.stage_name not in allowed:
             raise ValueError(f"Transition from {current.stage_name} to {target.stage_name} is not allowed.")
-        if target.stage_name == "POC / Technical Evaluation":
-            from app.models.opportunity.poc_tracker import POCTracker
-            from app.constants.poc_outcome import POC_STATUS_APPROVED, POC_STATUS_IN_PROGRESS
-            approved_poc = POCTracker.query.filter_by(
-                opportunity_id=opportunity.opportunity_id, status=POC_STATUS_APPROVED
-            ).first()
-            in_progress = POCTracker.query.filter_by(
-                opportunity_id=opportunity.opportunity_id, status=POC_STATUS_IN_PROGRESS
-            ).first()
-            if not approved_poc and not in_progress:
-                raise ValueError("An approved POC is required before entering POC / Technical Evaluation.")
+        # POCs are created by the assigned Solution Engineer once the
+        # opportunity reaches POC / Technical Evaluation. Requiring an
+        # existing POC before entering this stage would deadlock that workflow.
         if current.stage_name == "POC / Technical Evaluation" and target.stage_name == "Proposal":
             from app.models.opportunity.poc_tracker import POCTracker
             from app.constants.poc_outcome import POC_STATUS_COMPLETED

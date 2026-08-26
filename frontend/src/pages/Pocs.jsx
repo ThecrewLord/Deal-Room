@@ -28,7 +28,7 @@ import Button from "../components/ui/Button";
 import PocForm from "../components/PocForm";
 import { requestPoc } from "../api/pocApi";
 
-const STATUS_ORDER = ["Approved", "In Progress", "Submitted", "Completed", "Rejected"];
+const STATUS_ORDER = ["Draft", "In Progress", "Submitted", "Completed"];
 
 export default function Pocs() {
     const { activeRole } = useAuth();
@@ -106,7 +106,7 @@ export default function Pocs() {
     }, [items, search, filter]);
 
     const completed = items.filter((item) => item.status === "Completed").length;
-    const active = items.filter((item) => ["Approved", "In Progress", "Submitted"].includes(item.status)).length;
+    const active = items.filter((item) => ["Draft", "In Progress", "Submitted"].includes(item.status)).length;
 
     if (activeRole !== ROLES.SOLUTION_ENGINEER) {
         return (

@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.auth.authorization import AuthorizationDenied, AuthorizationService
 from app.constants.roles import PRE_SALES_MANAGER, SOLUTION_ENGINEER
 from app.constants.activity_types import (
-    POC_REQUESTED, POC_APPROVED, POC_REJECTED,
+    POC_REQUESTED,
     POC_EXECUTION_STARTED, POC_RESULT_SUBMITTED, POC_COMPLETED,
     POC_DESIGN_CREATED, POC_DESIGN_UPDATED,
 )
@@ -18,7 +18,7 @@ from app.repositories.poc_repository import PocRepository
 from app.services.activity_service import ActivityService
 from app.services.notification_service import NotificationService
 from app.utils.concurrency import ConcurrencyManager
-from app.constants.poc_outcome import (POC_STATUS_DRAFT, POC_STATUS_APPROVED, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED, POC_STATUS_REJECTED)
+from app.constants.poc_outcome import (POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED)
 
 
 class PocService:
@@ -212,9 +212,8 @@ class PocService:
             raise ValueError("Target Date cannot be in the past.")
 
         payload = dict(data)
-        payload["status"] = POC_STATUS_APPROVED
+        payload["status"] = POC_STATUS_DRAFT
         payload["requested_by"] = user.user_id
-        payload["stakeholder_signoff"] = data.get("stakeholder_signoff", False)
         poc = PocRepository.create(payload)
         ActivityService.log(
             "POC", poc.poc_id, POC_REQUESTED,
@@ -230,30 +229,18 @@ class PocService:
         return poc
 
     @staticmethod
-    def get_pending_approval(user, active_role):
-        return []
-
-    @staticmethod
-    def approve_poc(poc_id, updated_at, user, active_role):
-        raise AuthorizationDenied("POC manager approval is no longer required.")
-
-    @staticmethod
-    def reject_poc(poc_id, reason, updated_at, user, active_role):
-        raise AuthorizationDenied("POC manager approval is no longer required.")
-
-    @staticmethod
     def update_design(poc_id, data, user, active_role):
         poc = PocRepository.get_by_id(poc_id)
         if not poc:
             return None
         if not AuthorizationService.can_edit_poc_design(user, active_role, poc):
-            raise AuthorizationDenied("Only an assigned Solution Engineer can edit an unapproved POC design.")
+            raise AuthorizationDenied("Only the assigned Solution Engineer can edit a draft POC design.")
         if ConcurrencyManager.has_conflict(data.get("updated_at"), poc.updated_at):
             raise RuntimeError("This POC changed since you opened it. Refresh before editing.")
         data = dict(data)
         data.pop("updated_at", None)
-        if poc.status not in {POC_STATUS_DRAFT, POC_STATUS_APPROVED}:
-            raise RuntimeError("Approved or decided POC design is locked.")
+        if poc.status != POC_STATUS_DRAFT:
+            raise RuntimeError("Only a draft POC can be edited.")
         for key, value in data.items():
             if key in {"poc_name", "objective", "success_metric", "exit_criteria", "target_date", "failure_condition", "remarks"}:
                 setattr(poc, key, value)
@@ -271,9 +258,9 @@ class PocService:
         if not poc:
             return None
         if not AuthorizationService.can_execute_poc(user, active_role, poc):
-            raise AuthorizationDenied("Only an assigned Solution Engineer can execute an approved POC.")
-        if poc.status != POC_STATUS_APPROVED:
-            raise RuntimeError("Only an approved POC can start execution.")
+            raise AuthorizationDenied("Only an assigned Solution Engineer can execute a draft POC.")
+        if poc.status != POC_STATUS_DRAFT:
+            raise RuntimeError("Only a draft POC can start execution.")
         if ConcurrencyManager.has_conflict(updated_at, poc.updated_at):
             raise RuntimeError("This POC changed since you opened it. Refresh before starting execution.")
         poc.status = POC_STATUS_IN_PROGRESS
@@ -311,8 +298,7 @@ class PocService:
             if (
                 opportunity.current_stage
                 and (
-                    opportunity.current_stage.stage_name == "Discovery"
-                    or opportunity.current_stage.requires_poc
+                    opportunity.current_stage.stage_name == "POC / Technical Evaluation"
                 )
                 and not POCTracker.query.filter_by(
                     opportunity_id=opportunity.opportunity_id
@@ -334,7 +320,6 @@ class PocService:
         if ConcurrencyManager.has_conflict(data.get("updated_at"), poc.updated_at):
             raise RuntimeError("This POC changed since you opened it. Refresh before submitting.")
         poc.status = POC_STATUS_SUBMITTED
-        poc.poc_access_link = data["poc_access_link"]
         poc.outcome = data["outcome"]
         poc.outcome_notes = data["outcome_notes"]
         poc.remarks = data.get("remarks")

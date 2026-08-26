@@ -9,7 +9,6 @@ class PocRequestSchema(Schema):
     target_date = fields.Date(required=True)
     failure_condition = fields.Str(required=True, validate=validate.Length(min=1))
     remarks = fields.Str(allow_none=True)
-    stakeholder_signoff = fields.Bool(load_default=False)
 
 
 class PocDesignUpdateSchema(Schema):
@@ -23,14 +22,6 @@ class PocDesignUpdateSchema(Schema):
     updated_at = fields.DateTime(required=True)
 
 
-class PocApprovalSchema(Schema):
-    updated_at = fields.DateTime(required=True)
-
-
-class PocRejectionSchema(Schema):
-    reason = fields.Str(required=True, validate=validate.Length(min=1, max=2000))
-    updated_at = fields.DateTime(required=True)
-
 
 class PocExecutionStartSchema(Schema):
     updated_at = fields.DateTime(required=True)
@@ -38,11 +29,10 @@ class PocExecutionStartSchema(Schema):
 
 class PocResultSchema(Schema):
     execution_status = fields.Str(required=True, validate=validate.OneOf(
-        ["In Progress", "Submitted", "Completed", "Failed", "Abandoned"]
+        ["Submitted"]
     ))
-    poc_access_link = fields.Str(required=True, validate=validate.Length(min=1))
     outcome = fields.Str(required=True, validate=validate.OneOf(POC_OUTCOMES))
-    outcome_notes = fields.Str(required=True, validate=validate.Length(min=1))
+    outcome_notes = fields.Str(load_default="", allow_none=True)
     remarks = fields.Str(allow_none=True)
     updated_at = fields.DateTime(required=True)
 
@@ -69,16 +59,10 @@ class PocResponseSchema(Schema):
     exit_criteria = fields.Str(allow_none=True)
     target_date = fields.Date()
     failure_condition = fields.Str()
-    stakeholder_signoff = fields.Bool()
     outcome = fields.Str(allow_none=True)
     outcome_notes = fields.Str(allow_none=True)
-    poc_access_link = fields.Str(allow_none=True)
     requested_by = fields.Int(allow_none=True)
     requester = fields.Nested(PocUserSummarySchema, allow_none=True)
-    approved_by = fields.Int(allow_none=True)
-    approver = fields.Nested(PocUserSummarySchema, allow_none=True)
-    approved_at = fields.DateTime(allow_none=True)
-    rejection_reason = fields.Str(allow_none=True)
     submitted_by = fields.Int(allow_none=True)
     submitter = fields.Nested(PocUserSummarySchema, allow_none=True)
     submitted_at = fields.DateTime(allow_none=True)

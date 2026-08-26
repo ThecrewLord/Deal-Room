@@ -1,5 +1,7 @@
 from flask import g, jsonify, request
 from marshmallow import ValidationError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+import traceback
 
 from app.auth.authorization import AuthorizationDenied
 from app.schemas.stakeholder_schema import (
@@ -26,8 +28,36 @@ class StakeholderController:
             return jsonify(err.messages), 400
         except AuthorizationDenied as err:
             return jsonify({"message": str(err)}), 403
-        except Exception:
-            return jsonify({"message": "Failed to create stakeholder"}), 500
+        except IntegrityError as err:
+            # Roll back the failed transaction so the SQLAlchemy session can
+            # be reused for subsequent requests. Surface the constraint class
+            # rather than leaving the UI with an opaque 500.
+            from app.database import db
+            db.session.rollback()
+            print("STAKEHOLDER CREATE INTEGRITY ERROR:")
+            traceback.print_exc()
+            return jsonify({
+                "message": "Stakeholder could not be created because the database rejected the record.",
+                "detail": str(getattr(err, "orig", err)),
+            }), 409
+        except SQLAlchemyError as err:
+            from app.database import db
+            db.session.rollback()
+            print("STAKEHOLDER CREATE DATABASE ERROR:")
+            traceback.print_exc()
+            return jsonify({
+                "message": "Stakeholder could not be saved because of a database error.",
+                "detail": str(err),
+            }), 500
+        except Exception as err:
+            from app.database import db
+            db.session.rollback()
+            print("STAKEHOLDER CREATE UNEXPECTED ERROR:")
+            traceback.print_exc()
+            return jsonify({
+                "message": "Failed to create stakeholder",
+                "detail": str(err),
+            }), 500
 
     @staticmethod
     def get(stakeholder_id):

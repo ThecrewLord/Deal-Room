@@ -4,11 +4,9 @@ from sqlalchemy import func
 
 from app.constants.auth_constants import STATUS_APPROVED
 from app.constants.poc_outcome import (
-    POC_STATUS_APPROVED,
+    POC_STATUS_DRAFT,
     POC_STATUS_COMPLETED,
     POC_STATUS_IN_PROGRESS,
-    POC_STATUS_PENDING_APPROVAL,
-    POC_STATUS_REJECTED,
     POC_STATUS_SUBMITTED,
 )
 from app.constants.roles import SOLUTION_ENGINEER
@@ -72,10 +70,10 @@ class PreSalesPerformanceRepository:
         pocs = POCTracker.query.filter(POCTracker.opportunity_id.in_(
             [o.opportunity_id for o in opportunities.all()]
         )).all() if total else []
-        active_pocs = sum(p.status in {POC_STATUS_APPROVED, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED} for p in pocs)
+        active_pocs = sum(p.status in {POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED} for p in pocs)
         completed_pocs = sum(p.status == POC_STATUS_COMPLETED for p in pocs)
-        pending_pocs = sum(p.status == POC_STATUS_PENDING_APPROVAL for p in pocs)
-        rejected_pocs = sum(p.status == POC_STATUS_REJECTED for p in pocs)
+        pending_pocs = 0
+        rejected_pocs = 0
 
         stalled = 0
         ages = []

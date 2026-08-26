@@ -28,9 +28,6 @@ class PocRepository:
         return POCTracker.query.filter_by(opportunity_id=opportunity_id).order_by(POCTracker.created_at.asc()).all()
 
     @staticmethod
-    def get_pending_approval():
-        return POCTracker.query.filter_by(status="Pending Approval").order_by(POCTracker.created_at.asc()).all()
-
     @staticmethod
     def get_for_solution_engineer(user_id):
         return (
@@ -41,7 +38,7 @@ class PocRepository:
             .filter(
                 OpportunityTeam.user_id == user_id,
                 OpportunityTeam.role == SOLUTION_ENGINEER,
-                POCTracker.status.in_(["Approved", "In Progress"]),
+                POCTracker.status.in_(["Draft", "In Progress", "Submitted"]),
             )
             .order_by(POCTracker.created_at.asc())
             .all()

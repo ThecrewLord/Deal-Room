@@ -667,8 +667,8 @@ def seed_pocs(opportunities):
     """Seed POCs using the canonical Phase 6 status vocabulary."""
     poc_data = [
         ("Acme DevSecOps Transformation", "Draft POC", "Draft"),
-        ("Nova Pharma Secure Software Supply Chain", "Secure Supply Chain POC", "Pending Approval"),
-        ("FinEdge Observability Platform", "Observability Approval POC", "Approved"),
+        ("Nova Pharma Secure Software Supply Chain", "Secure Supply Chain POC", "Draft"),
+        ("FinEdge Observability Platform", "Observability POC", "Draft"),
         ("CloudPeak Security Automation", "Security Automation POC", "In Progress"),
         ("Retail Platform POC", "Retail Platform Technical POC", "Submitted"),
         ("CloudPeak Kubernetes Platform", "Completed Kubernetes POC", "Completed"),
@@ -688,11 +688,9 @@ def seed_pocs(opportunities):
                 "success_metric": "All mandatory acceptance criteria pass.",
                 "target_date": target,
                 "failure_condition": "A critical acceptance criterion fails.",
-                "stakeholder_signoff": status in {"Submitted", "Completed"},
                 "outcome": "Success" if status == "Completed" else None,
                 "outcome_notes": "Seeded completed result." if status == "Completed" else None,
                 "exit_criteria": "Acceptance criteria reviewed and documented.",
-                "poc_access_link": "https://example.com/deal-room-poc" if status in {"In Progress", "Submitted", "Completed"} else None,
             },
         )
         tracker.start_date = date.today()
@@ -702,11 +700,9 @@ def seed_pocs(opportunities):
         tracker.success_metric = "All mandatory acceptance criteria pass."
         tracker.target_date = target
         tracker.failure_condition = "A critical acceptance criterion fails."
-        tracker.stakeholder_signoff = status in {"Submitted", "Completed"}
         tracker.outcome = "Success" if status == "Completed" else None
         tracker.outcome_notes = "Seeded completed result." if status == "Completed" else None
         tracker.exit_criteria = "Acceptance criteria reviewed and documented."
-        tracker.poc_access_link = "https://example.com/deal-room-poc" if status in {"In Progress", "Submitted", "Completed"} else None
         db.session.flush()
 
 

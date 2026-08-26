@@ -9,7 +9,12 @@ def configure_cors(app):
         "CORS_ORIGINS",
         "http://localhost:5173,http://127.0.0.1:5173",
     )
-    origins = [origin.strip() for origin in configured.split(",") if origin.strip()]
+    origins = {origin.strip() for origin in configured.split(",") if origin.strip()}
+    # Always support both Vite local hostnames. This prevents a download
+    # response from losing CORS headers when the browser is opened via
+    # localhost vs 127.0.0.1.
+    origins.update({"http://localhost:5173", "http://127.0.0.1:5173"})
+    origins = list(origins)
 
     CORS(
         app,

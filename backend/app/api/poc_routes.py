@@ -30,25 +30,13 @@ def get_poc(poc_id):
 def get_pocs_by_opportunity(opportunity_id):
     return PocController.get_by_opportunity(opportunity_id)
 
-@poc_bp.get("/pending-approvals")
-@business_access_required
-def pending_approvals():
-    return PocController.pending_approval()
 
 @poc_bp.patch("/<int:poc_id>/design")
 @business_access_required
 def update_poc_design(poc_id):
     return PocController.update_design(poc_id)
 
-@poc_bp.post("/<int:poc_id>/approve")
-@business_access_required
-def approve_poc(poc_id):
-    return PocController.approve(poc_id)
 
-@poc_bp.post("/<int:poc_id>/reject")
-@business_access_required
-def reject_poc(poc_id):
-    return PocController.reject(poc_id)
 
 @poc_bp.post("/<int:poc_id>/start-execution")
 @business_access_required

@@ -24,7 +24,7 @@ from app.models.opportunity.poc_tracker import POCTracker
 from app.models.opportunity.stakeholder import Stakeholder
 from app.models.system.audit_log import AuditLog
 from app.models.opportunity.stage_master import StageMaster
-from app.constants.poc_outcome import (POC_STATUS_DRAFT, POC_STATUS_APPROVED, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED)
+from app.constants.poc_outcome import (POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED)
 
 
 class AuthorizationDenied(PermissionError):
@@ -339,7 +339,7 @@ class AuthorizationService:
             and AuthorizationService.is_assigned_role(user, opportunity, SOLUTION_ENGINEER)
             and not POCTracker.query.filter(
                 POCTracker.opportunity_id == opportunity.opportunity_id,
-                POCTracker.status.in_({POC_STATUS_APPROVED, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED}),
+                POCTracker.status.in_({POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED}),
             ).first()
         )
 
@@ -356,22 +356,15 @@ class AuthorizationService:
                 user, active_role, opportunity
             )
             and opportunity.current_stage is not None
-            and (
-                opportunity.current_stage.stage_name == "Discovery"
-                or opportunity.current_stage.requires_poc
-            )
+            and opportunity.current_stage.stage_name == "POC / Technical Evaluation"
         )
-
-    @staticmethod
-    def can_approve_poc(user, active_role, poc):
-        return False
 
     @staticmethod
     def can_execute_poc(user, active_role, poc):
         return (
             active_role == SOLUTION_ENGINEER
             and bool(poc)
-            and poc.status in {POC_STATUS_APPROVED, POC_STATUS_IN_PROGRESS}
+            and poc.status in {POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS}
             and poc.opportunity is not None
             and poc.opportunity.is_active
             and AuthorizationService.is_assigned_role(user, poc.opportunity, SOLUTION_ENGINEER)
@@ -383,7 +376,7 @@ class AuthorizationService:
         return (
             active_role == SOLUTION_ENGINEER
             and bool(poc)
-            and poc.status in {POC_STATUS_DRAFT, POC_STATUS_APPROVED}
+            and poc.status == POC_STATUS_DRAFT
             and poc.opportunity is not None
             and poc.opportunity.is_active
             and AuthorizationService.is_assigned_role(user, poc.opportunity, SOLUTION_ENGINEER)

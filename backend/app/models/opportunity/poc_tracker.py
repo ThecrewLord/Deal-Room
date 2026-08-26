@@ -62,11 +62,6 @@ class POCTracker(BaseModel):
         nullable=False,
     )
 
-    stakeholder_signoff = db.Column(
-        db.Boolean,
-        nullable=False,
-        default=False,
-    )
 
     outcome = db.Column(
         db.String(20),
@@ -79,21 +74,14 @@ class POCTracker(BaseModel):
     )
 
 
-
-    # Phase 6: separate technical design from execution/result.
+    # POC creator and execution audit fields. No manager approval workflow.
     exit_criteria = db.Column(db.Text, nullable=True)
-    poc_access_link = db.Column(db.Text, nullable=True)
-
     requested_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)
-    approved_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)
-    approved_at = db.Column(db.DateTime, nullable=True)
-    rejection_reason = db.Column(db.Text, nullable=True)
 
     submitted_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)
     submitted_at = db.Column(db.DateTime, nullable=True)
 
     requester = db.relationship("User", foreign_keys=[requested_by])
-    approver = db.relationship("User", foreign_keys=[approved_by])
     submitter = db.relationship("User", foreign_keys=[submitted_by])
 
     opportunity = db.relationship(

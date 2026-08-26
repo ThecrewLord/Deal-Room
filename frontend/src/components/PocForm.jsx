@@ -21,10 +21,9 @@ const INITIAL_FORM = {
     target_date: "",
     failure_condition: "",
     remarks: "",
-    stakeholder_signoff: false,
 };
 
-export default function PocForm({ onSubmit, submitting = false, onCancel }) {
+export default function PocForm({ onSubmit, submitting = false, onCancel, fixedOpportunity = null }) {
     const [form, setForm] = useState(INITIAL_FORM);
     const [opportunities, setOpportunities] = useState([]);
     const [loadingOpportunities, setLoadingOpportunities] = useState(true);
@@ -34,6 +33,13 @@ export default function PocForm({ onSubmit, submitting = false, onCancel }) {
     const opportunityPickerRef = useRef(null);
 
     useEffect(() => {
+        if (fixedOpportunity) {
+            setForm((current) => ({ ...current, opportunity_id: String(fixedOpportunity.opportunity_id) }));
+            setLoadingOpportunities(false);
+            setOpportunities([fixedOpportunity]);
+            return undefined;
+        }
+
         const loadOpportunities = async () => {
             try {
                 setLoadingOpportunities(true);
@@ -50,7 +56,7 @@ export default function PocForm({ onSubmit, submitting = false, onCancel }) {
         };
 
         loadOpportunities();
-    }, []);
+    }, [fixedOpportunity]);
 
     useEffect(() => {
         const handlePointerDown = (event) => {
@@ -64,13 +70,14 @@ export default function PocForm({ onSubmit, submitting = false, onCancel }) {
     }, []);
 
     const selectedOpportunity = useMemo(
-        () => opportunities.find(
+        () => fixedOpportunity || opportunities.find(
             (opportunity) => String(opportunity.opportunity_id) === String(form.opportunity_id)
         ),
-        [opportunities, form.opportunity_id]
+        [fixedOpportunity, opportunities, form.opportunity_id]
     );
 
     const filteredOpportunities = useMemo(() => {
+        if (fixedOpportunity) return [];
         const query = opportunitySearch.trim().toLowerCase();
         if (!query) return opportunities.slice(0, 25);
 
@@ -183,15 +190,17 @@ export default function PocForm({ onSubmit, submitting = false, onCancel }) {
                                                 : ""}
                                         </span>
                                     </div>
-                                    <button
-                                        type="button"
-                                        className="poc-clear-selection"
-                                        onClick={clearOpportunity}
-                                        disabled={submitting}
-                                        aria-label="Change opportunity"
-                                    >
-                                        <X size={15} />
-                                    </button>
+                                    {!fixedOpportunity && (
+                                        <button
+                                            type="button"
+                                            className="poc-clear-selection"
+                                            onClick={clearOpportunity}
+                                            disabled={submitting}
+                                            aria-label="Change opportunity"
+                                        >
+                                            <X size={15} />
+                                        </button>
+                                    )}
                                 </div>
                             ) : (
                                 <>
@@ -287,11 +296,6 @@ export default function PocForm({ onSubmit, submitting = false, onCancel }) {
                         <textarea id="remarks" name="remarks" value={form.remarks} onChange={handleChange} placeholder="Add any additional context..." disabled={submitting} />
                     </div>
                 </div>
-
-                <label className="poc-checkbox-row">
-                    <input type="checkbox" id="stakeholder_signoff" name="stakeholder_signoff" checked={form.stakeholder_signoff} onChange={handleChange} disabled={submitting} />
-                    <span>Stakeholder sign-off confirmed</span>
-                </label>
 
                 {error && <div className="poc-error" role="alert">{error}</div>}
 

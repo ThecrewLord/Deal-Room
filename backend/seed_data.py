@@ -959,9 +959,6 @@ def seed_pocs(workbook, opportunities):
                 success_metric=success_metric,
                 target_date=target_date,
                 failure_condition=failure_condition,
-                stakeholder_signoff=bool(
-                    row.get("stakeholder_signoff_required")
-                ),
                 outcome=clean(row.get("outcome")),
                 outcome_notes=clean(row.get("outcome_notes")),
                 exit_criteria=exit_criteria,
@@ -979,9 +976,6 @@ def seed_pocs(workbook, opportunities):
                 "objective": objective,
                 "success_metric": success_metric,
                 "failure_condition": failure_condition,
-                "stakeholder_signoff": bool(
-                    row.get("stakeholder_signoff_required")
-                ),
                 "outcome": clean(row.get("outcome")),
                 "outcome_notes": clean(row.get("outcome_notes")),
             }

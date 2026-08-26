@@ -9,7 +9,7 @@ from app.models.opportunity.opportunity import Opportunity
 from app.models.opportunity.poc_tracker import POCTracker
 from app.models.opportunity.stage_master import StageMaster
 from app.models.system.audit_log import AuditLog
-from app.constants.poc_outcome import POC_STATUS_APPROVED, POC_STATUS_IN_PROGRESS
+from app.constants.poc_outcome import POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS
 
 
 class DashboardRepository:
@@ -188,7 +188,7 @@ class DashboardRepository:
         pocs = POCTracker.query.filter(
             POCTracker.opportunity_id.in_(ids),
             POCTracker.target_date >= today,
-            POCTracker.status.in_([POC_STATUS_APPROVED, POC_STATUS_IN_PROGRESS]),
+            POCTracker.status.in_([POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS]),
         ).order_by(POCTracker.target_date.asc()).limit(limit).all()
         return [
             {

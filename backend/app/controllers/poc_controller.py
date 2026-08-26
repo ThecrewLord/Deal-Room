@@ -3,7 +3,7 @@ from marshmallow import ValidationError
 
 from app.auth.authorization import AuthorizationDenied
 from app.schemas.poc_schema import (
-    PocRequestSchema, PocResponseSchema, PocApprovalSchema, PocRejectionSchema,
+    PocRequestSchema, PocResponseSchema,
     PocDesignUpdateSchema, PocExecutionStartSchema, PocResultSchema, PocCompleteSchema,
 )
 from app.services.poc_service import PocService
@@ -15,21 +15,31 @@ response_list_schema = PocResponseSchema(many=True)
 class PocController:
     @staticmethod
     def download(poc_id):
-        pdf_buffer = PocService.generate_poc_pdf(
-            poc_id,
-            g.auth_user,
-            g.active_role,
-        )
+        try:
+            pdf_buffer = PocService.generate_poc_pdf(
+                poc_id,
+                g.auth_user,
+                g.active_role,
+            )
 
-        if not pdf_buffer:
-            return jsonify({"message": "POC not found"}), 404
+            if not pdf_buffer:
+                return jsonify({"message": "POC not found"}), 404
 
-        return send_file(
-            pdf_buffer,
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name=f"POC-{poc_id}.pdf",
-        )
+            return send_file(
+                pdf_buffer,
+                mimetype="application/pdf",
+                as_attachment=True,
+                download_name=f"POC-{poc_id}.pdf",
+            )
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403
+        except Exception as err:
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "message": "Failed to generate POC download.",
+                "detail": str(err),
+            }), 500
     @staticmethod
     def request():
         try:
@@ -60,14 +70,6 @@ class PocController:
         return jsonify(response_list_schema.dump(pocs)), 200
 
     @staticmethod
-    def pending_approval():
-        try:
-            pocs = PocService.get_pending_approval(g.auth_user, g.active_role)
-            return jsonify(response_list_schema.dump(pocs)), 200
-        except AuthorizationDenied as err:
-            return jsonify({"message": str(err)}), 403
-
-    @staticmethod
     def update_design(poc_id):
         try:
             data = PocDesignUpdateSchema().load(request.get_json() or {})
@@ -83,70 +85,6 @@ class PocController:
             return jsonify({"message": str(err)}), 409
         except Exception:
             return jsonify({"message": "Failed to update POC design"}), 500
-
-    @staticmethod
-    def approve(poc_id):
-        try:
-            data = PocApprovalSchema().load(request.get_json() or {})
-            poc = PocService.approve_poc(poc_id, data["updated_at"], g.auth_user, g.active_role)
-            if not poc:
-                return jsonify({"message": "POC not found"}), 404
-            return jsonify(response_schema.dump(poc)), 200
-        except ValidationError as err:
-            return jsonify(err.messages), 400
-        except AuthorizationDenied as err:
-            return jsonify({"message": str(err)}), 403
-        except (ValueError, RuntimeError) as err:
-            return jsonify({"message": str(err)}), 409
-        except Exception:
-            return jsonify({"message": "Failed to approve POC"}), 500
-
-    @staticmethod
-    def reject(poc_id):
-        try:
-            data = PocRejectionSchema().load(request.get_json() or {})
-            poc = PocService.reject_poc(poc_id, data["reason"], data["updated_at"], g.auth_user, g.active_role)
-            if not poc:
-                return jsonify({"message": "POC not found"}), 404
-            return jsonify(response_schema.dump(poc)), 200
-        except ValidationError as err:
-            return jsonify(err.messages), 400
-        except AuthorizationDenied as err:
-            return jsonify({"message": str(err)}), 403
-        except (ValueError, RuntimeError) as err:
-            return jsonify({"message": str(err)}), 409
-        except Exception:
-            return jsonify({"message": "Failed to reject POC"}), 500
-
-    @staticmethod
-    def get_eligible_opportunities():
-        opportunities = PocService.get_eligible_opportunities(
-            g.auth_user,
-            g.active_role,
-        )
-
-        return jsonify([
-            {
-                "opportunity_id": opportunity.opportunity_id,
-                "opportunity_name": opportunity.opportunity_name,
-                "account_name": (
-                    opportunity.account.account_name
-                    if opportunity.account
-                    else None
-                ),
-                "status": opportunity.status,
-                "is_active": opportunity.is_active,
-                "current_stage": (
-                    {
-                        "stage_id": opportunity.current_stage.stage_id,
-                        "stage_name": opportunity.current_stage.stage_name,
-                    }
-                    if opportunity.current_stage
-                    else None
-                ),
-            }
-            for opportunity in opportunities
-        ]), 200
 
     @staticmethod
     def start_execution(poc_id):

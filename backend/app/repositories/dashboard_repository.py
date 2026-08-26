@@ -197,7 +197,6 @@ class DashboardRepository:
                 "objective": p.objective,
                 "target_date": p.target_date,
                 "status": p.status,
-                "stakeholder_signoff": "Signed" if p.stakeholder_signoff else "Pending sign-off",
             }
             for p in pocs
         ]

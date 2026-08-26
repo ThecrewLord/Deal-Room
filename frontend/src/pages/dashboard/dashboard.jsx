@@ -1,315 +1,1154 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BriefcaseBusiness, DollarSign, FlaskConical, Percent, Target, TrendingUp, Users, Clock3 } from "lucide-react";
+import {
+    Target,
+    DollarSign,
+    TrendingUp,
+    Percent,
+    FlaskConical,
+    Clock,
+    AlertTriangle,
+    Handshake,
+    ArrowRight,
+    CheckCircle,
+    XCircle,
+    Circle,
+    BriefcaseBusiness,
+    Activity,
+    CalendarDays,
+} from "lucide-react";
+
+import {
+    ResponsiveContainer,
+    PieChart,
+    Pie,
+    Cell,
+    Tooltip,
+} from "recharts";
+
+import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { ROLES } from "../../auth/roles";
 import { getDashboardSummary } from "../../api/dashboardApi";
-import { getTeamPerformance } from "../../api/managerPerformanceApi";
-import { getPreSalesTeamPerformance } from "../../api/preSalesPerformanceApi";
-import { getPendingPreSalesAssignments } from "../../api/preSalesAssignmentApi";
-import adminApi from "../../api/adminApi";
-import DashboardShell from "../../components/dashboard/DashboardShell";
-import DashboardKpiRow from "../../components/dashboard/DashboardKpiRow";
-import PipelineOutcomePanel from "../../components/dashboard/PipelineOutcomePanel";
-import RecentOpportunities from "../../components/dashboard/RecentOpportunities";
-import RecentPocs from "../../components/dashboard/RecentPocs";
-import RecentActivity from "../../components/dashboard/RecentActivity";
-import TechnicalWorkspace from "../../components/dashboard/TechnicalWorkspace";
-import TeamSnapshot from "../../components/dashboard/TeamSnapshot";
-import Card from "../../components/ui/Card";
-import LoadingState from "../../components/ui/LoadingState";
-import ErrorState from "../../components/ui/ErrorState";
-import EmptyState from "../../components/ui/EmptyState";
+import Phase5RolePanel from "./sections/Phase5RolePanel";
+import QuickActions from "./sections/QuickActions";
+import { ROLES } from "../../auth/roles";
+import { useAuth } from "../../context/AuthContext";
 
-const money = (value) => {
-    const n = Number(value || 0);
-    if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
-    if (n >= 1000) return `$${(n / 1000).toFixed(0)}K`;
-    return `$${n.toLocaleString()}`;
+const BLUE = "var(--color-primary)";
+const GREEN = "var(--color-success)";
+const PURPLE = "var(--color-chart-purple)";
+const CYAN = "var(--color-info)";
+const ORANGE = "var(--color-chart-orange)";
+const SLATE = "var(--color-text-secondary)";
+const RED = "var(--color-danger)";
+
+const fmt = (value) => {
+    const number = Number(value || 0);
+
+    if (number >= 1000000) {
+        return `$${(
+            number / 1000000
+        ).toFixed(1)}M`;
+    }
+
+    if (number >= 1000) {
+        return `$${(
+            number / 1000
+        ).toFixed(0)}K`;
+    }
+
+    return `$${number.toLocaleString()}`;
 };
 
-const buildBusinessKpis = (role, data, team, assignments) => {
-    const common = {
-        opportunities: Number(data?.total_opportunities || 0),
-        pipeline: Number(data?.total_pipeline_value || 0),
-        forecast: Number(data?.weighted_forecast || 0),
-        open: Number(data?.open_opportunities || 0),
-        won: Number(data?.closed_won || 0),
-        stalled: Number(data?.stalled_deals || 0),
-        activePocs: Number(data?.active_pocs || 0),
-    };
-
-    if (role === ROLES.SALES_EXECUTIVE) {
-        const closed = common.won + Number(data?.closed_lost || 0);
-        const winRate = closed ? Math.round((common.won / closed) * 100) : 0;
-        return [
-            { label: "My Opportunities", value: common.opportunities, description: `${common.open} currently open`, icon: Target },
-            { label: "My Open Pipeline", value: money(common.pipeline), description: "Authorized open pipeline", icon: DollarSign },
-            { label: "Weighted Forecast", value: money(common.forecast), description: "Probability-adjusted", icon: TrendingUp },
-            { label: "Win Rate", value: `${winRate}%`, description: `${common.won} won of ${closed} closed`, icon: Percent },
-            { label: "Stalled Deals", value: common.stalled, description: common.stalled ? "Needs attention" : "Pipeline is moving", icon: AlertTriangle },
-        ];
+const formatDate = (value) => {
+    if (!value) {
+        return "-";
     }
 
-    if (role === ROLES.SOLUTION_ENGINEER) {
-        return [
-            { label: "Assigned Opportunities", value: common.opportunities, description: `${common.open} currently active`, icon: BriefcaseBusiness },
-            { label: "Technical Pipeline", value: money(common.pipeline), description: "Assigned technical scope", icon: DollarSign },
-            { label: "Weighted Forecast", value: money(common.forecast), description: "Probability-adjusted", icon: TrendingUp },
-            { label: "Active POCs", value: common.activePocs, description: "Technical evaluations", icon: FlaskConical },
-            { label: "Stalled Work", value: common.stalled, description: common.stalled ? "Needs attention" : "No stalled work", icon: AlertTriangle },
-        ];
-    }
-
-    if (role === ROLES.SALES_MANAGER) {
-        return [
-            { label: "Team Members", value: team?.team_size ?? "—", description: "Direct reports", icon: Users },
-            { label: "Team Pipeline", value: money(common.pipeline), description: `${common.open} open opportunities`, icon: DollarSign },
-            { label: "Weighted Forecast", value: money(common.forecast), description: "Probability-adjusted", icon: TrendingUp },
-            { label: "Deals Won", value: common.won, description: `${common.opportunities} opportunities in scope`, icon: Target },
-            { label: "Stalled Deals", value: common.stalled, description: common.stalled ? "Needs attention" : "No stalled deals", icon: AlertTriangle },
-        ];
-    }
-
-    if (role === ROLES.PRE_SALES_MANAGER) {
-        return [
-            { label: "Technical Team", value: team?.team_size ?? "—", description: "Direct technical reports", icon: Users },
-            { label: "Technical Pipeline", value: money(common.pipeline), description: `${common.open} open opportunities`, icon: DollarSign },
-            { label: "Weighted Forecast", value: money(common.forecast), description: "Probability-adjusted", icon: TrendingUp },
-            { label: "Active POCs", value: common.activePocs, description: "Technical evaluations", icon: FlaskConical },
-            { label: "Pending Assignments", value: assignments?.length ?? "—", description: "Awaiting Solution Engineer allocation", icon: Clock3 },
-        ];
-    }
-
-    return [];
+    return new Date(value).toLocaleDateString(
+        undefined,
+        {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+        }
+    );
 };
 
-function BusinessDashboard({ user, role }) {
-    const navigate = useNavigate();
-    const [data, setData] = useState(null);
-    const [team, setTeam] = useState(null);
-    const [teamError, setTeamError] = useState("");
-    const [teamLoading, setTeamLoading] = useState(false);
-    const [assignments, setAssignments] = useState(null);
-    const [assignmentError, setAssignmentError] = useState("");
-    const [assignmentLoading, setAssignmentLoading] = useState(false);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState("");
+const getActivityIcon = (action) => {
+    const normalized =
+        String(action || "").toUpperCase();
 
-    const load = async ({ refresh = false } = {}) => {
-        if (refresh) setRefreshing(true); else setLoading(true);
-        setError("");
-        try {
-            const summary = await getDashboardSummary();
-            setData(summary || {});
-        } catch (err) {
-            setError(err?.response?.data?.message || "Unable to load dashboard.");
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
+    if (normalized.includes("CREATE")) {
+        return CheckCircle;
+    }
 
-        if (role === ROLES.SALES_MANAGER) {
-            setTeamLoading(true);
-            try {
-                setTeamError("");
-                setTeam(await getTeamPerformance());
-            } catch (err) {
-                setTeamError(err?.response?.data?.message || "Unable to load team performance.");
-                setTeam(null);
-            } finally {
-                setTeamLoading(false);
-            }
-        }
+    if (normalized.includes("DELETE")) {
+        return XCircle;
+    }
 
-        if (role === ROLES.PRE_SALES_MANAGER) {
-            setTeamLoading(true);
-            setAssignmentLoading(true);
-            try {
-                setTeamError("");
-                setTeam(await getPreSalesTeamPerformance());
-            } catch (err) {
-                setTeamError(err?.response?.data?.message || "Unable to load technical team performance.");
-                setTeam(null);
-            } finally {
-                setTeamLoading(false);
-            }
-            try {
-                setAssignmentError("");
-                setAssignments(await getPendingPreSalesAssignments() || []);
-            } catch (err) {
-                setAssignmentError(err?.response?.data?.message || "Unable to load pending technical assignments.");
-                setAssignments(null);
-            } finally {
-                setAssignmentLoading(false);
-            }
-        }
-    };
+    if (normalized.includes("UPDATE")) {
+        return TrendingUp;
+    }
 
-    useEffect(() => {
-        load();
-    }, [role]);
+    return Circle;
+};
 
-    const kpis = useMemo(() => buildBusinessKpis(role, data, team, assignments), [role, data, team, assignments]);
-    const pipeline = data?.pipeline_by_stage || [];
-    const recentOpportunities = data?.recent_opportunities || [];
-    const recentPocs = data?.upcoming_pocs || [];
-    const recentActivity = data?.recent_activity || [];
-    const won = Number(data?.closed_won || 0);
-    const lost = Number(data?.closed_lost || 0);
-    const open = Number(data?.open_opportunities || 0);
-    const total = Number(data?.total_opportunities || 0);
+const getActivityColor = (action) => {
+    const normalized =
+        String(action || "").toUpperCase();
 
-    if (loading) return <div className="deal-dashboard"><LoadingState message="Loading dashboard…" /></div>;
-    if (error) return <div className="deal-dashboard"><ErrorState message={error} onRetry={() => load()} /></div>;
+    if (normalized.includes("CREATE")) {
+        return GREEN;
+    }
 
+    if (normalized.includes("DELETE")) {
+        return RED;
+    }
+
+    if (normalized.includes("UPDATE")) {
+        return BLUE;
+    }
+
+    return SLATE;
+};
+
+function Card({
+    children,
+    className = "",
+}) {
     return (
-        <DashboardShell
-            user={user}
-            role={role}
-            description={
-                role === ROLES.SALES_EXECUTIVE
-                    ? "Your sales pipeline, forecast and active opportunities."
-                    : role === ROLES.SOLUTION_ENGINEER
-                        ? "Your assigned technical workload, pipeline and POC activity."
-                        : role === ROLES.SALES_MANAGER
-                            ? "Team sales performance, pipeline health and review workload."
-                            : "Technical team workload, pipeline health and assignment coverage."
-            }
-            onRefresh={() => load({ refresh: true })}
-            refreshing={refreshing}
+        <section
+            className={`figma-card ${className}`}
         >
-            <DashboardKpiRow items={kpis} />
-
-            <PipelineOutcomePanel pipeline={pipeline} won={won} lost={lost} open={open} total={total} />
-
-            {role === ROLES.SOLUTION_ENGINEER && (
-                <TechnicalWorkspace
-                    opportunities={recentOpportunities}
-                    pocs={recentPocs}
-                />
-            )}
-
-            {role === ROLES.SALES_MANAGER && (
-                <TeamSnapshot team={team} error={teamError} loading={teamLoading} onRetry={() => load()} role="Sales Manager" />
-            )}
-
-            {role === ROLES.PRE_SALES_MANAGER && (
-                <>
-                    <TeamSnapshot team={team} error={teamError} loading={teamLoading} onRetry={() => load()} role="Pre-Sales Manager" />
-                    <Card className="dashboard-queue-card">
-                        <div className="dashboard-card-header">
-                            <div>
-                                <h2>Pending Technical Assignments</h2>
-                                <p>Approved opportunities awaiting Solution Engineer allocation.</p>
-                            </div>
-                            <button type="button" className="dashboard-text-button" onClick={() => navigate("/pre-sales/assignments")}>Open queue <span>→</span></button>
-                        </div>
-                        {assignmentError ? <ErrorState message={assignmentError} onRetry={() => load()} /> : assignmentLoading ? <LoadingState message="Loading assignment queue…" compact /> : assignments?.length ? (
-                            <div className="dashboard-assignment-list">
-                                {assignments.slice(0, 5).map((item) => (
-                                    <div className="dashboard-assignment-row" key={item.opportunity_id}>
-                                        <span className="dashboard-row-main"><strong>{item.opportunity_name}</strong><small>{item.account_name || "-"} · {item.sales_owner?.full_name || "Unassigned"}</small></span>
-                                        <strong>{money(item.estimated_value)}</strong>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : <EmptyState message="No opportunities are awaiting technical assignment." />}
-                    </Card>
-                </>
-            )}
-
-            <div className="dashboard-lower-grid">
-                <RecentOpportunities opportunities={recentOpportunities} />
-                {role === ROLES.SALES_EXECUTIVE ? (
-                    <RecentPocs pocs={recentPocs} title="Recent POCs / Activity" description="POC work and target dates in your scope." />
-                ) : (
-                    <RecentActivity activity={recentActivity} />
-                )}
-            </div>
-        </DashboardShell>
+            {children}
+        </section>
     );
 }
 
-function AdminDashboard() {
-    const { user } = useAuth();
-    const [users, setUsers] = useState([]);
-    const [pending, setPending] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+function Badge({ status }) {
+    const normalized =
+        String(status || "Unknown");
 
-    const load = async () => {
-        setLoading(true);
-        setError("");
-        try {
-            const [allUsers, pendingUsers] = await Promise.all([adminApi.getUsers(), adminApi.getPending()]);
-            setUsers(Array.isArray(allUsers) ? allUsers : []);
-            setPending(Array.isArray(pendingUsers) ? pendingUsers : []);
-        } catch (err) {
-            setError(err?.response?.data?.message || "Unable to load administration data.");
-        } finally {
-            setLoading(false);
-        }
+    const styles = {
+        Open: "badge-open",
+        Won: "badge-won",
+        Lost: "badge-lost",
+        Stalled: "badge-stalled",
+        Active: "badge-open",
+        Completed: "badge-won",
+        Upcoming: "badge-upcoming",
+        Failed: "badge-lost",
+        Planned: "badge-upcoming",
     };
 
-    useEffect(() => {
-        load();
-    }, []);
-
-    const stats = useMemo(() => {
-        const approved = users.filter((item) => item.status === "APPROVED");
-        const revoked = users.filter((item) => item.status === "REVOKED");
-        return {
-            total: users.length,
-            active: approved.filter((item) => item.active).length,
-            pending: pending.length,
-            revoked: revoked.length,
-        };
-    }, [users, pending]);
-
-    const roles = useMemo(() => {
-        const counts = {};
-        users.forEach((item) => (item.roles || []).forEach((role) => { counts[role] = (counts[role] || 0) + 1; }));
-        return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    }, [users]);
-
-    if (loading) return <div className="deal-dashboard"><LoadingState message="Loading administration dashboard…" /></div>;
-    if (error) return <div className="deal-dashboard"><ErrorState title="Administration data unavailable" message={error} onRetry={load} /></div>;
-
     return (
-        <DashboardShell user={user} role={ROLES.ADMIN} description="Administrative access, user status and platform coverage." onRefresh={load}>
-            <DashboardKpiRow items={[
-                { label: "Total Users", value: stats.total, description: "Registered accounts", icon: Users },
-                { label: "Active Users", value: stats.active, description: "Approved and enabled", icon: Target },
-                { label: "Pending Approvals", value: stats.pending, description: "Awaiting review", icon: Clock3 },
-                { label: "Revoked Access", value: stats.revoked, description: "Currently blocked", icon: AlertTriangle },
-            ]} />
+        <span
+            className={`dashboard-badge ${
+                styles[normalized] ||
+                "badge-upcoming"
+            }`}
+        >
+            {normalized}
+        </span>
+    );
+}
 
-            <div className="dashboard-admin-grid">
-                <Card>
-                    <div className="dashboard-card-header"><div><h2>Access Overview</h2><p>Current user coverage by assigned platform role.</p></div></div>
-                    {roles.length ? <div className="dashboard-admin-role-list">{roles.map(([role, count]) => <div className="dashboard-admin-role-row" key={role}><span>{role}</span><strong>{count}</strong></div>)}</div> : <EmptyState message="No role assignments are available." />}
-                </Card>
-                <Card>
-                    <div className="dashboard-card-header"><div><h2>Pending Approvals</h2><p>Users waiting for administrator review.</p></div></div>
-                    {pending.length ? <div className="dashboard-admin-pending-list">{pending.slice(0, 6).map((item) => <div className="dashboard-admin-user-row" key={item.user_id}><span className="dashboard-team-avatar">{String(item.full_name || "U").split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</span><span className="dashboard-row-main"><strong>{item.full_name}</strong><small>{item.email}</small></span><span className="dashboard-admin-status">Pending</span></div>)}</div> : <EmptyState message="No pending approvals." />}
-                </Card>
+function KPICard({
+    title,
+    value,
+    change,
+    changeType = "neutral",
+    icon,
+    color,
+}) {
+    return (
+        <div className="figma-kpi-card">
+            <div className="kpi-top">
+                <span className="kpi-title">
+                    {title}
+                </span>
+
+                <span
+                    className="kpi-icon"
+                    style={{
+                        color,
+                        background:
+                            `color-mix(in srgb, ${color} 8%, transparent)`,
+                    }}
+                >
+                    {icon}
+                </span>
             </div>
 
-            <Card>
-                <div className="dashboard-card-header"><div><h2>Recent Users</h2><p>Latest registered accounts available to the administrator.</p></div></div>
-                {users.length ? <div className="dashboard-admin-user-list">{users.slice(0, 6).map((item) => <div className="dashboard-admin-user-row" key={item.user_id}><span className="dashboard-team-avatar">{String(item.full_name || "U").split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</span><span className="dashboard-row-main"><strong>{item.full_name}</strong><small>{item.email}</small></span><span className="dashboard-admin-user-role">{(item.roles || []).slice(0, 2).join(" · ") || "No role assigned"}</span><span className="dashboard-admin-status">{String(item.status || "Unknown").replace(/_/g, " ")}</span></div>)}</div> : <EmptyState message="No users found." />}
-            </Card>
-        </DashboardShell>
+            <strong className="kpi-value">
+                {value}
+            </strong>
+
+            <span
+                className={`kpi-change ${changeType}`}
+            >
+                {change}
+            </span>
+        </div>
     );
 }
 
 export default function Dashboard() {
+    const navigate = useNavigate();
     const { user, activeRole, loading: authLoading } = useAuth();
 
-    if (authLoading) return <div className="deal-dashboard"><LoadingState message="Loading dashboard…" /></div>;
-    if (!activeRole) return <Navigate replace to="/unauthorized" />;
-    if (activeRole === ROLES.ADMIN) return <AdminDashboard />;
-    return <BusinessDashboard user={user} role={activeRole} />;
+    const [dashboard, setDashboard] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+        let mounted = true;
+
+        const loadDashboard = async () => {
+            try {
+                setLoading(true);
+                setError("");
+                const response = await getDashboardSummary();
+                if (mounted) {
+                    setDashboard(response);
+                }
+            } catch (err) {
+                if (mounted) {
+                    setError(
+                        err?.response?.data?.message ||
+                        "Unable to load dashboard."
+                    );
+                }
+            } finally {
+                if (mounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        if (!authLoading && activeRole) {
+            loadDashboard();
+        }
+
+        return () => {
+            mounted = false;
+        };
+    }, [authLoading, activeRole]);
+
+    if (authLoading || loading) {
+        return <DashboardLoading />;
+    }
+
+    if (error) {
+        return <DashboardError message={error} onRetry={() => window.location.reload()} />;
+    }
+
+    if (!activeRole || activeRole === ROLES.ADMIN) {
+        return (
+            <Navigate
+                replace
+                to={activeRole === ROLES.ADMIN ? "/admin/approval" : "/unauthorized"}
+            />
+        );
+    }
+
+    const totalOpportunities =
+        dashboard?.total_opportunities ?? 0;
+
+    const pipelineValue =
+        dashboard?.total_pipeline_value ?? 0;
+
+    const weightedForecast =
+        dashboard?.weighted_forecast ?? 0;
+
+    const conversionRate =
+        dashboard?.conversion_rate ?? 0;
+
+    const activePOCs =
+        dashboard?.active_pocs ?? 0;
+
+    const averageAge =
+        dashboard?.average_stage_ageing ?? 0;
+
+    const stalledDeals =
+        dashboard?.stalled_deals ?? 0;
+
+    const partnerContribution =
+        dashboard?.partner_contribution ?? 0;
+
+    const pipeline =
+        dashboard?.pipeline_by_stage || [];
+
+    const recentOpportunities =
+        dashboard?.recent_opportunities || [];
+
+    const recentActivity =
+        dashboard?.recent_activity || [];
+
+    const upcomingPOCs =
+        dashboard?.upcoming_pocs || [];
+
+    const closedWon =
+        dashboard?.closed_won ?? 0;
+
+    const closedLost =
+        dashboard?.closed_lost ?? 0;
+
+    const openOpportunities =
+        dashboard?.open_opportunities ?? 0;
+
+    const totalClosed =
+        closedWon + closedLost;
+
+    const winLossData = [
+        {
+            name: "Won",
+            value:
+                totalClosed > 0
+                    ? Math.round(
+                        (
+                            closedWon /
+                            totalClosed
+                        ) * 100
+                    )
+                    : 0,
+            color: GREEN,
+        },
+        {
+            name: "Lost",
+            value:
+                totalClosed > 0
+                    ? Math.round(
+                        (
+                            closedLost /
+                            totalClosed
+                        ) * 100
+                    )
+                    : 0,
+            color: RED,
+        },
+        {
+            name: "In Progress",
+            value:
+                totalOpportunities > 0
+                    ? Math.round(
+                        (
+                            openOpportunities /
+                            totalOpportunities
+                        ) * 100
+                    )
+                    : 0,
+            color: BLUE,
+        },
+    ];
+
+    const maxPipelineValue = Math.max(
+        ...pipeline.map(
+            (item) =>
+                Number(item.value || 0)
+        ),
+        1
+    );
+
+    const firstName =
+        user?.full_name
+            ?.trim()
+            ?.split(/\s+/)[0] ||
+        "there";
+
+    return (
+        <div className="figma-dashboard fade-in">
+
+            {/* =====================================================
+                WELCOME
+            ====================================================== */}
+
+            <div className="figma-dashboard-welcome">
+    <div>
+        <span className="dashboard-eyebrow">
+            SALES INTELLIGENCE
+        </span>
+
+        <h1>
+            Good morning, {firstName} 👋
+        </h1>
+
+        <p>
+            Here is your pipeline summary for{" "}
+            {new Date().toLocaleDateString(
+                undefined,
+                {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                }
+            )}
+        </p>
+    </div>
+
+    <span className="dashboard-role-badge">
+        {activeRole || "No Active Role"}
+    </span>
+</div>
+
+
+{/* =====================================================
+    KPI ROW 1
+====================================================== */}
+
+<div className="figma-kpi-grid">
+
+    <KPICard
+        title="Total Opportunities"
+        value={totalOpportunities}
+        change={
+            `${dashboard?.open_opportunities ?? 0} currently open`
+        }
+        changeType="neutral"
+        icon={<Target size={18} />}
+        color={BLUE}
+    />
+
+    <KPICard
+        title="Pipeline Value"
+        value={fmt(pipelineValue)}
+        change={
+            `${dashboard?.open_opportunities ?? 0} open opportunities`
+        }
+        changeType="up"
+        icon={<DollarSign size={18} />}
+        color={GREEN}
+    />
+
+    <KPICard
+        title="Weighted Forecast"
+        value={fmt(weightedForecast)}
+        change="Probability-adjusted"
+        changeType="neutral"
+        icon={<TrendingUp size={18} />}
+        color={PURPLE}
+    />
+
+    <KPICard
+        title="Conversion Rate"
+        value={`${conversionRate}%`}
+        change={`${closedWon} won / ${totalClosed} closed`}
+        changeType={
+            conversionRate > 0 ? "up" : "neutral"
+        }
+        icon={<Percent size={18} />}
+        color={CYAN}
+    />
+
+</div>
+
+
+{/* =====================================================
+    KPI ROW 2
+====================================================== */}
+
+<div className="figma-kpi-grid">
+
+    <KPICard
+        title="Active POCs"
+        value={activePOCs}
+        change={
+            upcomingPOCs.length
+                ? `${upcomingPOCs.length} upcoming`
+                : "No upcoming POCs"
+        }
+        changeType="neutral"
+        icon={<FlaskConical size={18} />}
+        color={ORANGE}
+    />
+
+    <KPICard
+        title="Stage Ageing (Avg)"
+        value={`${averageAge} days`}
+        change="Average opportunity age"
+        changeType="neutral"
+        icon={<Clock size={18} />}
+        color={SLATE}
+    />
+
+    <KPICard
+        title="Stalled Deals"
+        value={stalledDeals}
+        change={
+            stalledDeals > 0
+                ? "Needs attention"
+                : "No stalled deals"
+        }
+        changeType={
+            stalledDeals > 0 ? "down" : "up"
+        }
+        icon={<AlertTriangle size={18} />}
+        color={ORANGE}
+    />
+
+    <KPICard
+        title="Partner Contribution"
+        value={partnerContribution}
+        change="Partner-linked opportunities"
+        changeType="neutral"
+        icon={<Handshake size={18} />}
+        color="var(--color-chart-teal)"
+    />
+
+</div>
+
+
+{/* =====================================================
+    ROLE-SPECIFIC WORK
+====================================================== */}
+
+{[
+    ROLES.PRE_SALES_MANAGER,
+    ROLES.SOLUTION_ENGINEER,
+    ROLES.DELIVERY,
+].includes(activeRole) && (
+    <Phase5RolePanel />
+)}
+
+
+{/* =====================================================
+    QUICK ACTIONS
+====================================================== */}
+
+<div className="dashboard-role-actions">
+    <QuickActions />
+</div>
+
+            {/* =====================================================
+                CHART ROW
+            ====================================================== */}
+
+            <div className="figma-dashboard-grid dashboard-grid-top">
+
+                {/* Stage Distribution */}
+                <Card className="stage-distribution-card">
+                    <div className="figma-card-header">
+                        <div>
+                            <h3>Stage Distribution</h3>
+                            <p>Deals across your sales pipeline by stage.</p>
+                        </div>
+                    </div>
+                    <div className="pipeline-overview">
+                        {pipeline.map((item, index) => {
+                            const value = Number(item.value || 0);
+                            const count = Number(item.count || 0);
+                            const width = value > 0 ? Math.max((value / maxPipelineValue) * 100, 6) : 0;
+                            return (
+                                <div className="pipeline-stage-row" key={item.stage}>
+                                    <div className="pipeline-stage-index">{index + 1}</div>
+                                    <div className="pipeline-stage-main">
+                                        <div className="pipeline-stage-head">
+                                            <strong>{item.stage}</strong>
+                                            <span>{count} {count === 1 ? "deal" : "deals"}</span>
+                                        </div>
+                                        <div className="pipeline-stage-track">
+                                            <div className={`pipeline-stage-fill stage-fill-${Math.min(index + 1, 8)}`} style={{ width: `${width}%` }} />
+                                        </div>
+                                    </div>
+                                    <div className="pipeline-stage-value">{fmt(value)}</div>
+                                </div>
+                            );
+                        })}
+                        {!pipeline.length && <div className="figma-dashboard-empty">No stage data available.</div>}
+                    </div>
+                </Card>
+
+                {/* Win Loss */}
+                <Card>
+
+                    <div className="figma-card-header">
+                        <div>
+                            <h3>
+                                Win vs Loss Ratio
+                            </h3>
+
+                            <p>
+                                Current deal
+                                outcomes
+                            </p>
+                        </div>
+                    </div>
+
+                    <ResponsiveContainer
+                        width="100%"
+                        height={170}
+                    >
+                        <PieChart>
+                            <Pie
+                                data={winLossData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={42}
+                                outerRadius={65}
+                                paddingAngle={3}
+                                dataKey="value"
+                            >
+                                {winLossData.map(
+                                    (
+                                        entry
+                                    ) => (
+                                        <Cell
+                                            key={
+                                                entry.name
+                                            }
+                                            fill={
+                                                entry.color
+                                            }
+                                        />
+                                    )
+                                )}
+                            </Pie>
+
+                            <Tooltip />
+                        </PieChart>
+                    </ResponsiveContainer>
+
+                    <div className="win-loss-list">
+
+                        {winLossData.map(
+                            (item) => (
+                                <div
+                                    key={
+                                        item.name
+                                    }
+                                    className="win-loss-row"
+                                >
+                                    <span>
+                                        <i
+                                            style={{
+                                                background:
+                                                    item.color,
+                                            }}
+                                        />
+
+                                        {
+                                            item.name
+                                        }
+                                    </span>
+
+                                    <strong>
+                                        {
+                                            item.value
+                                        }%
+                                    </strong>
+                                </div>
+                            )
+                        )}
+
+                    </div>
+
+                </Card>
+
+            </div>
+
+            {/* =====================================================
+                PIPELINE FUNNEL
+            ====================================================== */}
+
+            <Card className="pipeline-funnel-card">
+
+                <div className="figma-card-header">
+                    <div>
+                        <h3>
+                            Pipeline Funnel
+                        </h3>
+
+                        <p>
+                            Deal volume and value
+                            by stage
+                        </p>
+                    </div>
+                </div>
+
+                <div className="pipeline-funnel">
+
+                    {pipeline.map(
+                        (item, index) => {
+                            const percentage =
+                                (
+                                    Number(
+                                        item.value ||
+                                        0
+                                    ) /
+                                    maxPipelineValue
+                                ) * 100;
+
+                            const colors = [
+                                "var(--color-primary)",
+                                "var(--color-chart-blue-light)",
+                                "var(--color-chart-blue-soft)",
+                                "var(--color-chart-purple)",
+                                "var(--color-chart-purple-light)",
+                                "var(--color-info)",
+                                "var(--color-chart-teal)",
+                            ];
+
+                            return (
+                                <div
+                                    key={
+                                        item.stage
+                                    }
+                                    className="pipeline-funnel-row"
+                                >
+                                    <span className="pipeline-stage">
+                                        {
+                                            item.stage
+                                        }
+                                    </span>
+
+                                    <div className="pipeline-track">
+                                        <div
+                                            className="pipeline-fill"
+                                            style={{
+                                                width: `${Math.max(
+                                                    percentage,
+                                                    2
+                                                )}%`,
+                                                background:
+                                                    colors[
+                                                        index %
+                                                        colors.length
+                                                    ],
+                                            }}
+                                        >
+                                            {percentage >
+                                                20 && (
+                                                <span>
+                                                    {fmt(
+                                                        item.value
+                                                    )}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <strong className="pipeline-count">
+                                        {
+                                            item.count
+                                        }
+                                    </strong>
+                                </div>
+                            );
+                        }
+                    )}
+
+                </div>
+
+            </Card>
+
+            {/* =====================================================
+                RECENT OPPORTUNITIES + ACTIVITY
+            ====================================================== */}
+
+            {/* =====================================================
+  {/* =====================================================
+    RECENT OPPORTUNITIES + ACTIVITY
+====================================================== */}
+
+<div className="dashboard-lower-grid">
+
+    {/* =================================================
+        RECENT OPPORTUNITIES
+    ================================================== */}
+
+    <Card className="recent-opportunities">
+
+        <div className="dashboard-section-header">
+
+            <div className="dashboard-section-title">
+
+                <div className="section-icon section-icon-blue">
+                    <BriefcaseBusiness size={17} />
+                </div>
+
+                <div>
+                    <h3>Recent Opportunities</h3>
+
+                    <p>
+                        Latest deals added or updated in your pipeline.
+                    </p>
+                </div>
+
+            </div>
+
+            <button
+                className="dashboard-view-all"
+                onClick={() => navigate("/opportunities")}
+            >
+                View all
+                <ArrowRight size={13} />
+            </button>
+
+        </div>
+
+
+        {recentOpportunities.length > 0 ? (
+
+            <div className="recent-opportunity-grid">
+
+                {recentOpportunities
+                    .slice(0, 5)
+                    .map((opportunity, index) => {
+
+                        const accents = [
+                            "blue",
+                            "green",
+                            "purple",
+                            "orange",
+                            "cyan",
+                        ];
+
+                        const accent =
+                            accents[index % accents.length];
+
+                        const name =
+                            opportunity.name || "Opportunity";
+
+                        const initial =
+                            name
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase();
+
+                        return (
+                            <button
+                                key={opportunity.id}
+                                className={`modern-opportunity-card accent-${accent}`}
+                                onClick={() =>
+                                    navigate(
+                                        `/opportunities/${opportunity.id}`
+                                    )
+                                }
+                            >
+
+                                {/* TOP */}
+                                <div className="modern-opportunity-top">
+
+                                    <div
+                                        className={`opportunity-avatar avatar-${accent}`}
+                                    >
+                                        {initial}
+                                    </div>
+
+                                    <div className="modern-opportunity-info">
+
+                                        <strong>
+                                            {name}
+                                        </strong>
+
+                                        <span>
+                                            {opportunity.account ||
+                                                "Account"}
+                                        </span>
+
+                                        <small>
+                                            {opportunity.stage ||
+                                                "Stage"}
+                                        </small>
+
+                                    </div>
+
+                                    <Badge
+                                        status={
+                                            opportunity.status
+                                        }
+                                    />
+
+                                </div>
+
+
+                                {/* BOTTOM */}
+                                <div className="modern-opportunity-bottom">
+
+                                    <strong>
+                                        {fmt(
+                                            opportunity.value
+                                        )}
+                                    </strong>
+
+                                    <span>
+                                        {opportunity.probability ?? 0}
+                                        % probability
+                                    </span>
+
+                                </div>
+
+                            </button>
+                        );
+                    })}
+
+            </div>
+
+        ) : (
+
+            <DashboardEmpty
+                title="No opportunities"
+                subtitle="Recent opportunities will appear here."
+            />
+
+        )}
+
+    </Card>
+
+
+    {/* =================================================
+        RECENT ACTIVITY
+    ================================================== */}
+
+    <Card className="recent-activity-card">
+
+        <div className="dashboard-section-header">
+
+            <div className="dashboard-section-title">
+
+                <div className="section-icon section-icon-purple">
+                    <Activity size={17} />
+                </div>
+
+                <div>
+                    <h3>Recent Activity</h3>
+
+                    <p>
+                        Latest actions across your Deal Room.
+                    </p>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        {recentActivity.length > 0 ? (
+
+            <div className="modern-activity-list">
+
+                {recentActivity
+                    .slice(0, 6)
+                    .map((activity, index) => {
+
+                        const Icon =
+                            getActivityIcon(
+                                activity.action
+                            );
+
+                        const color =
+                            getActivityColor(
+                                activity.action
+                            );
+
+                        const activityColors = [
+                            "green",
+                            "purple",
+                            "orange",
+                            "blue",
+                            "green",
+                            "purple",
+                        ];
+
+                        const accent =
+                            activityColors[
+                                index %
+                                activityColors.length
+                            ];
+
+                        return (
+                            <div
+                                key={activity.id}
+                                className="modern-activity-row"
+                            >
+
+                                {/* TIMELINE */}
+                                <div className="activity-timeline">
+
+                                    <div
+                                        className={`activity-avatar activity-avatar-${accent}`}
+                                    >
+                                        <Icon size={15} />
+                                    </div>
+
+                                    {index <
+                                        Math.min(
+                                            recentActivity.length,
+                                            6
+                                        ) -
+                                            1 && (
+                                        <span className="activity-line" />
+                                    )}
+
+                                </div>
+
+
+                                {/* CONTENT */}
+                                <div className="activity-content">
+
+                                    <p>
+                                        {activity.details}
+                                    </p>
+
+                                    <div className="activity-meta">
+
+                                        <span>
+                                            {activity.user}
+                                        </span>
+
+                                        <span className="activity-date">
+                                            <CalendarDays
+                                                size={12}
+                                            />
+
+                                            {formatDate(
+                                                activity.timestamp
+                                            )}
+                                        </span>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+                        );
+                    })}
+
+            </div>
+
+        ) : (
+
+            <DashboardEmpty
+                title="No recent activity"
+                subtitle="System activity will appear here."
+            />
+
+        )}
+
+    </Card>
+
+</div>
+
+            {/* =====================================================
+                UPCOMING POCS
+            ====================================================== */}
+
+            <Card className="upcoming-pocs">
+
+                <div className="figma-card-header clickable-header">
+
+                    <h3>
+                        Upcoming POCs
+                    </h3>
+
+                    <button
+                        onClick={() =>
+                            navigate(
+                                "/pocs"
+                            )
+                        }
+                    >
+                        View all
+                        <ArrowRight
+                            size={12}
+                        />
+                    </button>
+
+                </div>
+
+                {upcomingPOCs.length > 0 ? (
+                    <div className="dashboard-list">
+
+                        {upcomingPOCs.map(
+                            (poc) => (
+                                <div
+                                    key={poc.id}
+                                    className="poc-row"
+                                >
+                                    <div>
+                                        <strong>
+                                            {
+                                                poc.opportunity
+                                            }
+                                        </strong>
+
+                                        <span>
+                                            {
+                                                poc.objective
+                                            }
+                                        </span>
+                                    </div>
+
+                                    <div className="poc-meta">
+                                        <span>
+                                            {formatDate(
+                                                poc.target_date
+                                            )}
+                                        </span>
+
+                                        <small>
+                                            {
+                                                poc.stakeholder_signoff
+                                            }
+                                        </small>
+                                    </div>
+
+                                    <Badge
+                                        status={
+                                            poc.status
+                                        }
+                                    />
+                                </div>
+                            )
+                        )}
+
+                    </div>
+                ) : (
+                    <DashboardEmpty
+                        title="No upcoming POCs"
+                        subtitle="Scheduled proof-of-concepts will appear here."
+                    />
+                )}
+
+            </Card>
+
+        </div>
+    );
+}
+
+function DashboardEmpty({
+    title,
+    subtitle,
+}) {
+    return (
+        <div className="figma-dashboard-empty">
+            <strong>{title}</strong>
+            <span>{subtitle}</span>
+        </div>
+    );
+}
+
+function DashboardLoading() {
+    return (
+        <div className="figma-dashboard-loading">
+            <div className="dashboard-loading-title" />
+            <div className="dashboard-loading-grid">
+                {Array.from({ length: 8 }).map((_, index) => (
+                    <div key={index} className="dashboard-loading-card" />
+                ))}
+            </div>
+            <div className="dashboard-loading-large" />
+        </div>
+    );
+}
+
+function DashboardError({ message, onRetry }) {
+    return (
+        <div className="figma-dashboard-error">
+            <div>
+                <h2>Unable to load dashboard</h2>
+                <p>{message}</p>
+                <button onClick={onRetry}>Retry</button>
+            </div>
+        </div>
+    );
 }

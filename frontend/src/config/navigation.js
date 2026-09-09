@@ -1,12 +1,16 @@
 import { ROLES } from "../auth/roles";
 
 const navigation = {
+    [ROLES.LEADERSHIP]: [
+        { name: "Dashboard", path: "/dashboard" },
+        { name: "Administration", path: "/admin/users" },
+        { name: "Opportunities", path: "/opportunities" },
+        { name: "Accounts", path: "/accounts" },
+    ],
+
     [ROLES.ADMIN]: [
         { name: "Dashboard", path: "/dashboard" },
-        { name: "Pending Approvals", path: "/admin/approval" },
-        { name: "Users", path: "/admin/users" },
-        { name: "Role Management", path: "/admin/roles" },
-        { name: "Access Management", path: "/admin/access" },
+        { name: "Administration", path: "/admin/users" },
     ],
 
     [ROLES.SALES_EXECUTIVE]: [
@@ -28,16 +32,35 @@ const navigation = {
         { name: "Pending Technical Assignment", path: "/pre-sales/assignments" },
         { name: "Team Performance", path: "/pre-sales/team-performance" },
         { name: "Opportunities", path: "/opportunities" },
+        { name: "Accounts", path: "/accounts" },
     ],
 
     [ROLES.SOLUTION_ENGINEER]: [
         { name: "Dashboard", path: "/dashboard" },
         { name: "Opportunities", path: "/opportunities" },
+        { name: "Accounts", path: "/accounts" },
         { name: "POCs", path: "/pocs" },
         { name: "Stakeholders", path: "/stakeholders" },
         { name: "OEM Registry", path: "/oem-registry" },
     ],
 
+    [ROLES.DELIVERY_MANAGER]: [
+        { name: "Dashboard", path: "/dashboard" },
+        { name: "Opportunities", path: "/opportunities" },
+        { name: "Accounts", path: "/accounts" },
+    ],
+
+    [ROLES.DEVOPS_ENGINEER]: [
+        { name: "Dashboard", path: "/dashboard" },
+        { name: "Opportunities", path: "/opportunities" },
+        { name: "Accounts", path: "/accounts" },
+    ],
+
+    [ROLES.DATA_ANALYST]: [
+        { name: "Dashboard", path: "/dashboard" },
+        { name: "Opportunities", path: "/opportunities" },
+        { name: "Accounts", path: "/accounts" },
+    ],
 };
 
 export default navigation;

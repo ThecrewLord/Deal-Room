@@ -56,10 +56,10 @@ from app import create_app
 from app.database import db
 from app.auth.password import hash_password
 from app.constants.auth_constants import STATUS_APPROVED, STATUS_PENDING, STATUS_REVOKED
-from app.constants.roles import ADMIN, PRE_SALES_MANAGER, DELIVERY
+from app.constants.roles import LEADERSHIP, ADMIN, PRE_SALES_MANAGER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST
 from app.models.system.notification import Notification
 
-# This seed script intentionally does NOT create or modify users/roles.
+# This development seed path owns deterministic test identities and v2 roles.
 
 # Import every model that currently has a real table in this project.
 from app.models.auth.user import User
@@ -77,7 +77,7 @@ from app.models.poc.poc import Poc
 from app.models.system.tag import Tag
 from app.models.system.audit_log import AuditLog
 
-from app.constants.roles import SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY
+from app.constants.roles import SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST
 from app.constants.stages import PIPELINE_STAGES, CLOSED_STATUS, OPEN_STATUS
 
 
@@ -104,13 +104,16 @@ def seed_users():
     """Create/update only the documented local development identities."""
     password_hash = hash_password("Test@123")
     specs = [
+        ("System Leadership", "leadership@dealroom.local", [LEADERSHIP], STATUS_APPROVED),
         ("System Administrator", "admin@dealroom.local", [ADMIN], STATUS_APPROVED),
         ("Sales Executive", "sales.exec@dealroom.local", [SALES_EXECUTIVE], STATUS_APPROVED),
         ("Sales Manager", "sales.manager@dealroom.local", [SALES_MANAGER], STATUS_APPROVED),
         ("Pre-Sales Manager", "presales.manager@dealroom.local", [PRE_SALES_MANAGER], STATUS_APPROVED),
         ("Solution Engineer", "solution.engineer@dealroom.local", [SOLUTION_ENGINEER], STATUS_APPROVED),
-        ("Solution Engineer", "delivery@dealroom.local", [DELIVERY], STATUS_APPROVED),
-        ("Multi Role User", "multi.role@dealroom.local", [SOLUTION_ENGINEER], STATUS_APPROVED),
+        ("Delivery Manager", "delivery.manager@dealroom.local", [DELIVERY_MANAGER], STATUS_APPROVED),
+        ("DevOps Engineer", "devops.engineer@dealroom.local", [DEVOPS_ENGINEER], STATUS_APPROVED),
+        ("Data Analyst", "data.analyst@dealroom.local", [DATA_ANALYST], STATUS_APPROVED),
+        ("Multi Role User", "multi.role@dealroom.local", [SOLUTION_ENGINEER, DEVOPS_ENGINEER], STATUS_APPROVED),
         ("Pending User", "pending@dealroom.local", [], STATUS_PENDING),
         ("Revoked User", "revoked@dealroom.local", [SALES_EXECUTIVE], STATUS_REVOKED),
     ]
@@ -130,26 +133,28 @@ def seed_users():
             user.active = status != STATUS_REVOKED
             if status == STATUS_APPROVED and not user.approved_at:
                 user.approved_at = datetime.utcnow()
-        existing_roles = {row.role for row in user.roles}
+        desired_roles = set(roles)
+        for row in list(user.roles):
+            if row.role not in desired_roles:
+                db.session.delete(row)
+        existing_roles = {row.role for row in user.roles if row.role in desired_roles}
         for role in roles:
             if role not in existing_roles:
                 user.roles.append(UserRole(role=role))
-        if not roles:
-            for row in list(user.roles):
-                db.session.delete(row)
         users[email.lower()] = user
 
     db.session.flush()
     manager_map = {
         "sales.exec@dealroom.local": "sales.manager@dealroom.local",
         "solution.engineer@dealroom.local": "presales.manager@dealroom.local",
-        "delivery@dealroom.local": "presales.manager@dealroom.local",
+        "devops.engineer@dealroom.local": "delivery.manager@dealroom.local",
+        "data.analyst@dealroom.local": "delivery.manager@dealroom.local",
         "multi.role@dealroom.local": "presales.manager@dealroom.local",
     }
     for email, manager_email in manager_map.items():
         users[email].manager_id = users[manager_email].user_id
-    for email in {"admin@dealroom.local", "sales.manager@dealroom.local",
-                  "presales.manager@dealroom.local", "pending@dealroom.local",
+    for email in {"leadership@dealroom.local", "admin@dealroom.local", "delivery.manager@dealroom.local",
+                  "sales.manager@dealroom.local", "presales.manager@dealroom.local", "pending@dealroom.local",
                   "revoked@dealroom.local"}:
         users[email].manager_id = None
     db.session.commit()
@@ -537,13 +542,13 @@ def seed_opportunity_teams(opportunities, users):
         ("Acme DevSecOps Transformation", "solution.engineer@dealroom.local", SOLUTION_ENGINEER),
         ("Nova Pharma Secure Software Supply Chain", "sales.manager@dealroom.local", SALES_MANAGER),
         ("Nova Pharma Secure Software Supply Chain", "solution.engineer@dealroom.local", SOLUTION_ENGINEER),
-        ("Nova Pharma Secure Software Supply Chain", "delivery@dealroom.local", DELIVERY),
+        ("Nova Pharma Secure Software Supply Chain", "solution.engineer@dealroom.local", SOLUTION_ENGINEER),
         ("FinEdge Observability Platform", "sales.exec@dealroom.local", SALES_EXECUTIVE),
-        ("FinEdge Observability Platform", "delivery@dealroom.local", DELIVERY),
+        ("FinEdge Observability Platform", "solution.engineer@dealroom.local", SOLUTION_ENGINEER),
         ("CloudPeak Kubernetes Platform", "sales.manager@dealroom.local", SALES_MANAGER),
         ("Global Retail Group", "sales.manager@dealroom.local", SALES_MANAGER),
         ("Retail CI/CD Modernization", "solution.engineer@dealroom.local", SOLUTION_ENGINEER),
-        ("Retail CI/CD Modernization", "delivery@dealroom.local", DELIVERY),
+        ("Retail CI/CD Modernization", "solution.engineer@dealroom.local", SOLUTION_ENGINEER),
     ]
     for opportunity_name, email, team_role in assignments:
         opportunity = opportunities.get(opportunity_name)
@@ -795,9 +800,9 @@ def seed_notifications(opportunities, users):
         ("sales.manager@dealroom.local", "OPPORTUNITY_SUBMITTED_FOR_REVIEW", "Opportunity", "Acme DevSecOps Transformation", "Acme DevSecOps Transformation is ready for Sales Manager review."),
         ("presales.manager@dealroom.local", "OPPORTUNITY_APPROVED", "Opportunity", "Nova Pharma Secure Software Supply Chain", "Nova Pharma Secure Software Supply Chain was approved and is ready for technical assignment."),
         ("solution.engineer@dealroom.local", "SOLUTION_ENGINEER_ASSIGNED", "Opportunity", "Nova Pharma Secure Software Supply Chain", "You were assigned as Solution Engineer."),
-        ("delivery@dealroom.local", "SOLUTION_ENGINEER_ASSIGNED", "Opportunity", "Nova Pharma Secure Software Supply Chain", "You were assigned for Delivery/POC execution."),
+        ("solution.engineer@dealroom.local", "SOLUTION_ENGINEER_ASSIGNED", "Opportunity", "Nova Pharma Secure Software Supply Chain", "You were assigned for Delivery/POC execution."),
         ("presales.manager@dealroom.local", "POC_REQUESTED", "POC", "Secure Supply Chain POC", "A Solution Engineer requested POC approval."),
-        ("delivery@dealroom.local", "POC_APPROVED", "POC", "Observability Approval POC", "The POC was approved for execution."),
+        ("solution.engineer@dealroom.local", "POC_APPROVED", "POC", "Observability Approval POC", "The POC was approved for execution."),
         ("solution.engineer@dealroom.local", "POC_RESULT_SUBMITTED", "POC", "Retail Platform Technical POC", "Delivery submitted a POC result for review."),
     ]
     for email, kind, entity_type, name, message in samples:

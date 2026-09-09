@@ -541,10 +541,7 @@ class PocService:
             opportunity
             for opportunity in opportunities
             if (
-                opportunity.current_stage
-                and (
-                    opportunity.current_stage.stage_name == "POC / Technical Evaluation"
-                )
+                opportunity.lifecycle_stage == "POC"
                 and not POCTracker.query.filter_by(
                     opportunity_id=opportunity.opportunity_id
                 ).first()

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, Clock3, RefreshCw, Search, XCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getEligibleSalesOwners, getSalesManagerReviewQueue, reviewOpportunity } from "../api/opportunityApi";
+import { closeLost, closeWon, getEligibleSalesOwners, getSalesManagerReviewQueue, reviewOpportunity } from "../api/opportunityApi";
 import PageHeader from "../components/ui/PageHeader";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
@@ -41,14 +41,18 @@ export default function SalesManagerReview() {
     const update = (id, patch) => setSelection((p) => ({ ...p, [id]: { ...p[id], ...patch } }));
 
     const approve = async (opportunity) => {
-        const ownerId = selection[opportunity.opportunity_id]?.ownerId;
+        const state = selection[opportunity.opportunity_id] || {};
+        const ownerId = state.ownerId;
         if (!ownerId) return setError("Select a Sales Executive before approving.");
         try {
             setBusy(opportunity.opportunity_id);
             setError("");
-            await reviewOpportunity(opportunity.opportunity_id, { decision: "APPROVE", sales_owner_id: Number(ownerId), updated_at: opportunity.updated_at });
+            await reviewOpportunity(opportunity.opportunity_id, { decision: "APPROVE", sales_owner_id: Number(ownerId), expected_version: opportunity.row_version, opportunity_name: state.name ?? opportunity.opportunity_name, description: state.description ?? opportunity.description, pain_points: state.painPoints ?? opportunity.pain_points, probability: opportunity.probability, expected_close_date: opportunity.expected_close_date || null });
             await load();
-        } catch (err) { setError(err?.response?.data?.message || "Approval failed."); }
+        } catch (err) {
+            if (err?.response?.status === 409) await load();
+            setError(err?.response?.data?.message || "Approval failed. The record was refreshed.");
+        }
         finally { setBusy(null); }
     };
 
@@ -59,9 +63,31 @@ export default function SalesManagerReview() {
         try {
             setBusy(opportunity.opportunity_id);
             setError("");
-            await reviewOpportunity(opportunity.opportunity_id, { decision: "REJECT", reason, updated_at: opportunity.updated_at });
+            await reviewOpportunity(opportunity.opportunity_id, { decision: "REJECT", reason, expected_version: opportunity.row_version });
             await load();
-        } catch (err) { setError(err?.response?.data?.message || "Rejection failed."); }
+        } catch (err) {
+            if (err?.response?.status === 409) await load();
+            setError(err?.response?.data?.message || "Rejection failed. The record was refreshed.");
+        }
+        finally { setBusy(null); }
+    };
+
+    const close = async (opportunity, won) => {
+        const reason = selection[opportunity.opportunity_id]?.reason?.trim();
+        if (!won && !reason) return setError("A Closed Lost reason is required.");
+        if (!window.confirm(won ? "Close this Lead as Won?" : "Close this Lead as Lost?")) return;
+        try {
+            setBusy(opportunity.opportunity_id);
+            setError("");
+            const payload = { expected_version: opportunity.row_version };
+            if (!won) payload.reason = reason;
+            if (won) await closeWon(opportunity.opportunity_id, payload);
+            else await closeLost(opportunity.opportunity_id, payload);
+            await load();
+        } catch (err) {
+            if (err?.response?.status === 409) await load();
+            setError(err?.response?.data?.message || "Closure failed. The record was refreshed.");
+        }
         finally { setBusy(null); }
     };
 
@@ -78,11 +104,17 @@ export default function SalesManagerReview() {
                     const state = selection[opportunity.opportunity_id] || {};
                     const isBusy = busy === opportunity.opportunity_id;
                     return <article className="manager-review-card" key={opportunity.opportunity_id}>
-                        <div className="manager-review-card-head"><div><div className="manager-review-title-row"><h2>{opportunity.opportunity_name}</h2><StatusBadge status={opportunity.status} /></div><p>{opportunity.created_by_user?.full_name || "Unknown creator"} · Account #{opportunity.account_id}</p></div><div className="record-meta"><StageBadge stage={opportunity.current_stage?.stage_name} /><strong className="manager-review-value">{money(opportunity.estimated_value)}</strong></div></div>
+                        <div className="manager-review-card-head"><div><div className="manager-review-title-row"><h2>{opportunity.opportunity_name}</h2><StatusBadge status={opportunity.outcome || opportunity.operational_status} /></div><p>{opportunity.created_by_user?.full_name || "Unknown creator"} · Account #{opportunity.account_id}</p></div><div className="record-meta"><StageBadge stage={opportunity.current_stage?.stage_name} /><strong className="manager-review-value">{money(opportunity.estimated_value)}</strong></div></div>
                         <div className="manager-review-stats"><div><span>Probability</span><strong>{opportunity.probability ?? 0}%</strong></div><div><span>Expected close</span><strong>{opportunity.expected_close_date || "—"}</strong></div><div><span>Submitted</span><strong>{opportunity.updated_at ? new Date(opportunity.updated_at).toLocaleDateString() : "—"}</strong></div></div>
                         <p className="manager-review-description">{opportunity.description || "No description provided."}</p>
-                        <div className="manager-review-controls"><label className="field-label">Sales Owner<select value={state.ownerId || ""} onChange={(e) => update(opportunity.opportunity_id, { ownerId: e.target.value })}><option value="">Select Sales Executive</option>{owners.map((owner) => <option key={owner.user_id} value={owner.user_id}>{owner.full_name}</option>)}</select></label><label className="field-label">Rejection reason<textarea rows={2} placeholder="Required only when rejecting" value={state.reason || ""} onChange={(e) => update(opportunity.opportunity_id, { reason: e.target.value })} /></label></div>
-                        <div className="manager-review-actions"><Button variant="ghost" onClick={() => navigate(`/opportunity/${opportunity.opportunity_id}`)}>Open opportunity <ArrowRight size={14} /></Button><div><Button variant="danger" disabled={isBusy} onClick={() => reject(opportunity)}><XCircle size={14} /> Reject</Button><Button disabled={isBusy} onClick={() => approve(opportunity)}><CheckCircle2 size={14} /> {isBusy ? "Saving…" : "Approve & assign"}</Button></div></div>
+                        <div className="manager-review-controls">
+                            <label className="field-label">Opportunity name<input value={state.name ?? opportunity.opportunity_name} onChange={(e) => update(opportunity.opportunity_id, { name: e.target.value })} /></label>
+                            <label className="field-label">Description<textarea rows={2} value={state.description ?? opportunity.description ?? ""} onChange={(e) => update(opportunity.opportunity_id, { description: e.target.value })} /></label>
+                            <label className="field-label">Pain points<textarea rows={2} value={state.painPoints ?? opportunity.pain_points ?? ""} onChange={(e) => update(opportunity.opportunity_id, { painPoints: e.target.value })} /></label>
+                            <label className="field-label">Sales Executive<select value={state.ownerId || ""} onChange={(e) => update(opportunity.opportunity_id, { ownerId: e.target.value })}><option value="">Select Sales Executive</option>{owners.map((owner) => <option key={owner.user_id} value={owner.user_id}>{owner.full_name}</option>)}</select></label>
+                            <label className="field-label">Rejection / loss reason<textarea rows={2} placeholder="Required for rejection or Closed Lost" value={state.reason || ""} onChange={(e) => update(opportunity.opportunity_id, { reason: e.target.value })} /></label>
+                        </div>
+                        <div className="manager-review-actions"><Button variant="ghost" onClick={() => navigate(`/opportunity/${opportunity.opportunity_id}`)}>Open opportunity <ArrowRight size={14} /></Button><div><Button variant="danger" disabled={isBusy} onClick={() => reject(opportunity)}><XCircle size={14} /> Reject</Button><Button variant="danger" disabled={isBusy} onClick={() => close(opportunity, false)}><XCircle size={14} /> Close Lost</Button><Button disabled={isBusy} onClick={() => close(opportunity, true)}><CheckCircle2 size={14} /> Close Won</Button><Button disabled={isBusy} onClick={() => approve(opportunity)}><CheckCircle2 size={14} /> {isBusy ? "Saving…" : "Approve & assign"}</Button></div></div>
                     </article>;
                 })}
                 {!filtered.length && <div className="manager-empty"><EmptyState message={queue.length ? "No review items match your search." : "No opportunities awaiting review."} /></div>}

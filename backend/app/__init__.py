@@ -1,4 +1,5 @@
 from flask import Flask
+import os
 from app.config.config import Config
 from app.middleware.cors import configure_cors
 from app.database import db, init_db
@@ -21,6 +22,7 @@ from app.api.sales_manager_performance_routes import sales_manager_performance_b
 
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
+from app.models.auth.user_system_permission import UserSystemPermission
 from app.models.poc.poc import Poc
 from app.models.opportunity.solution_design import SolutionDesign
 from app.models.account.account import Account
@@ -32,10 +34,17 @@ from app.services.oem_service import OEMService
 
 from flask import jsonify
 
-def create_app():
-    
+def create_app(test_config=None):
     app = Flask(__name__)
     app.config.from_object(Config)
+    # Resolve environment values at app-construction time so isolated tests and
+    # deployments can select their own database/JWT settings safely.
+    if test_config:
+        app.config.update(test_config)
+    else:
+        app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") or os.getenv("SQLALCHEMY_DATABASE_URI") or app.config.get("SQLALCHEMY_DATABASE_URI")
+        if os.getenv("JWT_SECRET_KEY"):
+            app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 
     configure_cors(app)
     init_jwt(app)
@@ -73,6 +82,7 @@ def create_app():
 __all__ = [
     "User",
     "UserRole",
+    "UserSystemPermission",
     "Poc",
     "Account",
     "Contact",

@@ -4,6 +4,13 @@ from app.models.base import BaseModel
 
 class Opportunity(BaseModel):
     __tablename__ = "opportunities"
+    __table_args__ = (
+        db.CheckConstraint("outcome IN ('Open','Closed Won','Closed Lost')", name="ck_opportunities_v2_outcome"),
+        db.CheckConstraint("operational_status IN ('Active','Stalled','Closed')", name="ck_opportunities_v2_operational_status"),
+        db.CheckConstraint("lifecycle_stage IS NULL OR lifecycle_stage IN ('Lead','Qualified','RFX','POC','Negotiations','Delivery')", name="ck_opportunities_v2_lifecycle_stage"),
+        db.CheckConstraint("(outcome = 'Open' AND operational_status IN ('Active','Stalled')) OR (outcome IN ('Closed Won','Closed Lost') AND operational_status = 'Closed')", name="ck_opportunities_v2_closed_consistency"),
+        db.CheckConstraint("final_revenue IS NULL OR final_revenue >= 0", name="ck_opportunities_final_revenue_non_negative"),
+    )
 
     opportunity_id = db.Column(db.Integer, primary_key=True)
 
@@ -38,23 +45,39 @@ class Opportunity(BaseModel):
 
     opportunity_name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
+    pain_points = db.Column(db.Text)
     estimated_value = db.Column(db.Numeric(15, 2), default=0)
+    final_revenue = db.Column(db.Numeric(15, 2), nullable=True)
     probability = db.Column(db.Integer, default=0)
     expected_close_date = db.Column(db.Date)
 
     # Status describes operational state; stage describes lifecycle position.
-    status = db.Column(
-        db.String(50),
-        nullable=False,
-        default="Open",
-        index=True,
+    # V2 state dimensions. These are authoritative; legacy stage_id/status/
+    # is_active remain read-only compatibility fields during cutover.
+    lifecycle_stage = db.Column(
+        db.String(30), nullable=False, default="Lead", index=True
+    )
+    outcome = db.Column(
+        db.String(20), nullable=False, default="Open", index=True
+    )
+    operational_status = db.Column(
+        db.String(20), nullable=False, default="Active", index=True
+    )
+    review_status = db.Column(
+        db.String(40), nullable=False, default="Draft", index=True
+    )
+    lost_reason = db.Column(db.String(100), nullable=True)
+    lost_explanation = db.Column(db.Text, nullable=True)
+    row_version = db.Column(
+        db.Integer, nullable=False, default=1, server_default="1", index=True
     )
 
-    is_active = db.Column(
-        db.Boolean,
-        nullable=False,
-        default=True,
+    # Legacy compatibility columns. Application workflow code must not use
+    # these as the source of truth for v2 state.
+    status = db.Column(
+        db.String(50), nullable=False, default="Open", index=True
     )
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
 
     account = db.relationship(
         "Account",
@@ -90,6 +113,21 @@ class Opportunity(BaseModel):
         lazy=True,
     )
 
+    closed_won_request = db.relationship(
+        "ClosedWonRequest",
+        back_populates="opportunity",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    value_history = db.relationship(
+        "OpportunityValueHistory",
+        back_populates="opportunity",
+        cascade="all, delete-orphan",
+        lazy=True,
+        order_by="OpportunityValueHistory.changed_at",
+    )
+
     stage_history = db.relationship(
         "StageHistory",
         back_populates="opportunity",
@@ -114,25 +152,12 @@ class Opportunity(BaseModel):
 
     @property
     def lifecycle_state(self):
-        """Expose operational workflow state without adding a duplicate state column."""
-        if self.status == "Approved" and self.sales_owner_id is not None:
-            has_technical_team = any(
-                member.role == "Solution Engineer"
-                for member in self.team_members
-            )
-            if not has_technical_team:
-                return "Approved / Awaiting Pre-Sales Assignment"
-            return "Approved"
-        if self.status == "Active":
-            return "Pre-Sales Assignment Complete / Active Technical Work"
-        if self.status in {
-            "Pending Sales Manager Review",
-            "Rejected",
-        }:
-            return self.status
-        if self.current_stage is None:
-            return None
-        return self.current_stage.stage_name
+        """Backward-compatible label; v2 clients should use explicit fields."""
+        return self.lifecycle_stage
+
+    @property
+    def is_closed(self):
+        return self.operational_status == "Closed"
 
     def __repr__(self):
         return (

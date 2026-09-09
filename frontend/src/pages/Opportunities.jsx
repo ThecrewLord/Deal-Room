@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "../styles/opportunities.css";
+import "../styles/Opportunities.css";
 import {
     Search,
     RefreshCw,
@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { createOpportunity, getOpportunities } from "../api/opportunityApi";
-import { createAccount, getAccounts } from "../api/accountApi";
+import { getAccounts } from "../api/accountApi";
 import { ROLES } from "../auth/roles";
 import { useAuth } from "../context/AuthContext";
 
@@ -28,7 +28,6 @@ export default function Opportunities() {
 
     const [opportunities, setOpportunities] = useState([]);
     const [accounts, setAccounts] = useState([]);
-    const [newAccountName, setNewAccountName] = useState("");
 
     const [search, setSearch] = useState("");
     const [stageFilter, setStageFilter] = useState("all");
@@ -43,6 +42,7 @@ export default function Opportunities() {
         account_id: "",
         opportunity_name: "",
         description: "",
+        pain_points: "",
         estimated_value: "",
         probability: 0,
         expected_close_date: "",
@@ -56,7 +56,7 @@ export default function Opportunities() {
             const data = await getOpportunities();
             setOpportunities(data || []);
 
-            if (activeRole === ROLES.SALES_EXECUTIVE) {
+            if (activeRole !== ROLES.ADMIN) {
                 setAccounts(await getAccounts());
             }
         } catch (err) {
@@ -79,25 +79,17 @@ export default function Opportunities() {
         try {
             setCreating(true);
 
-            let accountId = form.account_id;
-            if (form.account_id === "other") {
-                const accountName = newAccountName.trim();
-                if (!accountName) {
-                    setError("Enter an account name to continue.");
-                    return;
-                }
-
-                const account = await createAccount({ account_name: accountName });
-                accountId = account.account_id;
+            const accountId = form.account_id;
+            if (!accountId) {
+                setError("Select an existing canonical account.");
+                return;
             }
 
             const created = await createOpportunity({
                 ...form,
                 account_id: Number(accountId),
-                estimated_value:
-                    form.estimated_value === ""
-                        ? null
-                        : form.estimated_value,
+                estimated_value: form.estimated_value,
+                pain_points: form.pain_points || null,
                 probability: Number(form.probability || 0),
                 expected_close_date: form.expected_close_date || null,
             });
@@ -107,10 +99,10 @@ export default function Opportunities() {
                 opportunity_name: "",
                 description: "",
                 estimated_value: "",
+                pain_points: "",
                 probability: 0,
                 expected_close_date: "",
             });
-            setNewAccountName("");
 
             setShowCreate(false);
 
@@ -127,7 +119,7 @@ export default function Opportunities() {
 
     const stages = useMemo(() => {
         const values = opportunities
-            .map((o) => o.current_stage?.stage_name)
+            .map((o) => o.lifecycle_stage)
             .filter(Boolean);
 
         return [...new Set(values)];
@@ -137,15 +129,17 @@ export default function Opportunities() {
         const total = opportunities.length;
 
         const open = opportunities.filter(
-            (o) => String(o.status).toLowerCase() === "open"
+            (o) => o.outcome === "Open" && o.operational_status === "Active"
         ).length;
 
         const won = opportunities.filter(
-            (o) => String(o.status).toLowerCase() === "closed won"
+            (o) => o.outcome === "Closed Won" ||
+                String(o.lifecycle_stage || "").toLowerCase() === "closed won"
         ).length;
 
         const lost = opportunities.filter(
-            (o) => String(o.status).toLowerCase() === "closed lost"
+            (o) => (o.outcome === "Closed Lost") ||
+                String(o.lifecycle_stage || "").toLowerCase() === "closed lost"
         ).length;
 
         return { total, open, won, lost };
@@ -160,7 +154,7 @@ export default function Opportunities() {
                 [
                     o.opportunity_name,
                     o.status,
-                    o.current_stage?.stage_name,
+                    o.lifecycle_stage,
                     o.account_name,
                     o.sales_owner?.full_name,
                 ]
@@ -171,12 +165,14 @@ export default function Opportunities() {
 
             const matchesStage =
                 stageFilter === "all" ||
-                o.current_stage?.stage_name === stageFilter;
+                o.lifecycle_stage === stageFilter;
 
+            const normalizedOutcome = String(o.outcome || "").toLowerCase();
+            const normalizedOperationalStatus = String(o.operational_status || "").toLowerCase();
             const matchesStatus =
                 statusFilter === "all" ||
-                String(o.status).toLowerCase() ===
-                    statusFilter.toLowerCase();
+                (statusFilter.toLowerCase() === "open" && normalizedOutcome === "open" && normalizedOperationalStatus === "active") ||
+                normalizedOutcome === statusFilter.toLowerCase();
 
             return (
                 matchesSearch &&
@@ -210,7 +206,7 @@ export default function Opportunities() {
                 </div>
 
                 <div className="opportunities-header-actions">
-                    {activeRole === ROLES.SALES_EXECUTIVE && (
+                    {activeRole !== ROLES.ADMIN && (
                         <Button
                             variant={showCreate ? "danger" : "primary"}
                             onClick={() =>
@@ -297,7 +293,7 @@ export default function Opportunities() {
 
             {/* CREATE FORM */}
             {showCreate &&
-                activeRole === ROLES.SALES_EXECUTIVE && (
+                activeRole !== ROLES.ADMIN && (
                     <div className="opportunity-create-card">
 
                         <div className="opportunity-create-header">
@@ -339,7 +335,7 @@ export default function Opportunities() {
                                             Select account
                                         </option>
 
-                                        {accounts.map((a) => (
+                                        {accounts.filter((a) => a.is_active !== false).map((a) => (
                                             <option
                                                 key={a.account_id}
                                                 value={a.account_id}
@@ -347,25 +343,7 @@ export default function Opportunities() {
                                                 {a.account_name}
                                             </option>
                                         ))}
-
-                                        <option value="other">
-                                            Other — enter account name
-                                        </option>
                                     </select>
-
-                                    {form.account_id === "other" && (
-                                        <input
-                                            required
-                                            minLength={2}
-                                            maxLength={200}
-                                            value={newAccountName}
-                                            onChange={(e) =>
-                                                setNewAccountName(e.target.value)
-                                            }
-                                            placeholder="Type account name"
-                                            aria-label="New account name"
-                                        />
-                                    )}
                                 </label>
 
                                 <label className="field-label">
@@ -388,14 +366,13 @@ export default function Opportunities() {
                                 </label>
 
                                 <label className="field-label">
-                                    Estimated value
+                                    Initial Opportunity Value
 
                                     <input
                                         type="number"
                                         min="0"
-                                        value={
-                                            form.estimated_value
-                                        }
+                                        required
+                                        value={form.estimated_value}
                                         onChange={(e) =>
                                             setForm({
                                                 ...form,
@@ -403,6 +380,18 @@ export default function Opportunities() {
                                                     e.target.value,
                                             })
                                         }
+                                    />
+                                </label>
+
+                                <label className="field-label">
+                                    Pain points
+
+                                    <textarea
+                                        required
+                                        rows={3}
+                                        value={form.pain_points}
+                                        onChange={(e) => setForm({ ...form, pain_points: e.target.value })}
+                                        placeholder="What customer problem is this opportunity solving?"
                                     />
                                 </label>
 
@@ -609,16 +598,13 @@ export default function Opportunities() {
 
                                         <td>
                                             <StageBadge
-                                                stage={
-                                                    o.current_stage
-                                                        ?.stage_name
-                                                }
+                                                stage={o.lifecycle_stage}
                                             />
                                         </td>
 
                                         <td>
                                             <StatusBadge
-                                                status={o.status}
+                                                status={o.outcome || o.operational_status}
                                             />
                                         </td>
 

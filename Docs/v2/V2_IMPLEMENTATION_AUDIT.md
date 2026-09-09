@@ -168,6 +168,14 @@ All registered blueprints are in `backend/app/__init__.py`; routes below come fr
 - Test coverage is legacy-oriented. It validates active-role selection, Admin business denial, older delivery aliases, old technical workflow, some audit/notification behavior, and basic timestamp conflicts. It does not cover v2 roles, Leadership invariants, value history, canonical account matching, stakeholder tags, final revenue, v2 delivery, or DB-level concurrency.
 - Running `PYTHONPATH=. ../.venv/bin/pytest -q tests` from `backend/` produced **6 failures, 11 passes, 97 setup errors**. Most setup errors occur because `Config` calls `load_dotenv()`/reads `DATABASE_URL` at import time (`backend/app/config/config.py`), so tests that monkeypatch SQLite later still use the `.env` PostgreSQL URL at `127.0.0.1:5433`. Static failures include stale expectations for `Delivery`, `DELIVERY_ASSIGNED`, an old dashboard URL, and an incorrect frontend parent path. The suite is not a reliable regression gate as checked in.
 
+
+
+### A1 implementation update
+
+A1 has now been implemented on the current backend. The canonical role list is nine roles: Leadership, Admin, Sales Manager, Sales Executive, Pre-Sales Manager, Solution Engineer, Delivery Manager, DevOps Engineer, and Data Analyst. The retired `Delivery` label is excluded from canonical role validation. Leadership is the root governance role; Admin is delegated system administration with an explicit `MANAGE_ADMINS` capability for onward Admin delegation. Active-role authorization is server-side and role permissions are not unioned. First-user creation and last-Leadership protection use a PostgreSQL transaction-scoped advisory lock, and security-sensitive mutations increment `auth_version` in the same transaction.
+
+The A1 test module contains 15 focused tests. Local execution is currently blocked by missing Python dependencies (`flask_jwt_extended` and the project's pinned requirements are not installed in the execution environment), and the PostgreSQL integration test requires `TEST_POSTGRES_URL`. These are verification-environment limitations, not claims of passing full-suite execution.
+
 ## 20. Security risks and required treatment
 
 | Severity | Evidence / realistic failure | Impact | Recommended design | Blocks v2? |

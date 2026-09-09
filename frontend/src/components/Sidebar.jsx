@@ -32,6 +32,7 @@ const iconMap = {
     Reports: BarChart3,
     Analytics: BarChart3,
     "Pending Approvals": ShieldCheck,
+    Administration: ShieldCheck,
     "Pending Technical Assignment": Target,
     Users: Users,
     "Role Management": Users,

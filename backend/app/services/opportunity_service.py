@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app.auth.authorization import AuthorizationDenied, AuthorizationService
@@ -15,7 +16,7 @@ from app.constants.activity_types import (
     SOLUTION_ENGINEER_ASSIGNED,
 )
 from app.constants.auth_constants import STATUS_APPROVED
-from app.constants.roles import PRE_SALES_MANAGER, SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER
+from app.constants.roles import LEADERSHIP, PRE_SALES_MANAGER, SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER
 from app.constants.stages import (
     ACTIVE_STATUS,
     APPROVED_STATUS,
@@ -30,10 +31,13 @@ from app.models.account.account import Account
 from app.models.auth.user import User
 from app.models.opportunity.opportunity import Opportunity
 from app.models.opportunity.opportunity_team import OpportunityTeam
+from app.models.opportunity.stakeholder import Stakeholder
 from app.repositories.opportunity_repository import OpportunityRepository
 from app.services.activity_service import ActivityService
 from app.services.notification_service import NotificationService
 from app.services.stage_service import StageService
+from app.services.lifecycle_transition_service import LifecycleTransitionService, TransitionConflict, TransitionInvalid
+from app.services.opportunity_value_service import OpportunityValueService
 from app.repositories.stage_repository import StageRepository
 from app.utils.concurrency import ConcurrencyManager
 
@@ -46,10 +50,12 @@ class OpportunityService:
             raise AuthorizationDenied("You are not authorized to create opportunities.")
 
         account = Account.query.filter_by(account_id=data["account_id"]).first()
+        if not account:
+            raise ValueError("Canonical account does not exist.")
+        if not account.is_active:
+            raise ValueError("This account is not active and cannot be selected for a new opportunity.")
         if not AuthorizationService.can_view_account(user, active_role, account):
-            raise AuthorizationDenied(
-                "You are not authorized to create an opportunity for this account."
-            )
+            raise AuthorizationDenied("You are not authorized to use this account.")
 
         if OpportunityRepository.exists(data["opportunity_name"], data["account_id"]):
             raise ValueError("Opportunity already exists for this account.")
@@ -60,36 +66,60 @@ class OpportunityService:
 
         opportunity = Opportunity(
             account_id=data["account_id"],
+            # `created_by` is the persisted Deal Finder. It is write-once: all
+            # later mutation schemas/services exclude it.
             created_by=user.user_id,
             sales_owner_id=None,
             stage_id=initial_stage.stage_id,
-            opportunity_name=data["opportunity_name"],
+            lifecycle_stage="Lead",
+            outcome="Open",
+            operational_status="Active",
+            review_status="Draft",
+            row_version=1,
+            opportunity_name=data["opportunity_name"].strip(),
             description=data.get("description"),
-            estimated_value=data.get("estimated_value", 0),
+            pain_points=data.get("pain_points"),
+            estimated_value=data["estimated_value"],
             probability=data.get("probability", 0),
             expected_close_date=data.get("expected_close_date"),
-            status=OPEN_STATUS,
+            status=ACTIVE_STATUS,
             is_active=True,
         )
 
-        db.session.add(opportunity)
-        db.session.flush()
-        db.session.add(OpportunityTeam(
-            opportunity_id=opportunity.opportunity_id,
-            user_id=user.user_id,
-            role=active_role,
-        ))
-        StageService.record_initial_stage(opportunity, user.user_id)
-        ActivityService.log(
-            entity_type="Opportunity",
-            entity_id=opportunity.opportunity_id,
-            action="CREATE_OPPORTUNITY",
-            description=f"Opportunity '{opportunity.opportunity_name}' created.",
-            user_id=user.user_id,
-            commit=False,
-        )
-        db.session.commit()
-        return opportunity
+        try:
+            db.session.add(opportunity)
+            db.session.flush()
+            db.session.add(OpportunityTeam(
+                opportunity_id=opportunity.opportunity_id,
+                user_id=user.user_id,
+                role=active_role,
+            ))
+            StageService.record_initial_stage(opportunity, user.user_id)
+            OpportunityValueService.record_initial_value(opportunity, user, active_role)
+            ActivityService.log(
+                entity_type="Opportunity",
+                entity_id=opportunity.opportunity_id,
+                action="OPPORTUNITY_CREATED",
+                description=(f"Opportunity '{opportunity.opportunity_name}' created; "
+                             f"Deal Finder is {user.full_name}."),
+                user_id=user.user_id,
+                commit=False,
+                active_role=active_role,
+            )
+            ActivityService.log(
+                entity_type="Opportunity",
+                entity_id=opportunity.opportunity_id,
+                action="DEAL_FINDER_ASSIGNED",
+                description=f"Deal Finder assigned permanently to {user.full_name} at creation.",
+                user_id=user.user_id,
+                commit=False,
+                active_role=active_role,
+            )
+            db.session.commit()
+            return opportunity
+        except Exception:
+            db.session.rollback()
+            raise
 
     @staticmethod
     def get_all(user, active_role):
@@ -100,7 +130,7 @@ class OpportunityService:
     @staticmethod
     def get_pending_review(user, active_role):
         if not AuthorizationService.can_view_pending_review(user, active_role):
-            raise AuthorizationDenied("Only a Sales Manager can view the review queue.")
+            raise AuthorizationDenied("Only Sales Manager or Leadership can view the review queue.")
         return OpportunityRepository.get_pending_sales_manager_review(
             AuthorizationService.opportunity_query(user, active_role)
         )
@@ -108,7 +138,7 @@ class OpportunityService:
     @staticmethod
     def get_eligible_sales_owners(user, active_role):
         if not AuthorizationService.can_view_pending_review(user, active_role):
-            raise AuthorizationDenied("Only a Sales Manager can view Sales Owner candidates.")
+            raise AuthorizationDenied("Only Sales Manager or Leadership can view Sales Owner candidates.")
         return OpportunityRepository.get_eligible_sales_owners()
 
     @staticmethod
@@ -168,7 +198,8 @@ class OpportunityService:
 
         updated_rows = Opportunity.query.filter(
             Opportunity.opportunity_id == opportunity.opportunity_id,
-            Opportunity.status == APPROVED_STATUS,
+            Opportunity.operational_status == ACTIVE_STATUS,
+            Opportunity.review_status == APPROVED_STATUS,
             Opportunity.sales_owner_id.isnot(None),
             Opportunity.is_active.is_(True),
         ).update({"status": ACTIVE_STATUS}, synchronize_session=False)
@@ -228,246 +259,96 @@ class OpportunityService:
         opportunity = OpportunityRepository.get_by_id(opportunity_id)
         if not opportunity:
             return None
-
         if not AuthorizationService.can_update_opportunity(user, active_role, opportunity, data):
             raise AuthorizationDenied("You are not authorized to update this opportunity.")
 
-        client_timestamp = data.pop("updated_at", None)
-        if isinstance(client_timestamp, str):
-            client_timestamp = datetime.fromisoformat(client_timestamp.replace("Z", "+00:00"))
-        if ConcurrencyManager.has_conflict(client_timestamp, opportunity.updated_at):
-            raise RuntimeError(
-                "This opportunity has been modified by another user. Please refresh and try again."
-            )
+        if "estimated_value" in data or "final_revenue" in data:
+            raise ValueError("Opportunity Value changes must use the dedicated value endpoint.")
 
-        allowed_fields = {
-            "opportunity_name",
-            "description",
-            "estimated_value",
-            "probability",
-            "expected_close_date",
-        }
-        for key, value in data.items():
-            if key in allowed_fields:
-                setattr(opportunity, key, value)
+        expected_version = data.pop("expected_version", None)
+        try:
+            expected_version = int(expected_version)
+        except (TypeError, ValueError):
+            raise ValueError("expected_version is required and must be an integer.")
 
+        if expected_version != opportunity.row_version:
+            raise RuntimeError("Opportunity version is stale. Refresh before retrying.")
+
+        allowed_fields = {"opportunity_name", "description", "pain_points", "probability", "expected_close_date"}
+        values = {key: value for key, value in data.items() if key in allowed_fields}
+        if not values:
+            raise ValueError("No permitted opportunity fields were supplied.")
+        values["row_version"] = Opportunity.row_version + 1
+        result = db.session.execute(
+            update(Opportunity)
+            .where(Opportunity.opportunity_id == opportunity.opportunity_id,
+                   Opportunity.row_version == expected_version,
+                   Opportunity.operational_status != "Closed")
+            .values(**values)
+        )
+        if result.rowcount != 1:
+            db.session.rollback()
+            raise RuntimeError("Opportunity version is stale. Refresh before retrying.")
+        db.session.expire(opportunity)
+        db.session.refresh(opportunity)
         ActivityService.log(
-            entity_type="Opportunity",
-            entity_id=opportunity.opportunity_id,
-            action="UPDATE_OPPORTUNITY",
-            description=f"Opportunity '{opportunity.opportunity_name}' updated.",
-            user_id=user.user_id,
-            commit=False,
+            entity_type="Opportunity", entity_id=opportunity.opportunity_id,
+            action="OPPORTUNITY_REVIEW_FIELDS_UPDATED" if active_role in {SALES_MANAGER, LEADERSHIP} and opportunity.review_status == PENDING_SALES_MANAGER_REVIEW_STATUS else "UPDATE_OPPORTUNITY",
+            description=f"Permitted opportunity fields updated by {user.full_name}.",
+            user_id=user.user_id, commit=False, active_role=active_role,
         )
         db.session.commit()
         return opportunity
 
     @staticmethod
     def qualify_opportunity(opportunity_id, user, active_role):
-        opportunity = OpportunityRepository.get_by_id(opportunity_id)
-        if not opportunity:
-            return None
-        if not AuthorizationService.can_qualify_opportunity(user, active_role, opportunity):
-            raise AuthorizationDenied("You are not authorized to qualify this opportunity.")
-
-        qualification = StageRepository.get_by_name(QUALIFICATION_STAGE_NAME)
-        if not qualification:
-            raise RuntimeError("Required stage 'Qualification' is not configured.")
-
-        opportunity.stage_id = qualification.stage_id
-        opportunity.status = OPEN_STATUS
-        opportunity.is_active = True
-        from app.models.opportunity.stage_history import StageHistory
-        db.session.add(StageHistory(
-            opportunity_id=opportunity.opportunity_id,
-            stage_id=qualification.stage_id,
-            changed_by=user.user_id,
-            remarks="Opportunity qualified by Sales Executive.",
-        ))
-        ActivityService.log(
-            entity_type="Opportunity",
-            entity_id=opportunity.opportunity_id,
-            action=OPPORTUNITY_STAGE_CHANGED,
-            description="Stage changed from 'Lead / Identified' to 'Qualification'.",
-            user_id=user.user_id,
-            commit=False,
-        )
-        ActivityService.log(
-            entity_type="Opportunity",
-            entity_id=opportunity.opportunity_id,
-            action=OPPORTUNITY_QUALIFIED,
-            description="Opportunity moved from Lead / Identified to Qualification.",
-            user_id=user.user_id,
-            commit=False,
-        )
-        db.session.commit()
-        return opportunity
+        # Retained only as a compatibility facade. v2 qualification is the
+        # Sales Manager Lead-approval action and cannot be performed by a
+        # generic qualify endpoint.
+        raise AuthorizationDenied("Lead qualification is performed by Sales Manager approval.")
 
     @staticmethod
-    def submit_for_sales_manager_review(opportunity_id, user, active_role):
-        opportunity = OpportunityRepository.get_by_id(opportunity_id)
-        if not opportunity:
-            return None
-        if not AuthorizationService.can_submit_for_review(user, active_role, opportunity):
-            raise AuthorizationDenied(
-                "Only the creating Sales Executive can submit a qualified opportunity for review."
-            )
-
-        opportunity.status = PENDING_SALES_MANAGER_REVIEW_STATUS
-        opportunity.is_active = True
-
-        ActivityService.log(
-            entity_type="Opportunity",
-            entity_id=opportunity.opportunity_id,
-            action=OPPORTUNITY_SUBMITTED_FOR_REVIEW,
-            description="Opportunity submitted for Sales Manager review.",
-            user_id=user.user_id,
-            commit=False,
-        )
-
-        managers = User.query.filter(
-            User.active.is_(True),
-            User.status == STATUS_APPROVED,
-            User.roles.any(role=SALES_MANAGER),
-        ).all()
-        for manager in managers:
-            NotificationService.queue(
-                manager.user_id,
-                OPPORTUNITY_SUBMITTED_FOR_REVIEW,
-                "Opportunity",
-                opportunity.opportunity_id,
-                f"Opportunity '{opportunity.opportunity_name}' requires Sales Manager review.",
-            )
-        db.session.commit()
-        return opportunity
+    def submit_for_sales_manager_review(opportunity_id, user, active_role, expected_version):
+        return LifecycleTransitionService.submit_lead(opportunity_id, expected_version, user, active_role)
 
     @staticmethod
-    def review_opportunity(opportunity_id, decision, sales_owner_id, reason, updated_at, user, active_role):
-        opportunity = OpportunityRepository.get_by_id(opportunity_id)
-        if not opportunity:
-            return None
-
-        if not AuthorizationService.can_review_opportunity(user, active_role, opportunity):
-            raise AuthorizationDenied("This opportunity is not awaiting Sales Manager review.")
-
-        if isinstance(updated_at, str):
-            updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-        if ConcurrencyManager.has_conflict(updated_at, opportunity.updated_at):
-            raise RuntimeError(
-                "This opportunity has changed since you opened it. Refresh before deciding."
-            )
-
+    def review_opportunity(opportunity_id, decision, sales_owner_id, reason, expected_version, user, active_role, editable_fields=None):
         decision = str(decision or "").upper()
-        if decision not in {"APPROVE", "REJECT"}:
-            raise ValueError("Decision must be APPROVE or REJECT.")
-
+        if decision == "APPROVE":
+            def validate_assignment(opportunity, owner_id):
+                sales_owner = User.query.filter_by(user_id=owner_id).first()
+                if not sales_owner:
+                    raise AuthorizationDenied("Sales Executive does not exist.")
+                if not AuthorizationService.can_assign_sales_owner(user, active_role, opportunity, sales_owner):
+                    # Leadership is not governed by the manager's scoped helper.
+                    if not (active_role == LEADERSHIP and sales_owner.active and sales_owner.status == STATUS_APPROVED and sales_owner.has_role(SALES_EXECUTIVE)):
+                        raise AuthorizationDenied("Sales Owner must be an active, approved Sales Executive.")
+                existing_team = OpportunityTeam.query.filter_by(
+                    opportunity_id=opportunity.opportunity_id, user_id=owner_id, role=SALES_EXECUTIVE
+                ).first()
+                if not existing_team:
+                    db.session.add(OpportunityTeam(
+                        opportunity_id=opportunity.opportunity_id, user_id=owner_id, role=SALES_EXECUTIVE
+                    ))
+            return LifecycleTransitionService.approve_lead(
+                opportunity_id, expected_version, sales_owner_id, user, active_role, validate_assignment,
+                editable_fields=editable_fields or {},
+            )
         if decision == "REJECT":
-            if not reason or not reason.strip():
-                raise ValueError("A rejection reason is required.")
-            opportunity.status = REJECTED_STATUS
-            opportunity.is_active = False
-
-            ActivityService.log(
-                entity_type="Opportunity",
-                entity_id=opportunity.opportunity_id,
-                action=OPPORTUNITY_REJECTED,
-                description=f"Opportunity rejected. Reason: {reason.strip()}",
-                user_id=user.user_id,
-                commit=False,
-            )
-            NotificationService.queue(
-                opportunity.created_by,
-                OPPORTUNITY_REJECTED,
-                "Opportunity",
-                opportunity.opportunity_id,
-                f"Opportunity '{opportunity.opportunity_name}' was rejected: {reason.strip()}",
-            )
-        else:
-            if sales_owner_id is None:
-                raise ValueError("sales_owner_id is required when approving.")
-            sales_owner = User.query.filter_by(user_id=sales_owner_id).first()
-            if not AuthorizationService.can_assign_sales_owner(
-                user, active_role, opportunity, sales_owner
-            ):
-                raise AuthorizationDenied(
-                    "Sales Owner must be an active, approved Sales Executive."
-                )
-
-            opportunity.sales_owner_id = sales_owner.user_id
-            opportunity.status = APPROVED_STATUS
-            opportunity.is_active = True
-
-            existing_team = OpportunityTeam.query.filter_by(
-                opportunity_id=opportunity.opportunity_id,
-                user_id=sales_owner.user_id,
-            ).first()
-            if not existing_team:
-                db.session.add(OpportunityTeam(
-                    opportunity_id=opportunity.opportunity_id,
-                    user_id=sales_owner.user_id,
-                    role=SALES_EXECUTIVE,
-                ))
-
-            ActivityService.log(
-                entity_type="Opportunity",
-                entity_id=opportunity.opportunity_id,
-                action=OPPORTUNITY_APPROVED,
-                description=f"Opportunity approved by Sales Manager. Sales Owner: {sales_owner.full_name}.",
-                user_id=user.user_id,
-                commit=False,
-            )
-            ActivityService.log(
-                entity_type="Opportunity",
-                entity_id=opportunity.opportunity_id,
-                action=SALES_OWNER_ASSIGNED,
-                description=f"Sales Owner assigned to {sales_owner.full_name}.",
-                user_id=user.user_id,
-                commit=False,
-            )
-            NotificationService.queue(
-                sales_owner.user_id,
-                SALES_OWNER_ASSIGNED,
-                "Opportunity",
-                opportunity.opportunity_id,
-                f"You are now the Sales Owner for '{opportunity.opportunity_name}'.",
-            )
-
-            ActivityService.log(
-                entity_type="Opportunity",
-                entity_id=opportunity.opportunity_id,
-                action=OPPORTUNITY_SENT_TO_PRE_SALES,
-                description="Opportunity approved and handed to Pre-Sales Manager for technical team assignment.",
-                user_id=user.user_id,
-                commit=False,
-            )
-            presales_managers = User.query.filter(
-                User.active.is_(True),
-                User.status == STATUS_APPROVED,
-                User.roles.any(role=PRE_SALES_MANAGER),
-            ).all()
-            for manager in presales_managers:
-                NotificationService.queue(
-                    manager.user_id,
-                    OPPORTUNITY_APPROVED,
-                    "Opportunity",
-                    opportunity.opportunity_id,
-                    "Opportunity '{}' was approved and requires technical team assignment.".format(opportunity.opportunity_name),
-                )
-
-        db.session.commit()
-        return opportunity
+            return LifecycleTransitionService.reject_lead(opportunity_id, expected_version, reason, user, active_role)
+        raise ValueError("Decision must be APPROVE or REJECT.")
 
     @staticmethod
-    def transition_stage(opportunity_id, target_stage_id, user, active_role, remarks=None):
-        opportunity = OpportunityRepository.get_by_id(opportunity_id)
-        if not opportunity:
-            return None
-        return StageService.transition_stage(
-            opportunity=opportunity,
-            target_stage_id=target_stage_id,
-            user=user,
-            active_role=active_role,
-            remarks=remarks,
+    def transition_stage(opportunity_id, target_stage_id, user, active_role, remarks=None, expected_version=None):
+        if expected_version is None:
+            raise TransitionInvalid("expected_version is required for lifecycle transitions.")
+        target = StageRepository.get_by_id(target_stage_id)
+        if not target:
+            raise TransitionInvalid("Invalid opportunity stage.")
+        from app.constants.stages import LEGACY_STAGE_TO_LIFECYCLE
+        lifecycle = LEGACY_STAGE_TO_LIFECYCLE.get(target.stage_name, target.stage_name)
+        return LifecycleTransitionService.transition(
+            opportunity_id, lifecycle, expected_version, user, active_role, remarks=remarks
         )
 
     @staticmethod

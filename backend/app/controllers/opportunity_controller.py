@@ -9,16 +9,23 @@ from app.schemas.opportunity_schema import (
     StageHistoryResponseSchema,
     OpportunityReviewSchema,
     PreSalesAssignmentSchema,
-    TechnicalStageTransitionSchema,
     OpportunityCloseSchema,
+    OpportunityStatusSchema,
+    OpportunityValueChangeSchema,
+    OpportunityValueHistoryResponseSchema,
+    ClosedWonRequestSchema,
+    ClosedWonRequestResolutionSchema,
 )
 from app.services.opportunity_service import OpportunityService
+from app.services.lifecycle_transition_service import LifecycleTransitionService, TransitionConflict, TransitionInvalid
+from app.services.opportunity_value_service import OpportunityValueService, RevenueAttributionService
 
 create_schema = OpportunityCreateSchema()
 update_schema = OpportunityUpdateSchema()
 response_schema = OpportunityResponseSchema()
 response_list_schema = OpportunityResponseSchema(many=True)
 stage_history_schema = StageHistoryResponseSchema(many=True)
+value_history_schema = OpportunityValueHistoryResponseSchema(many=True)
 review_schema = OpportunityReviewSchema()
 
 
@@ -140,6 +147,57 @@ class OpportunityController:
         }), 200
 
     @staticmethod
+    def change_value(opportunity_id):
+        try:
+            data = OpportunityValueChangeSchema().load(request.get_json() or {})
+            opportunity = OpportunityValueService.change_value(
+                opportunity_id=opportunity_id,
+                new_value=data["new_value"],
+                reason=data["reason"],
+                expected_version=data["expected_version"],
+                user=g.auth_user,
+                active_role=g.active_role,
+            )
+            if not opportunity:
+                return jsonify({"message": "Opportunity not found"}), 404
+            return jsonify(response_schema.dump(opportunity)), 200
+        except ValidationError as err:
+            return jsonify(err.messages), 400
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403
+        except TransitionConflict as err:
+            return jsonify({"message": str(err)}), 409
+        except TransitionInvalid as err:
+            return jsonify({"message": str(err)}), 400
+        except ValueError as err:
+            return jsonify({"message": str(err)}), 400
+        except Exception:
+            return jsonify({"message": "Failed to change opportunity value"}), 500
+
+    @staticmethod
+    def get_value_history(opportunity_id):
+        try:
+            history = OpportunityValueService.get_history(opportunity_id, g.auth_user, g.active_role)
+            if history is None:
+                return jsonify({"message": "Opportunity not found"}), 404
+            return jsonify(value_history_schema.dump(history)), 200
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403
+        except Exception:
+            return jsonify({"message": "Failed to load opportunity value history"}), 500
+
+    @staticmethod
+    def revenue_report():
+        try:
+            if g.active_role == SALES_EXECUTIVE:
+                return jsonify(RevenueAttributionService.for_sales_executive(g.auth_user, g.active_role)), 200
+            if g.active_role in {SALES_MANAGER, LEADERSHIP}:
+                return jsonify({"employees": RevenueAttributionService.team_report(g.auth_user, g.active_role)}), 200
+            raise AuthorizationDenied("This active role cannot view revenue attribution.")
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403
+
+    @staticmethod
     def get_stage_history(opportunity_id):
         history = OpportunityService.get_stage_history(
             opportunity_id,
@@ -151,32 +209,22 @@ class OpportunityController:
         return jsonify(stage_history_schema.dump(history)), 200
 
     @staticmethod
-    def qualify(opportunity_id):
-        try:
-            opportunity = OpportunityService.qualify_opportunity(
-                opportunity_id, g.auth_user, g.active_role
-            )
-            if not opportunity:
-                return jsonify({"message": "Opportunity not found"}), 404
-            return jsonify(response_schema.dump(opportunity)), 200
-        except AuthorizationDenied as err:
-            return jsonify({"message": str(err)}), 403
-        except ValueError as err:
-            return jsonify({"message": str(err)}), 400
-        except Exception:
-            return jsonify({"message": "Failed to qualify opportunity"}), 500
-
-    @staticmethod
     def submit_for_review(opportunity_id):
         try:
-            opportunity = OpportunityService.submit_for_sales_manager_review(
-                opportunity_id, g.auth_user, g.active_role
+            payload = request.get_json() or {}
+            expected_version = payload.get("expected_version")
+            opportunity = LifecycleTransitionService.submit_lead(
+                opportunity_id, expected_version, g.auth_user, g.active_role
             )
             if not opportunity:
                 return jsonify({"message": "Opportunity not found"}), 404
             return jsonify(response_schema.dump(opportunity)), 200
         except AuthorizationDenied as err:
             return jsonify({"message": str(err)}), 403
+        except TransitionInvalid as err:
+            return jsonify({"message": str(err)}), 400
+        except TransitionConflict as err:
+            return jsonify({"message": str(err)}), 409
         except Exception:
             return jsonify({"message": "Failed to submit opportunity for review"}), 500
 
@@ -212,7 +260,8 @@ class OpportunityController:
                 decision=data["decision"],
                 sales_owner_id=data.get("sales_owner_id"),
                 reason=data.get("reason"),
-                updated_at=data["updated_at"],
+                expected_version=data["expected_version"],
+                editable_fields={k: data.get(k) for k in ("opportunity_name", "description", "pain_points", "probability", "expected_close_date") if k in data},
                 user=g.auth_user,
                 active_role=g.active_role,
             )
@@ -223,21 +272,68 @@ class OpportunityController:
             return jsonify(err.messages), 400
         except AuthorizationDenied as err:
             return jsonify({"message": str(err)}), 403
+        except TransitionInvalid as err:
+            return jsonify({"message": str(err)}), 400
+        except TransitionConflict as err:
+            return jsonify({"message": str(err)}), 409
         except ValueError as err:
             return jsonify({"message": str(err)}), 400
-        except RuntimeError as err:
-            return jsonify({"message": str(err)}), 409
         except Exception:
             return jsonify({"message": "Failed to review opportunity"}), 500
 
     @staticmethod
-    def transition_technical_stage(opportunity_id):
+    def advance(opportunity_id, target_stage):
         try:
-            data = TechnicalStageTransitionSchema().load(request.get_json() or {})
-            from app.services.stage_service import StageService
-            opportunity = StageService.transition_technical_stage(
-                opportunity_id, data["target_stage"], data["updated_at"],
-                data.get("remarks"), g.auth_user, g.active_role,
+            payload = request.get_json() or {}
+            opportunity = LifecycleTransitionService.transition(
+                opportunity_id, target_stage, payload.get("expected_version"),
+                g.auth_user, g.active_role, remarks=payload.get("remarks")
+            )
+            if not opportunity:
+                return jsonify({"message": "Opportunity not found"}), 404
+            return jsonify(response_schema.dump(opportunity)), 200
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403
+        except TransitionConflict as err:
+            return jsonify({"message": str(err)}), 409
+        except TransitionInvalid as err:
+            return jsonify({"message": str(err)}), 409
+        except Exception:
+            return jsonify({"message": "Failed to advance lifecycle stage"}), 500
+
+    @staticmethod
+    def close(opportunity_id, won):
+        try:
+            data = OpportunityCloseSchema().load(request.get_json() or {})
+            if won:
+                opportunity = LifecycleTransitionService.close_won(
+                    opportunity_id, data["expected_version"], g.auth_user, g.active_role
+                )
+            else:
+                opportunity = LifecycleTransitionService.close_lost(
+                    opportunity_id, data["expected_version"], data.get("reason"),
+                    data.get("explanation"), g.auth_user, g.active_role
+                )
+            if not opportunity:
+                return jsonify({"message": "Opportunity not found"}), 404
+            return jsonify(response_schema.dump(opportunity)), 200
+        except ValidationError as err:
+            return jsonify(err.messages), 400
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403
+        except TransitionConflict as err:
+            return jsonify({"message": str(err)}), 409
+        except TransitionInvalid as err:
+            return jsonify({"message": str(err)}), 400
+        except Exception:
+            return jsonify({"message": "Failed to close opportunity"}), 500
+
+    @staticmethod
+    def request_closed_won(opportunity_id):
+        try:
+            data = ClosedWonRequestSchema().load(request.get_json() or {})
+            opportunity = LifecycleTransitionService.request_closed_won(
+                opportunity_id, data["expected_version"], g.auth_user, g.active_role
             )
             if not opportunity:
                 return jsonify({"message": "Opportunity not found"}), 404
@@ -246,20 +342,19 @@ class OpportunityController:
             return jsonify(err.messages), 400
         except AuthorizationDenied as err:
             return jsonify({"message": str(err)}), 403
-        except ValueError as err:
-            return jsonify({"message": str(err)}), 400
-        except RuntimeError as err:
+        except TransitionConflict as err:
             return jsonify({"message": str(err)}), 409
+        except TransitionInvalid as err:
+            return jsonify({"message": str(err)}), 400
         except Exception:
-            return jsonify({"message": "Failed to change technical stage"}), 500
+            return jsonify({"message": "Failed to request Closed Won"}), 500
 
     @staticmethod
-    def close(opportunity_id, won):
+    def resolve_closed_won(opportunity_id, approve):
         try:
-            data = OpportunityCloseSchema().load(request.get_json() or {})
-            from app.services.stage_service import StageService
-            opportunity = StageService.close_opportunity(
-                opportunity_id, won, data.get("reason"), data["updated_at"],
+            data = ClosedWonRequestResolutionSchema().load(request.get_json() or {})
+            opportunity = LifecycleTransitionService.resolve_closed_won_request(
+                opportunity_id, data["expected_version"], approve, data.get("reason"),
                 g.auth_user, g.active_role,
             )
             if not opportunity:
@@ -269,12 +364,36 @@ class OpportunityController:
             return jsonify(err.messages), 400
         except AuthorizationDenied as err:
             return jsonify({"message": str(err)}), 403
-        except ValueError as err:
-            return jsonify({"message": str(err)}), 400
-        except RuntimeError as err:
+        except TransitionConflict as err:
             return jsonify({"message": str(err)}), 409
+        except TransitionInvalid as err:
+            return jsonify({"message": str(err)}), 400
         except Exception:
-            return jsonify({"message": "Failed to close opportunity"}), 500
+            return jsonify({"message": "Failed to resolve Closed Won request"}), 500
+
+    @staticmethod
+    def set_operational_status(opportunity_id, target_status):
+        try:
+            payload = request.get_json() or {}
+            data = {"status": target_status, "expected_version": payload.get("expected_version")}
+            data = OpportunityStatusSchema().load(data)
+            opportunity = LifecycleTransitionService.set_operational_status(
+                opportunity_id, data["status"], data["expected_version"],
+                g.auth_user, g.active_role
+            )
+            if not opportunity:
+                return jsonify({"message": "Opportunity not found"}), 404
+            return jsonify(response_schema.dump(opportunity)), 200
+        except ValidationError as err:
+            return jsonify(err.messages), 400
+        except AuthorizationDenied as err:
+            return jsonify({"message": str(err)}), 403
+        except TransitionConflict as err:
+            return jsonify({"message": str(err)}), 409
+        except TransitionInvalid as err:
+            return jsonify({"message": str(err)}), 400
+        except Exception:
+            return jsonify({"message": "Failed to change operational status"}), 500
 
     @staticmethod
     def delete(opportunity_id):

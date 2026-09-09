@@ -9,13 +9,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import StakeholderForm from "../components/StakeholderForm";
 import PocForm from "../components/PocForm";
 import {
-    getPocsByOpportunity, requestPoc, startPocExecution, submitPocResult, completePoc, downloadPoc
+    getPocsByOpportunity, getPoc, requestPoc, startPocExecution, submitPocResult, completePoc, downloadPoc
 } from "../api/pocApi";
 import { getStakeholdersByOpportunity } from "../api/stakeholderApi";
 import {
-    getOpportunity, getOpportunityStageHistory, updateOpportunity,
-    qualifyOpportunity, submitOpportunityForReview, transitionTechnicalStage,
-    closeWon, closeLost
+    getOpportunity, getOpportunityStageHistory, getOpportunityValueHistory, changeOpportunityValue, updateOpportunity,
+    submitOpportunityForReview, advanceToRfx, advanceToPoc, advanceToNegotiations,
+    closeWon, closeLost, requestClosedWon, approveClosedWon, rejectClosedWon, markStalled, markActive
 } from "../api/opportunityApi";
 import { ROLES } from "../auth/roles";
 import { useAuth } from "../context/AuthContext";
@@ -67,11 +67,13 @@ export default function OpportunityDetail() {
 
     const [opportunity, setOpportunity] = useState(null);
     const [history, setHistory] = useState([]);
+    const [valueHistory, setValueHistory] = useState([]);
     const [pocs, setPocs] = useState([]);
     const [stakeholders, setStakeholders] = useState([]);
     const [error, setError] = useState("");
     const [sectionErrors, setSectionErrors] = useState({
         history: null,
+        valueHistory: null,
         stakeholders: null,
         pocs: null,
     });
@@ -79,6 +81,8 @@ export default function OpportunityDetail() {
     const [saving, setSaving] = useState(false);
     const [edit, setEdit] = useState(null);
     const [editingSales, setEditingSales] = useState(false);
+    const [editingValue, setEditingValue] = useState(false);
+    const [valueEdit, setValueEdit] = useState({ new_value: "", reason: "" });
     const [resultForms, setResultForms] = useState({});
 
     const technicalRole = activeRole === ROLES.SOLUTION_ENGINEER || activeRole === ROLES.PRE_SALES_MANAGER;
@@ -119,6 +123,7 @@ export default function OpportunityDetail() {
     const loadOptionalSections = async () => {
         const requests = {
             history: getOpportunityStageHistory(opportunityId),
+            valueHistory: getOpportunityValueHistory(opportunityId),
             stakeholders: getStakeholdersByOpportunity(opportunityId),
             ...(canLoadPocData ? { pocs: getPocsByOpportunity(opportunityId) } : {}),
         };
@@ -134,6 +139,8 @@ export default function OpportunityDetail() {
 
                 if (section === "history") {
                     setHistory(Array.isArray(result.value) ? result.value : []);
+                } else if (section === "valueHistory") {
+                    setValueHistory(Array.isArray(result.value) ? result.value : []);
                 } else if (section === "stakeholders") {
                     setStakeholders(Array.isArray(result.value) ? result.value : []);
                 } else if (section === "pocs") {
@@ -154,7 +161,7 @@ export default function OpportunityDetail() {
 
             setSectionError(section, describeSectionError(
                 err,
-                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : "stage history"}.`
+                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : section === "valueHistory" ? "value history" : "stage history"}.`
             ));
         });
     };
@@ -171,6 +178,7 @@ export default function OpportunityDetail() {
             setError("");
             setSectionErrors({
                 history: null,
+                valueHistory: null,
                 stakeholders: null,
                 pocs: null,
                     });
@@ -181,7 +189,7 @@ export default function OpportunityDetail() {
             setEdit({
                 opportunity_name: data.opportunity_name || "",
                 description: data.description || "",
-                estimated_value: data.estimated_value ?? "",
+                pain_points: data.pain_points || "",
                 probability: data.probability ?? 0,
                 expected_close_date: data.expected_close_date || "",
             });
@@ -199,6 +207,7 @@ export default function OpportunityDetail() {
     const retrySection = async (section) => {
         const requests = {
             history: getOpportunityStageHistory(opportunityId),
+            valueHistory: getOpportunityValueHistory(opportunityId),
             stakeholders: getStakeholdersByOpportunity(opportunityId),
             pocs: getPocsByOpportunity(opportunityId),
         };
@@ -209,6 +218,7 @@ export default function OpportunityDetail() {
         try {
             const value = await requests[section];
             if (section === "history") setHistory(Array.isArray(value) ? value : []);
+            if (section === "valueHistory") setValueHistory(Array.isArray(value) ? value : []);
             if (section === "stakeholders") setStakeholders(Array.isArray(value) ? value : []);
             if (section === "pocs") setPocs(Array.isArray(value) ? value : []);
         } catch (err) {
@@ -218,7 +228,7 @@ export default function OpportunityDetail() {
             }
             setSectionError(section, describeSectionError(
                 err,
-                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : "stage history"}.`
+                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : section === "valueHistory" ? "value history" : "stage history"}.`
             ));
         }
     };
@@ -231,17 +241,30 @@ export default function OpportunityDetail() {
         (member) => member.role === ROLES.SOLUTION_ENGINEER && member.user_id === currentUserId
     );
 
-    const stageName = opportunity?.current_stage?.stage_name || "—";
-    const status = opportunity?.status || "—";
+    const stageName = opportunity?.lifecycle_stage || "—";
+    const status = opportunity?.operational_status || "—";
     const probability = Number(opportunity?.probability || 0);
-    const isClosed = ["Closed Won", "Closed Lost"].includes(stageName) || status === "Closed";
+    const outcome = opportunity?.outcome || "Open";
+    const isClosed = status === "Closed";
+
+    const canChangeValue =
+        [ROLES.SALES_MANAGER, ROLES.PRE_SALES_MANAGER, ROLES.LEADERSHIP].includes(activeRole) &&
+        opportunity?.operational_status !== "Closed";
 
     const canEditSales =
         activeRole === ROLES.SALES_EXECUTIVE &&
         opportunity?.created_by === currentUserId &&
-        opportunity?.status === "Open" &&
-        opportunity?.is_active &&
-        ["Lead / Identified", "Qualification"].includes(stageName);
+        opportunity?.operational_status === "Active" &&
+        stageName === "Lead" &&
+        ["Draft", "Rejected"].includes(opportunity?.review_status);
+
+    const canSubmitLead =
+        [ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER, ROLES.LEADERSHIP].includes(activeRole) &&
+        opportunity?.created_by === currentUserId &&
+        opportunity?.operational_status === "Active" &&
+        opportunity?.outcome === "Open" &&
+        stageName === "Lead" &&
+        ["Draft", "Rejected"].includes(opportunity?.review_status);
 
 
     const run = async (fn) => {
@@ -251,7 +274,12 @@ export default function OpportunityDetail() {
             await fn();
             await load();
         } catch (err) {
-            setError(err?.response?.data?.message || err?.message || "Action failed. Please try again.");
+            if (err?.response?.status === 409) {
+                setError("This opportunity changed before your action completed. Refreshing the latest state…");
+                await load();
+            } else {
+                setError(err?.response?.data?.message || err?.message || "Action failed. Please try again.");
+            }
         } finally {
             setSaving(false);
         }
@@ -260,12 +288,21 @@ export default function OpportunityDetail() {
     const saveSales = () => run(async () => {
         await updateOpportunity(opportunityId, {
             ...edit,
-            estimated_value: edit.estimated_value === "" ? null : edit.estimated_value,
             probability: Number(edit.probability || 0),
             expected_close_date: edit.expected_close_date || null,
-            updated_at: opportunity.updated_at,
+            expected_version: opportunity.row_version,
         });
         setEditingSales(false);
+    });
+
+    const saveValue = () => run(async () => {
+        await changeOpportunityValue(opportunityId, {
+            new_value: valueEdit.new_value,
+            reason: valueEdit.reason,
+            expected_version: opportunity.row_version,
+        });
+        setEditingValue(false);
+        setValueEdit({ new_value: "", reason: "" });
     });
 
     const submitPocRequest = async (payload) => {
@@ -284,15 +321,38 @@ export default function OpportunityDetail() {
     };
 
     const close = (won) => {
-        const reason = window.prompt(won ? "Optional close remarks" : "Closed Lost reason");
-        if (!won && !reason?.trim()) return;
-        return run(() => (won ? closeWon : closeLost)(
-            opportunityId,
-            { reason: reason || "", updated_at: opportunity.updated_at }
-        ));
+        if (won) {
+            return run(() => closeWon(opportunityId, { expected_version: opportunity.row_version }));
+        }
+        const reason = window.prompt("Closed Lost reason");
+        if (!reason?.trim()) return;
+        let explanation = "";
+        if (reason.trim().toLowerCase() === "other") {
+            explanation = window.prompt("Explain the Closed Lost reason (required for Other)") || "";
+            if (!explanation.trim()) return;
+        }
+        return run(() => closeLost(opportunityId, {
+            reason: reason.trim(),
+            explanation: explanation.trim() || undefined,
+            expected_version: opportunity.row_version
+        }));
     };
 
-    const stageSteps = ["Qualification", "Discovery", "POC / Technical Evaluation", "Proposal", "Negotiation"];
+    const requestWon = () => run(() => requestClosedWon(opportunityId, {
+        expected_version: opportunity.row_version
+    }));
+
+    const resolveWonRequest = (approve) => {
+        const reason = approve ? "" : (window.prompt("Reason for rejecting the Closed Won request") || "");
+        if (!approve && !reason.trim()) return;
+        const fn = approve ? approveClosedWon : rejectClosedWon;
+        return run(() => fn(opportunityId, {
+            expected_version: opportunity.row_version,
+            reason: reason.trim() || undefined
+        }));
+    };
+
+    const stageSteps = ["Lead", "Qualified", "RFX", "POC", "Negotiations", "Delivery"];
     const currentStageIndex = stageSteps.indexOf(stageName);
 
     const salesOwner = opportunity?.sales_owner?.full_name || "Pending assignment";
@@ -345,6 +405,15 @@ export default function OpportunityDetail() {
 
             {error && <ErrorState message={error} onRetry={load} />}
 
+            {isClosed && (
+                <SectionCard title="Opportunity Locked" description="This opportunity is closed. Lifecycle, value, ownership, stakeholders, and closure fields are immutable." icon={History}>
+                    <div className="opportunity-stage-summary">
+                        <div><span>Final revenue</span><strong>{money(opportunity.final_revenue)}</strong></div>
+                        <div><span>Outcome</span><strong>{outcome}</strong></div>
+                    </div>
+                </SectionCard>
+            )}
+
             <SectionCard className="opportunity-hero-card">
                 <div className="opportunity-hero-heading">
                     <div>
@@ -355,6 +424,7 @@ export default function OpportunityDetail() {
                     <div className="opportunity-badge-stack">
                         <StatusBadge status={status} />
                         <StatusBadge status={stageName} />
+                        <StatusBadge status={outcome} />
                     </div>
                 </div>
             </SectionCard>
@@ -365,6 +435,20 @@ export default function OpportunityDetail() {
                 <KpiCard icon={CalendarDays} label="Expected Close" value={dateLabel(opportunity.expected_close_date)} description="Target close date" />
                 <KpiCard icon={Layers3Icon} label="Stage" value={stageName} description={status} />
             </div>
+
+            {canChangeValue && (
+                <SectionCard title="Opportunity Value" description="Commercial value changes require a reason and use optimistic concurrency." icon={DollarSign}>
+                    {editingValue ? (
+                        <div className="field-grid">
+                            <label className="field-label"><span>New value</span><input type="number" min="0" step="0.01" value={valueEdit.new_value} onChange={(e) => setValueEdit({ ...valueEdit, new_value: e.target.value })} /></label>
+                            <label className="field-label opportunity-field-full"><span>Reason</span><textarea rows="3" value={valueEdit.reason} onChange={(e) => setValueEdit({ ...valueEdit, reason: e.target.value })} placeholder="Why is the opportunity value changing?" /></label>
+                            <div className="opportunity-form-actions opportunity-field-full"><Button variant="secondary" onClick={() => setEditingValue(false)}>Cancel</Button><Button disabled={saving || !valueEdit.reason.trim() || valueEdit.new_value === ""} onClick={saveValue}><Save size={14} /> Save value</Button></div>
+                        </div>
+                    ) : (
+                        <div className="opportunity-stage-summary"><div><span>Current value</span><strong>{money(opportunity.estimated_value)}</strong></div><div><span>Version</span><strong>{opportunity.row_version}</strong></div><Button variant="secondary" onClick={() => { setValueEdit({ new_value: opportunity.estimated_value ?? "", reason: "" }); setEditingValue(true); }}><Edit3 size={13} /> Edit value</Button></div>
+                    )}
+                </SectionCard>
+            )}
 
             <div className="opportunity-two-column">
                 <SectionCard
@@ -377,15 +461,16 @@ export default function OpportunityDetail() {
                         <div className="field-grid">
                             <label className="field-label"><span>Opportunity name</span><input value={edit.opportunity_name} onChange={(e) => setEdit({ ...edit, opportunity_name: e.target.value })} /></label>
                             <label className="field-label"><span>Expected close</span><input type="date" value={edit.expected_close_date} onChange={(e) => setEdit({ ...edit, expected_close_date: e.target.value })} /></label>
-                            <label className="field-label"><span>Estimated value</span><input type="number" value={edit.estimated_value} onChange={(e) => setEdit({ ...edit, estimated_value: e.target.value })} /></label>
                             <label className="field-label"><span>Probability</span><input type="number" min="0" max="100" value={edit.probability} onChange={(e) => setEdit({ ...edit, probability: e.target.value })} /></label>
                             <label className="field-label opportunity-field-full"><span>Description</span><textarea rows="5" value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></label>
+                            <label className="field-label opportunity-field-full"><span>Pain points</span><textarea rows="4" value={edit.pain_points} onChange={(e) => setEdit({ ...edit, pain_points: e.target.value })} /></label>
                             <div className="opportunity-form-actions opportunity-field-full"><Button disabled={saving} onClick={saveSales}><Save size={14} /> Save changes</Button></div>
                         </div>
                     ) : (
                         <>
                             <InfoGrid>
                                 <InfoItem icon={DollarSign} label="Estimated value" value={money(opportunity.estimated_value)} />
+                                <InfoItem icon={DollarSign} label="Final revenue" value={money(opportunity.final_revenue)} />
                                 <InfoItem icon={Target} label="Probability" value={`${probability}%`} />
                                 <InfoItem icon={CalendarDays} label="Expected close" value={dateLabel(opportunity.expected_close_date)} />
                                 <InfoItem icon={Users} label="Sales owner" value={salesOwner} />
@@ -410,6 +495,25 @@ export default function OpportunityDetail() {
                 </SectionCard>
             </div>
 
+            <SectionCard title="Opportunity Value History" description="Immutable record of every recorded Opportunity Value change." icon={History}>
+                {sectionErrors.valueHistory ? (
+                    <ErrorState title="Unable to load value history" message={sectionErrors.valueHistory.message} onRetry={() => retrySection("valueHistory")} />
+                ) : valueHistory.length ? (
+                    <div className="opportunity-history">
+                        {valueHistory.map((entry) => (
+                            <div className="opportunity-history-row" key={entry.history_id}>
+                                <span className="opportunity-history-dot" />
+                                <div>
+                                    <strong>{money(entry.old_value)} → {money(entry.new_value)}</strong>
+                                    <p>{entry.reason}</p>
+                                    <small>{entry.actor?.full_name || `User #${entry.actor_id}`} · {entry.actor_active_role} · {dateLabel(entry.changed_at)} · v{entry.opportunity_row_version}</small>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : <EmptyState message="No value history is recorded for this opportunity." />}
+            </SectionCard>
+
             <SectionCard title="Stage & Progression" description="Current stage and recorded stage history." icon={History}>
                 <div className="opportunity-stage-summary">
                     <div>
@@ -422,7 +526,7 @@ export default function OpportunityDetail() {
                     </div>
                     <div>
                         <span>Lifecycle</span>
-                        <strong>{opportunity.lifecycle_state || "—"}</strong>
+                        <strong>{opportunity.lifecycle_stage || "—"}</strong>
                     </div>
                 </div>
                 {currentStageIndex >= 0 && (
@@ -446,7 +550,7 @@ export default function OpportunityDetail() {
                             <div className="opportunity-history-row" key={entry.history_id || index}>
                                 <span className="opportunity-history-dot" />
                                 <div>
-                                    <strong>{entry.stage?.stage_name || `Stage #${entry.stage_id}`}</strong>
+                                    <strong>{entry.to_lifecycle_stage || entry.stage?.stage_name || `Stage #${entry.stage_id}`}</strong>
                                     <span>{dateLabel(entry.created_at)} · {entry.user?.full_name || "System"}{entry.remarks ? ` · ${entry.remarks}` : ""}</span>
                                 </div>
                             </div>
@@ -455,30 +559,35 @@ export default function OpportunityDetail() {
                 ) : <EmptyState message="No stage history recorded." />}
             </SectionCard>
 
-            {activeRole === ROLES.SALES_EXECUTIVE && opportunity.created_by === currentUserId && opportunity.status === "Open" && (
+            {canSubmitLead && (
                 <SectionCard title="Sales Actions" description="Commercial actions available for this opportunity." icon={Zap}>
                     <div className="opportunity-action-row">
-                        {stageName === "Lead / Identified" && <Button disabled={saving} onClick={() => run(() => qualifyOpportunity(opportunityId))}><ArrowRight size={14} /> Qualify opportunity</Button>}
-                        {stageName === "Qualification" && <Button disabled={saving} onClick={() => run(() => submitOpportunityForReview(opportunityId))}><ShieldCheck size={14} /> Submit for Sales Manager Review</Button>}
-                        {!["Lead / Identified", "Qualification"].includes(stageName) && <ActionNote>No sales action is required at the current stage.</ActionNote>}
+                        <Button disabled={saving} onClick={() => run(() => submitOpportunityForReview(opportunityId, opportunity.row_version))}><ShieldCheck size={14} /> Submit Lead for Sales Manager Review</Button>
                     </div>
                 </SectionCard>
             )}
 
-            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && (
-                <SectionCard title="Technical Progress" description="Technical lifecycle actions for the assigned Solution Engineer." icon={Zap}>
+            {(activeRole === ROLES.SOLUTION_ENGINEER || activeRole === ROLES.PRE_SALES_MANAGER || activeRole === ROLES.LEADERSHIP) && opportunity.operational_status !== "Closed" && (
+                <SectionCard title="Lifecycle Progress" description="Server-authorized lifecycle and closure actions." icon={Zap}>
                     <div className="opportunity-action-row">
-                        {stageName === "Qualification" && <Button disabled={saving} onClick={() => run(() => transitionTechnicalStage(opportunityId, { target_stage: "Discovery", updated_at: opportunity.updated_at }))}><ArrowRight size={14} /> Start Discovery</Button>}
-                        {stageName === "Discovery" && <Button disabled={saving} onClick={() => run(() => transitionTechnicalStage(opportunityId, { target_stage: "POC / Technical Evaluation", updated_at: opportunity.updated_at }))}><ArrowRight size={14} /> Move to POC Evaluation</Button>}
-                        {stageName === "POC / Technical Evaluation" && <Button disabled={saving} onClick={() => run(() => transitionTechnicalStage(opportunityId, { target_stage: "Proposal", updated_at: opportunity.updated_at }))}><ArrowRight size={14} /> Move to Proposal</Button>}
-                        {stageName === "Proposal" && <Button disabled={saving} onClick={() => run(() => transitionTechnicalStage(opportunityId, { target_stage: "Negotiation", updated_at: opportunity.updated_at }))}><ArrowRight size={14} /> Move to Negotiation</Button>}
-                        {stageName === "Negotiation" && <><Button disabled={saving} onClick={() => close(true)}><CheckCircle2 size={14} /> Close Won</Button><Button variant="danger" disabled={saving} onClick={() => close(false)}><XCircle size={14} /> Close Lost</Button></>}
-                        {isClosed && <ActionNote>This opportunity is closed.</ActionNote>}
+                        {stageName === "Qualified" && <Button disabled={saving} onClick={() => run(() => advanceToRfx(opportunityId, opportunity.row_version))}><ArrowRight size={14} /> Advance to RFX</Button>}
+                        {stageName === "RFX" && <Button disabled={saving} onClick={() => run(() => advanceToPoc(opportunityId, opportunity.row_version))}><ArrowRight size={14} /> Advance to POC</Button>}
+                        {stageName === "POC" && <Button disabled={saving} onClick={() => run(() => advanceToNegotiations(opportunityId, opportunity.row_version))}><ArrowRight size={14} /> Advance to Negotiations</Button>}
+                        {stageName !== "Lead" && (activeRole === ROLES.PRE_SALES_MANAGER || activeRole === ROLES.LEADERSHIP) && <Button disabled={saving} onClick={() => close(true)}><CheckCircle2 size={14} /> Close Won</Button>}
+                        {stageName !== "Lead" && (activeRole === ROLES.PRE_SALES_MANAGER || activeRole === ROLES.LEADERSHIP || (activeRole === ROLES.SOLUTION_ENGINEER && assignedSE)) && <Button variant="secondary" disabled={saving} onClick={() => close(false)}><CheckCircle2 size={14} /> Close Lost</Button>}
+                        {stageName !== "Lead" && activeRole === ROLES.SOLUTION_ENGINEER && opportunity?.closed_won_request?.status !== "Pending" && <Button variant="secondary" disabled={saving} onClick={requestWon}><CheckCircle2 size={14} /> Request Closed Won</Button>}
+                        {opportunity?.closed_won_request?.status === "Pending" && activeRole === ROLES.PRE_SALES_MANAGER && (
+                            <>
+                                <Button disabled={saving} onClick={() => resolveWonRequest(true)}><CheckCircle2 size={14} /> Approve Closed Won</Button>
+                                <Button variant="secondary" disabled={saving} onClick={() => resolveWonRequest(false)}>Reject Closed Won</Button>
+                            </>
+                        )}
+                        {activeRole !== ROLES.SOLUTION_ENGINEER || assignedSE ? null : <ActionNote>This role is not assigned to this opportunity.</ActionNote>}
                     </div>
                 </SectionCard>
             )}
 
-            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && stageName === "POC / Technical Evaluation" && (
+            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && stageName === "POC" && (
                 <SectionCard title="Create POC" description="Define the technical proof of concept for this opportunity." icon={FlaskConical}>
                     <PocForm
                         fixedOpportunity={opportunity}
@@ -558,7 +667,16 @@ export default function OpportunityDetail() {
                                                     </select>
                                                     <textarea placeholder="Outcome notes" value={form.outcome_notes} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, outcome_notes: e.target.value } })} />
                                                     <textarea placeholder="Execution remarks" value={form.remarks} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, remarks: e.target.value } })} />
-                                                    <Button disabled={saving} onClick={() => run(() => submitPocResult(poc.poc_id, { ...form, execution_status: "Submitted", updated_at: poc.updated_at }))}><MessageSquare size={13} /> Submit result</Button>
+                                                    <Button disabled={saving} onClick={() => run(async () => {
+    const latest = await getPoc(poc.poc_id);
+    await submitPocResult(poc.poc_id, {
+        outcome: form.outcome,
+        outcome_notes: form.outcome_notes,
+        remarks: form.remarks,
+        execution_status: "Submitted",
+        updated_at: latest.updated_at,
+    });
+})}><MessageSquare size={13} /> Submit result</Button>
                                                 </div>
                                             )}
                                             {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "Submitted" && (
@@ -574,7 +692,15 @@ export default function OpportunityDetail() {
 
 
             <SectionCard title="Stakeholders" description="Customer contacts connected to this opportunity." icon={Users}>
-                {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active && <StakeholderForm opportunityId={opportunityId} onCreated={() => retrySection("stakeholders")} />}
+                {((activeRole === ROLES.SALES_EXECUTIVE &&
+                    opportunity.created_by === currentUserId &&
+                    opportunity.is_active &&
+                    opportunity.operational_status === "Active" &&
+                    stageName === "Lead" &&
+                    ["Draft", "Rejected"].includes(opportunity.review_status)) ||
+                    (activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active)) && (
+                    <StakeholderForm opportunityId={opportunityId} onCreated={() => retrySection("stakeholders")} />
+                )}
                 {sectionErrors.stakeholders ? (
                     <ErrorState
                         title={sectionErrors.stakeholders.status === 403 ? "Stakeholders are read-only" : "Unable to load stakeholders"}

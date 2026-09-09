@@ -63,14 +63,17 @@ from app.constants.auth_constants import (
     STATUS_REVOKED,
 )
 from app.constants.roles import (
+    LEADERSHIP,
     ADMIN,
     SALES_EXECUTIVE,
     SALES_MANAGER,
     PRE_SALES_MANAGER,
     SOLUTION_ENGINEER,
-    DELIVERY,
+    DELIVERY_MANAGER,
+    DEVOPS_ENGINEER,
+    DATA_ANALYST,
 )
-from app.constants.stages import PIPELINE_STAGES, CLOSED_STATUS, OPEN_STATUS
+from app.constants.stages import PIPELINE_STAGES, CLOSED_STATUS, OPEN_STATUS, ACTIVE_STATUS
 
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
@@ -233,62 +236,19 @@ def seed_users():
     password_hash = hash_password("Test@123")
 
     specs = [
-        (
-            "System Administrator",
-            "admin@dealroom.local",
-            [ADMIN],
-            STATUS_APPROVED,
-        ),
-        (
-            "Sales Executive",
-            "sales.exec@dealroom.local",
-            [SALES_EXECUTIVE],
-            STATUS_APPROVED,
-        ),
-        (
-            "Sales Manager",
-            "sales.manager@dealroom.local",
-            [SALES_MANAGER],
-            STATUS_APPROVED,
-        ),
-        (
-            "Pre-Sales Manager",
-            "presales.manager@dealroom.local",
-            [PRE_SALES_MANAGER],
-            STATUS_APPROVED,
-        ),
-        (
-            "Solution Engineer",
-            "solution.engineer@dealroom.local",
-            [SOLUTION_ENGINEER],
-            STATUS_APPROVED,
-        ),
-        (
-            "Solution Engineer",
-            "delivery@dealroom.local",
-            [SOLUTION_ENGINEER],
-            STATUS_APPROVED,
-        ),
-        (
-            "Multi Role User",
-            "multi.role@dealroom.local",
-            [SOLUTION_ENGINEER],
-            STATUS_APPROVED,
-        ),
-        (
-            "Pending User",
-            "pending@dealroom.local",
-            [],
-            STATUS_PENDING,
-        ),
-        (
-            "Revoked User",
-            "revoked@dealroom.local",
-            [SALES_EXECUTIVE],
-            STATUS_REVOKED,
-        ),
+        ("System Leadership", "leadership@dealroom.local", [LEADERSHIP], STATUS_APPROVED),
+        ("System Administrator", "admin@dealroom.local", [ADMIN], STATUS_APPROVED),
+        ("Sales Executive", "sales.exec@dealroom.local", [SALES_EXECUTIVE], STATUS_APPROVED),
+        ("Sales Manager", "sales.manager@dealroom.local", [SALES_MANAGER], STATUS_APPROVED),
+        ("Pre-Sales Manager", "presales.manager@dealroom.local", [PRE_SALES_MANAGER], STATUS_APPROVED),
+        ("Solution Engineer", "solution.engineer@dealroom.local", [SOLUTION_ENGINEER], STATUS_APPROVED),
+        ("Delivery Manager", "delivery.manager@dealroom.local", [DELIVERY_MANAGER], STATUS_APPROVED),
+        ("DevOps Engineer", "devops.engineer@dealroom.local", [DEVOPS_ENGINEER], STATUS_APPROVED),
+        ("Data Analyst", "data.analyst@dealroom.local", [DATA_ANALYST], STATUS_APPROVED),
+        ("Multi Role User", "multi.role@dealroom.local", [SOLUTION_ENGINEER, DEVOPS_ENGINEER], STATUS_APPROVED),
+        ("Pending User", "pending@dealroom.local", [], STATUS_PENDING),
+        ("Revoked User", "revoked@dealroom.local", [SALES_EXECUTIVE], STATUS_REVOKED),
     ]
-
     users = {}
 
     for name, email, roles, status in specs:
@@ -318,15 +278,14 @@ def seed_users():
             if status == STATUS_APPROVED and not user.approved_at:
                 user.approved_at = datetime.utcnow()
 
-        existing_roles = {row.role for row in user.roles}
-
+        desired_roles = set(roles)
+        for role_row in list(user.roles):
+            if role_row.role not in desired_roles:
+                db.session.delete(role_row)
+        existing_roles = {row.role for row in user.roles if row.role in desired_roles}
         for role in roles:
             if role not in existing_roles:
                 user.roles.append(UserRole(role=role))
-
-        if not roles:
-            for role_row in list(user.roles):
-                db.session.delete(role_row)
 
         users[email] = user
 
@@ -335,7 +294,8 @@ def seed_users():
     manager_map = {
         "sales.exec@dealroom.local": "sales.manager@dealroom.local",
         "solution.engineer@dealroom.local": "presales.manager@dealroom.local",
-        "delivery@dealroom.local": "presales.manager@dealroom.local",
+        "devops.engineer@dealroom.local": "delivery.manager@dealroom.local",
+        "data.analyst@dealroom.local": "delivery.manager@dealroom.local",
         "multi.role@dealroom.local": "presales.manager@dealroom.local",
     }
 
@@ -599,15 +559,29 @@ def seed_opportunities(workbook, accounts, stages, users):
                     "updated_at": parse_datetime(
                         row.get("last_activity_date")
                     ),
+                    "lifecycle_stage": {
+                        "Lead / Identified": "Lead",
+                        "Qualification": "Qualified",
+                        "Discovery": "RFX",
+                        "POC / Technical Evaluation": "POC",
+                        "Proposal": "Negotiations",
+                        "Negotiation": "Negotiations",
+                    }.get(stage_name),
+                    "outcome": (
+                        "Closed Won" if stage_name == "Closed Won" else
+                        "Closed Lost" if stage_name == "Closed Lost" else "Open"
+                    ),
+                    "operational_status": (
+                        "Closed" if stage_name in {"Closed Won", "Closed Lost"} else "Active"
+                    ),
+                    "review_status": "Approved" if stage_name not in {"Lead / Identified", "Qualification"} else "Draft",
+                    "row_version": 1,
                     "status": (
                         CLOSED_STATUS
                         if stage_name in {"Closed Won", "Closed Lost"}
-                        else OPEN_STATUS
+                        else ACTIVE_STATUS
                     ),
-                    "is_active": stage_name not in {
-                        "Closed Won",
-                        "Closed Lost",
-                    },
+                    "is_active": stage_name not in {"Closed Won", "Closed Lost"},
                 }
 
         opportunity = Opportunity.query.filter_by(
@@ -773,7 +747,7 @@ def seed_opportunity_teams(opportunities, users):
     sales_exec = user_for_role(users, SALES_EXECUTIVE)
     sales_manager = user_for_role(users, SALES_MANAGER)
     se = user_for_role(users, SOLUTION_ENGINEER)
-    delivery = user_for_role(users, DELIVERY)
+    delivery = user_for_role(users, SOLUTION_ENGINEER)
 
     if not all([sales_exec, sales_manager, se, delivery]):
         raise RuntimeError(
@@ -837,7 +811,7 @@ def seed_stage_history(workbook, opportunities, stages, users):
         user_for_role(users, SALES_EXECUTIVE),
         user_for_role(users, SALES_MANAGER),
         user_for_role(users, SOLUTION_ENGINEER),
-        user_for_role(users, DELIVERY),
+        user_for_role(users, SOLUTION_ENGINEER),
     ]
     actor_candidates = [
         user for user in actor_candidates if user
@@ -1052,7 +1026,7 @@ def resolve_activity_actor(name, users, index):
         user_for_role(users, SALES_MANAGER),
         user_for_role(users, PRE_SALES_MANAGER),
         user_for_role(users, SOLUTION_ENGINEER),
-        user_for_role(users, DELIVERY),
+        user_for_role(users, SOLUTION_ENGINEER),
     ]
     candidates = [
         user for user in candidates if user
@@ -1261,7 +1235,7 @@ def main():
             "sales.manager@dealroom.local",
             "presales.manager@dealroom.local",
             "solution.engineer@dealroom.local",
-            "delivery@dealroom.local",
+            "solution.engineer@dealroom.local",
             "multi.role@dealroom.local",
             "pending@dealroom.local",
             "revoked@dealroom.local",

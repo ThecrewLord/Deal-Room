@@ -32,7 +32,12 @@ def seed_opportunities():
         description="Enterprise DevSecOps implementation",
         estimated_value=2500000,
         probability=40,
-        status=OPEN_STATUS,
+        lifecycle_stage="Lead",
+        outcome="Open",
+        operational_status="Active",
+        review_status="Draft",
+        row_version=1,
+        status=ACTIVE_STATUS,
         is_active=True,
     )
     db.session.add(opportunity)

@@ -11,3 +11,4 @@ marshmallow-sqlalchemy
 gunicorn
 pytest
 pytest-flask
+reportlab

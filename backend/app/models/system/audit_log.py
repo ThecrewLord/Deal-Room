@@ -33,3 +33,7 @@ class AuditLog(BaseModel):
         db.Integer,
         nullable=True,
     )
+    actor_active_role = db.Column(
+        db.String(100),
+        nullable=True,
+    )

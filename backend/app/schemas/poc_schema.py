@@ -28,9 +28,10 @@ class PocExecutionStartSchema(Schema):
 
 
 class PocResultSchema(Schema):
-    execution_status = fields.Str(required=True, validate=validate.OneOf(
-        ["Submitted"]
-    ))
+    execution_status = fields.Str(
+        load_default="Submitted",
+        validate=validate.OneOf(["Submitted"]),
+    )
     outcome = fields.Str(required=True, validate=validate.OneOf(POC_OUTCOMES))
     outcome_notes = fields.Str(load_default="", allow_none=True)
     remarks = fields.Str(allow_none=True)

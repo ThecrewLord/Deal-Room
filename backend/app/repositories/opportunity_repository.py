@@ -62,18 +62,13 @@ class OpportunityRepository:
 
     @staticmethod
     def update_stage(opportunity, stage_id):
-        try:
-            opportunity.stage_id = stage_id
-            db.session.commit()
-            return opportunity
-        except Exception:
-            db.session.rollback()
-            raise
+        """Retired v1 mutation path. State changes must go through A2."""
+        raise RuntimeError("Direct stage mutation is disabled; use LifecycleTransitionService.")
 
     @staticmethod
     def get_pending_sales_manager_review(query):
         return query.filter(
-            Opportunity.status == "Pending Sales Manager Review",
+            Opportunity.review_status == "Pending Sales Manager Review",
             Opportunity.is_active.is_(True),
         ).order_by(Opportunity.updated_at.asc()).all()
 
@@ -92,7 +87,7 @@ class OpportunityRepository:
             OpportunityTeam.role == SOLUTION_ENGINEER,
         ).exists()
         return Opportunity.query.filter(
-            Opportunity.status == "Approved",
+            Opportunity.review_status == "Approved",
             Opportunity.sales_owner_id.isnot(None),
             Opportunity.is_active.is_(True),
             ~technical_member,

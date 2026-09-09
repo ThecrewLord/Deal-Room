@@ -22,10 +22,7 @@ import PreSalesAssignment from "./pages/PreSalesAssignment";
 import PreSalesManagerTeamPerformance from "./pages/PreSalesManagerTeamPerformance";
 import PreSalesManagerEmployeePerformance from "./pages/PreSalesManagerEmployeePerformance";
 
-import UserApproval from "./pages/admin/UserApproval";
 import UserManagement from "./pages/admin/UserManagement";
-import RoleManagement from "./pages/admin/RoleManagement";
-import AccessManagement from "./pages/admin/AccessManagement";
 
 
 import ProtectedRoute from "./routes/ProtectedRoute";
@@ -114,6 +111,7 @@ export default function App() {
                     <Layout>
                         <RoleRoute
                             roles={[
+                                ROLES.LEADERSHIP,
                                 ROLES.ADMIN,
                                 ROLES.SALES_EXECUTIVE,
                                 ROLES.SALES_MANAGER,
@@ -273,49 +271,19 @@ export default function App() {
                 }
             />
 
-            <Route
-                path="/admin/approval"
-                element={
-                    <Layout>
-                        <RoleRoute roles={[ROLES.ADMIN]}>
-                            <UserApproval />
-                        </RoleRoute>
-                    </Layout>
-                }
-            />
 
             <Route
                 path="/admin/users"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.ADMIN]}>
+                        <RoleRoute roles={[ROLES.LEADERSHIP, ROLES.ADMIN]}>
                             <UserManagement />
                         </RoleRoute>
                     </Layout>
                 }
             />
 
-            <Route
-                path="/admin/roles"
-                element={
-                    <Layout>
-                        <RoleRoute roles={[ROLES.ADMIN]}>
-                            <RoleManagement />
-                        </RoleRoute>
-                    </Layout>
-                }
-            />
 
-            <Route
-                path="/admin/access"
-                element={
-                    <Layout>
-                        <RoleRoute roles={[ROLES.ADMIN]}>
-                            <AccessManagement />
-                        </RoleRoute>
-                    </Layout>
-                }
-            />
 
             <Route
                 path="*"

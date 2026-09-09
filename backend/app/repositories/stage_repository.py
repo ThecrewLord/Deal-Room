@@ -4,7 +4,6 @@ from app.models.opportunity.stage_history import StageHistory
 
 
 class StageRepository:
-
     @staticmethod
     def get_by_id(stage_id):
         return StageMaster.query.filter_by(stage_id=stage_id).first()
@@ -18,18 +17,20 @@ class StageRepository:
         return StageMaster.query.order_by(StageMaster.display_order.asc()).all()
 
     @staticmethod
-    def add_history(opportunity_id, stage_id, changed_by=None, remarks=None):
+    def add_history(opportunity_id, stage_id, changed_by=None, remarks=None, **kwargs):
         history = StageHistory(
             opportunity_id=opportunity_id,
             stage_id=stage_id,
             changed_by=changed_by,
             remarks=remarks,
+            from_lifecycle_stage=kwargs.get("from_lifecycle_stage"),
+            to_lifecycle_stage=kwargs.get("to_lifecycle_stage"),
+            actor_active_role=kwargs.get("actor_active_role"),
+            version=kwargs.get("version"),
         )
         db.session.add(history)
         return history
 
     @staticmethod
     def get_history(opportunity_id):
-        return StageHistory.query.filter_by(
-            opportunity_id=opportunity_id
-        ).order_by(StageHistory.created_at.asc()).all()
+        return StageHistory.query.filter_by(opportunity_id=opportunity_id).order_by(StageHistory.created_at.asc()).all()

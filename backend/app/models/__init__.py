@@ -16,6 +16,8 @@ from app.models.opportunity import (
     StageMaster,
     POCTracker,
     SolutionDesign,
+    OpportunityValueHistory,
+    ClosedWonRequest,
 )
 
 __all__ = [
@@ -32,4 +34,6 @@ __all__ = [
     "StageHistory",
     "POCTracker",
     "SolutionDesign",
+    "OpportunityValueHistory",
+    "ClosedWonRequest",
 ]

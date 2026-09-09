@@ -36,6 +36,10 @@
 | Risks | Bulk role replacement can accidentally remove the final Leadership or invalidate sessions. Increment `auth_version` in the same transaction. |
 | Rollback | Downgrade only maps newly introduced roles if no dependent v2 records exist; otherwise forward-fix with preserved `user_roles` history/audit. |
 
+## A1 Implementation Status
+
+Phase 1 authorization work is implemented in the backend and the minimum frontend role infrastructure. The canonical nine-role model, Leadership root governance, delegated Admin capability, active-role enforcement, first-user serialization, last-Leadership protection, transactional `auth_version` invalidation, manager hierarchy validation, and audit integration are implemented. See `A1_IMPLEMENTATION_REPORT.md`. Full PostgreSQL concurrency execution remains a deployment/CI gate because this development environment does not provide a PostgreSQL test database.
+
 ## Phase 2 — Lifecycle and transition engine
 
 | Item | Plan |

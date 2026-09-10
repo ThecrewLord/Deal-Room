@@ -29,6 +29,7 @@ from app.models.opportunity.opportunity_team import OpportunityTeam
 from app.models.opportunity.poc_tracker import POCTracker
 from app.models.opportunity.stakeholder import Stakeholder
 from app.models.system.audit_log import AuditLog
+from app.models.phase2 import DeliveryProject, DeliveryProjectMember, Activity, FollowUp, POCTeamMember, OEMOpportunity, RFXContext, NegotiationContext
 from app.models.opportunity.stage_master import StageMaster
 from app.constants.poc_outcome import (POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED)
 
@@ -52,6 +53,8 @@ class Resources:
     ACTIVITY = "activity"
     OEM = "oem"
     DASHBOARD = "dashboard"
+    FOLLOW_UP = "follow_up"
+    DELIVERY_PROJECT = "delivery_project"
 
 
 class AuthorizationService:
@@ -189,8 +192,18 @@ class AuthorizationService:
             & (OpportunityTeam.role == active_role)
         )
 
+        own_lead = (
+            (Opportunity.created_by == user.user_id)
+            & exists().where(
+                (OpportunityTeam.opportunity_id == Opportunity.opportunity_id)
+                & (OpportunityTeam.user_id == user.user_id)
+                & (OpportunityTeam.role == active_role)
+            )
+            & (Opportunity.lifecycle_stage == "Lead")
+        )
+
         if active_role in AuthorizationService.IC_ROLES:
-            return query.filter(participation)
+            return query.filter(or_(participation, own_lead))
 
         if active_role == SALES_MANAGER:
             # Sales scope is the pre-handoff portion of the pipeline plus any
@@ -203,10 +216,10 @@ class AuthorizationService:
             # opportunity with an assigned Sales Owner remains in Sales scope.
             assigned_sales_owner = Opportunity.sales_owner_id.isnot(None)
             pre_handoff = Opportunity.lifecycle_stage.in_(["Lead", "Qualified"])
-            return query.filter(or_(sales_team, assigned_sales_owner, pre_handoff))
+            return query.filter(or_(sales_team, assigned_sales_owner, pre_handoff, own_lead))
 
         if active_role == PRE_SALES_MANAGER:
-            # Pre-Sales scope begins at Discovery and is also retained for
+            # Pre-Sales scope begins at RFX and is also retained for
             # opportunities explicitly carrying technical/delivery members.
             technical_team = exists().where(
                 (OpportunityTeam.opportunity_id == Opportunity.opportunity_id)
@@ -224,7 +237,12 @@ class AuthorizationService:
                     & (OpportunityTeam.role == SOLUTION_ENGINEER)
                 )
             )
-            return query.filter(or_(technical_team, pre_sales_stage, awaiting_assignment))
+            return query.filter(or_(technical_team, pre_sales_stage, awaiting_assignment, own_lead))
+
+        # Delivery Manager / DevOps / Data Analyst see opportunities they
+        # participate in, plus their own draft Lead.
+        if active_role in {DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST}:
+            return query.filter(or_(participation, own_lead))
 
         return query.filter(false())
 
@@ -247,6 +265,90 @@ class AuthorizationService:
         # opportunity visibility because Deal Finder creation must be able to
         # select an existing canonical account before the opportunity exists.
         return Account.query
+
+    @staticmethod
+    def can_create_account(user, active_role):
+        return bool(user and active_role != ADMIN and user.status == STATUS_APPROVED and user.active)
+
+    @staticmethod
+    def can_govern_account(user, active_role, account):
+        return bool(user and account and active_role == LEADERSHIP and user.has_role(LEADERSHIP))
+
+    @staticmethod
+    def can_mutate_oem_master(user, active_role):
+        return bool(user and active_role == LEADERSHIP and user.has_role(LEADERSHIP))
+
+    @staticmethod
+    def can_manage_oem_association(user, active_role, opportunity, action="update"):
+        if not opportunity or opportunity.operational_status == "Closed":
+            return False
+        if not AuthorizationService.can_view_opportunity(user, active_role, opportunity):
+            return False
+        if opportunity.lifecycle_stage == "Lead":
+            return opportunity.created_by == user.user_id and active_role in {LEADERSHIP, SALES_EXECUTIVE, SALES_MANAGER, PRE_SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST}
+        if opportunity.lifecycle_stage in {"Qualified"}:
+            return active_role in {SALES_MANAGER, PRE_SALES_MANAGER, LEADERSHIP}
+        return active_role in {PRE_SALES_MANAGER, SOLUTION_ENGINEER, LEADERSHIP}
+
+    @staticmethod
+    def can_manage_rfx(user, active_role, opportunity):
+        return bool(opportunity and opportunity.operational_status != "Closed" and
+                    AuthorizationService.can_view_opportunity(user, active_role, opportunity) and
+                    active_role in {PRE_SALES_MANAGER, SOLUTION_ENGINEER, LEADERSHIP})
+
+    @staticmethod
+    def can_manage_negotiation(user, active_role, opportunity):
+        return bool(opportunity and opportunity.operational_status != "Closed" and
+                    AuthorizationService.can_view_opportunity(user, active_role, opportunity) and
+                    active_role in {PRE_SALES_MANAGER, SOLUTION_ENGINEER, LEADERSHIP})
+
+    @staticmethod
+    def can_request_poc_team_assignment(user, active_role, poc):
+        # Delivery Manager receives the POC assignment before becoming a member
+        # of the Opportunity/POC team. Requiring Opportunity visibility here
+        # creates a circular dependency: the manager cannot be assigned because
+        # they are not yet assigned. Authorize against the POC resource itself.
+        return bool(
+            poc and poc.opportunity
+            and poc.opportunity.operational_status != "Closed"
+            and poc.opportunity.lifecycle_stage == "POC"
+            and active_role in {DELIVERY_MANAGER, LEADERSHIP}
+            and user and user.active
+            and user.status == "APPROVED"
+        )
+
+    @staticmethod
+    def can_submit_poc_result(user, active_role, poc):
+        return bool(poc and poc.opportunity and poc.opportunity.operational_status != "Closed" and
+                    active_role in {DEVOPS_ENGINEER, DATA_ANALYST} and
+                    POCTeamMember.query.filter_by(poc_id=poc.poc_id, user_id=user.user_id).first() is not None)
+
+    @staticmethod
+    def can_manage_delivery_project(user, active_role, project):
+        return bool(project and active_role in {DELIVERY_MANAGER, LEADERSHIP} and
+                    AuthorizationService.can_view_opportunity(user, active_role, project.opportunity))
+
+    @staticmethod
+    def can_update_project_member_done(user, active_role, member):
+        return bool(member and member.user_id == user.user_id and
+                    member.project and member.project.status == "Active" and
+                    AuthorizationService.can_view_opportunity(user, active_role, member.project.opportunity))
+
+    @staticmethod
+    def can_create_activity(user, active_role, opportunity):
+        return bool(opportunity and opportunity.operational_status != "Closed" and
+                    AuthorizationService.can_view_opportunity(user, active_role, opportunity))
+
+    @staticmethod
+    def can_manage_followup(user, active_role, followup, opportunity=None):
+        opportunity = opportunity or (followup.opportunity if followup else None)
+        if not opportunity or opportunity.operational_status == "Closed":
+            return False
+        if not AuthorizationService.can_view_opportunity(user, active_role, opportunity):
+            return False
+        if followup is None:
+            return True
+        return followup.owner_id == user.user_id or followup.created_by == user.user_id or active_role in {SALES_MANAGER, PRE_SALES_MANAGER, DELIVERY_MANAGER, LEADERSHIP}
 
     @staticmethod
     def can_view_account(user, active_role, account):
@@ -303,7 +405,7 @@ class AuthorizationService:
     @staticmethod
     def can_submit_for_review(user, active_role, opportunity):
         return (
-            active_role in {SALES_EXECUTIVE, SALES_MANAGER, PRE_SALES_MANAGER, SOLUTION_ENGINEER, LEADERSHIP}
+            active_role in {SALES_EXECUTIVE, SALES_MANAGER, PRE_SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST, LEADERSHIP}
             and bool(opportunity)
             and AuthorizationService.can_view_opportunity(user, active_role, opportunity)
             and opportunity.created_by == user.user_id
@@ -329,10 +431,6 @@ class AuthorizationService:
 
     @staticmethod
     def can_approve_opportunity(user, active_role, opportunity):
-        return AuthorizationService.can_review_opportunity(user, active_role, opportunity)
-
-    @staticmethod
-    def can_reject_opportunity(user, active_role, opportunity):
         return AuthorizationService.can_review_opportunity(user, active_role, opportunity)
 
     @staticmethod
@@ -399,7 +497,7 @@ class AuthorizationService:
             return (
                 opportunity.created_by == user.user_id
                 and opportunity.lifecycle_stage == "Lead"
-                and opportunity.review_status in {"Draft", "Rejected"}
+                and opportunity.review_status == "Draft"
             )
         if active_role in {SALES_MANAGER, LEADERSHIP}:
             # Initial-review editing is an explicit workflow permission, not a
@@ -414,11 +512,14 @@ class AuthorizationService:
 
     @staticmethod
     def can_change_opportunity_value(user, active_role, opportunity):
-        """Authorize current Opportunity Value changes using the active role."""
+        """Authorize Opportunity Value changes using the active role."""
         return (
             bool(user and opportunity)
-            and active_role in {SALES_MANAGER, PRE_SALES_MANAGER, LEADERSHIP}
-            and AuthorizationService.can_view_opportunity(user, active_role, opportunity)
+            and active_role in {
+                SALES_MANAGER,
+                PRE_SALES_MANAGER,
+                LEADERSHIP,
+            }
             and opportunity.operational_status != "Closed"
             and opportunity.outcome == "Open"
         )
@@ -471,14 +572,12 @@ class AuthorizationService:
 
     @staticmethod
     def can_execute_poc(user, active_role, poc):
+        assigned_poc_member = bool(poc and POCTeamMember.query.filter_by(poc_id=poc.poc_id, user_id=user.user_id).first())
         return (
-            active_role == SOLUTION_ENGINEER
-            and bool(poc)
-            and poc.status in {POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS}
-            and poc.opportunity is not None
-            and poc.opportunity.is_active
-            and AuthorizationService.is_assigned_role(user, poc.opportunity, SOLUTION_ENGINEER)
+            bool(poc) and poc.status in {POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS}
+            and poc.opportunity is not None and poc.opportunity.is_active
             and AuthorizationService.can_view_opportunity(user, active_role, poc.opportunity)
+            and (active_role == SOLUTION_ENGINEER or assigned_poc_member)
         )
 
     @staticmethod
@@ -518,6 +617,10 @@ class AuthorizationService:
     @staticmethod
     def can_change_lifecycle_stage(user, active_role, opportunity, target_stage=None):
         if not opportunity or opportunity.operational_status == "Closed":
+            return False
+        if target_stage == "Delivery":
+            return False  # final Closed Won approval has a dedicated action
+        if opportunity.lifecycle_stage == "Lead":
             return False
         if active_role == LEADERSHIP or active_role == PRE_SALES_MANAGER:
             return True
@@ -585,14 +688,16 @@ class AuthorizationService:
             # may create them. Solution Engineers retain their existing
             # create permission for assigned technical opportunities.
             if active_role in {LEADERSHIP, SALES_EXECUTIVE, SALES_MANAGER, PRE_SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST}:
-                # A3: the Deal Finder may build the initial Lead by adding
-                # stakeholders before submission. During initial review, the
-                # Sales Manager may also add/edit permitted stakeholder data.
-                if opportunity.lifecycle_stage == "Lead" and opportunity.created_by == user.user_id and opportunity.review_status in {"Draft", "Rejected"}:
-                    return opportunity.is_active and opportunity.operational_status == "Active"
+                if opportunity.operational_status != "Active":
+                    return False
+                if active_role == SALES_EXECUTIVE:
+                    if action in {"create", "set_tags"}:
+                        return True
+                    return False
+                if opportunity.lifecycle_stage == "Lead" and opportunity.created_by == user.user_id and opportunity.review_status == "Draft":
+                    return action in {"create", "set_tags", "update"}
                 if active_role == SALES_MANAGER and opportunity.review_status == "Pending Sales Manager Review":
-                    return opportunity.is_active and opportunity.operational_status == "Active" and AuthorizationService.can_review_opportunity(user, active_role, opportunity)
-
+                    return action in {"create", "update", "set_tags"}
             if active_role == SOLUTION_ENGINEER:
                 return (
                     opportunity.is_active

@@ -261,7 +261,7 @@ class OpportunityController:
                 sales_owner_id=data.get("sales_owner_id"),
                 reason=data.get("reason"),
                 expected_version=data["expected_version"],
-                editable_fields={k: data.get(k) for k in ("opportunity_name", "description", "pain_points", "probability", "expected_close_date") if k in data},
+                editable_fields={k: data.get(k) for k in ("opportunity_name", "description", "pain_points", "probability", "expected_close_date", "lost_explanation") if k in data},
                 user=g.auth_user,
                 active_role=g.active_role,
             )

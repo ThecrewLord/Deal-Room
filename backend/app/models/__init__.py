@@ -7,6 +7,7 @@ from app.models.account.account import Account
 from app.models.account.contact import Contact
 from app.models.opportunity.stage_master import StageMaster
 from app.models.system.tag import Tag
+from app.models.phase2 import (OEMOpportunity, RFXContext, NegotiationContext, POCTeamMember, DeliveryProject, DeliveryProjectMember, Activity, FollowUp)
 
 from app.models.opportunity import (
     Opportunity,
@@ -36,4 +37,6 @@ __all__ = [
     "SolutionDesign",
     "OpportunityValueHistory",
     "ClosedWonRequest",
+    "OEMOpportunity", "RFXContext", "NegotiationContext", "POCTeamMember",
+    "DeliveryProject", "DeliveryProjectMember", "Activity", "FollowUp",
 ]

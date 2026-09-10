@@ -3,7 +3,7 @@
 All v2 mutations are delegated to LifecycleTransitionService.  This module
 exists to preserve imports used by older reporting/POC code during cutover.
 """
-from app.constants.stages import INITIAL_STAGE_NAME
+from app.constants.stages import INITIAL_STAGE_NAME, LIFECYCLE_STAGES
 from app.repositories.stage_repository import StageRepository
 from app.services.lifecycle_transition_service import LifecycleTransitionService
 
@@ -41,10 +41,9 @@ class StageService:
             raise ValueError("Invalid opportunity stage.")
         # Legacy callers must use the canonical v2 lifecycle names. A raw
         # stage-id mutation is deliberately no longer supported.
-        from app.constants.stages import LEGACY_STAGE_TO_LIFECYCLE
-        lifecycle = LEGACY_STAGE_TO_LIFECYCLE.get(target.stage_name)
-        if not lifecycle:
-            raise ValueError("The supplied stage is not a v2 lifecycle stage.")
+        lifecycle = target.stage_name
+        if lifecycle not in LIFECYCLE_STAGES:
+            raise ValueError("The supplied stage is not a canonical V2 lifecycle stage.")
         return LifecycleTransitionService.transition(
             opportunity.opportunity_id,
             lifecycle,
@@ -56,8 +55,7 @@ class StageService:
 
     @staticmethod
     def transition_technical_stage(opportunity_id, target_stage_name, expected_version, remarks, user, active_role):
-        from app.constants.stages import LEGACY_STAGE_TO_LIFECYCLE
-        lifecycle = LEGACY_STAGE_TO_LIFECYCLE.get(target_stage_name, target_stage_name)
+        lifecycle = target_stage_name
         return LifecycleTransitionService.transition(
             opportunity_id, lifecycle, expected_version, user, active_role, remarks=remarks
         )

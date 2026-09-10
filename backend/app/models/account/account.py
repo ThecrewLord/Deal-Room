@@ -1,5 +1,6 @@
 from app.database import db
 from app.models.base import BaseModel
+from sqlalchemy import event
 
 
 class Account(BaseModel):
@@ -10,12 +11,9 @@ class Account(BaseModel):
         primary_key=True,
     )
 
-    account_name = db.Column(
-        db.String(200),
-        nullable=False,
-        unique=True,
-        index=True,
-    )
+    account_name = db.Column(db.String(200), nullable=False, index=True)
+    canonical_name = db.Column(db.String(200), nullable=False, unique=True, index=True)
+    status = db.Column(db.String(20), nullable=False, default="Active", index=True)
 
     industry = db.Column(
         db.String(100),
@@ -45,11 +43,7 @@ class Account(BaseModel):
         db.Text,
     )
 
-    is_active = db.Column(
-        db.Boolean,
-        default=True,
-        nullable=False,
-    )
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     contacts = db.relationship(
         "Contact",
@@ -74,3 +68,10 @@ class Account(BaseModel):
 
     def __repr__(self):
         return f"<Account {self.account_name}>"
+
+@event.listens_for(Account, "before_insert")
+def _account_canonical_identity(mapper, connection, target):
+    if not target.canonical_name:
+        target.canonical_name = " ".join((target.account_name or "").strip().lower().split())
+    if not target.status:
+        target.status = "Active" if target.is_active else "Archived"

@@ -1,99 +1,13 @@
 import { useState } from "react";
 import { createStakeholder } from "../api/stakeholderApi";
-import "./StakeholderForm.css";
-
-const INFLUENCE_LEVELS = ["Decision Maker", "Influencer", "User", "Blocker"];
-
-export default function StakeholderForm({ opportunityId, onCreated }) {
-  const [form, setForm] = useState({
-    stakeholder_name: "",
-    designation: "",
-    email: "",
-    phone: "",
-    influence_level: "",
-  });
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSubmitting(true);
-    try {
-      await createStakeholder({ ...form, opportunity_id: opportunityId });
-      setForm({
-        stakeholder_name: "",
-        designation: "",
-        email: "",
-        phone: "",
-        influence_level: "",
-      });
-      onCreated?.();
-    } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-        "Could not save stakeholder — check the fields and try again."
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="stakeholder-card stakeholder-form-only">
-      <div className="stakeholder-form-heading">
-        <div>
-          <span className="stakeholder-eyebrow">CUSTOMER CONTACT</span>
-          <h3>Add Stakeholder</h3>
-          <p className="stakeholder-subtitle">
-            Add a customer-side contact to this opportunity.
-          </p>
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit}>
-        <div className="stakeholder-form-grid">
-          <div className="stakeholder-field">
-            <label htmlFor="stakeholder_name">Name</label>
-            <input id="stakeholder_name" type="text" name="stakeholder_name" value={form.stakeholder_name} onChange={handleChange} required />
-          </div>
-
-          <div className="stakeholder-field">
-            <label htmlFor="designation">Designation</label>
-            <input id="designation" type="text" name="designation" value={form.designation} onChange={handleChange} placeholder="e.g. VP Engineering" />
-          </div>
-
-          <div className="stakeholder-field">
-            <label htmlFor="email">Email</label>
-            <input id="email" type="email" name="email" value={form.email} onChange={handleChange} />
-          </div>
-
-          <div className="stakeholder-field">
-            <label htmlFor="phone">Phone</label>
-            <input id="phone" type="text" name="phone" value={form.phone} onChange={handleChange} />
-          </div>
-
-          <div className="stakeholder-field stakeholder-field-full">
-            <label htmlFor="influence_level">Influence Level</label>
-            <select id="influence_level" name="influence_level" value={form.influence_level} onChange={handleChange}>
-              <option value="">Select...</option>
-              {INFLUENCE_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
-            </select>
-          </div>
-        </div>
-
-        {error && <div className="stakeholder-error" role="alert">{error}</div>}
-
-        <div className="stakeholder-form-actions">
-          <button type="submit" className="stakeholder-submit" disabled={submitting}>
-            {submitting ? "Saving…" : "Add Stakeholder"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
+import { getTags } from "../api/phase2Api";
+import Button from "./ui/Button";
+import { useEffect } from "react";
+const DEFAULT=["Economic Buyer","Technical Champion","End User","Blocker","Decision Maker"];
+export default function StakeholderForm({opportunityId,onCreated}){
+ const [form,setForm]=useState({name:"",job_title:"",email:"",phone:"",company:"",tags:[]}); const [tags,setTags]=useState(DEFAULT); const [error,setError]=useState("");
+ useEffect(()=>{getTags().then(x=>setTags(x.map(t=>t.name))).catch(()=>{})},[]);
+ const submit=async e=>{e.preventDefault();try{await createStakeholder({...form,opportunity_id:Number(opportunityId)});setForm({name:"",job_title:"",email:"",phone:"",company:"",tags:[]});setError("");onCreated?.()}catch(x){setError(x?.response?.data?.message||"Unable to save stakeholder.")}};
+ const toggle=t=>setForm(f=>({...f,tags:f.tags.includes(t)?f.tags.filter(x=>x!==t):[...f.tags,t]}));
+ return <form onSubmit={submit} className="ui-form-grid">{error&&<div className="standard-error">{error}</div>}<input required placeholder="Name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><input placeholder="Job title" value={form.job_title} onChange={e=>setForm({...form,job_title:e.target.value})}/><input placeholder="Email" type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/><input placeholder="Phone" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/><input placeholder="Company" value={form.company} onChange={e=>setForm({...form,company:e.target.value})}/><div><strong>Tags</strong><div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{tags.map(t=><button type="button" key={t} className={form.tags.includes(t)?"tag-selected":""} onClick={()=>toggle(t)}>{t}</button>)}</div></div><Button type="submit">Add stakeholder</Button></form>
 }

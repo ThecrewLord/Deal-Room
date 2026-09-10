@@ -57,7 +57,7 @@ export default function Header() {
         searchTimer.current = setTimeout(async () => {
             try {
                 const results = await searchAuthorized(query);
-                setSearchResults(results || []);
+                setSearchResults(results?.items || results || []);
             } catch {
                 setSearchResults([]);
             } finally {
@@ -81,6 +81,7 @@ export default function Header() {
         if (result.type === "opportunity") navigate(`/opportunity/${result.id}`);
         else if (result.type === "account") navigate("/accounts");
         else if (result.type === "poc") navigate("/pocs");
+        else if (["stakeholder", "oem", "activity", "follow-up", "delivery-project"].includes(result.type)) navigate("/opportunities");
     };
 
     const handleLogout = async () => {
@@ -117,7 +118,7 @@ export default function Header() {
                         value={searchValue}
                         onFocus={() => searchValue.trim().length >= 2 && setShowSearchResults(true)}
                         onChange={(event) => setSearchValue(event.target.value)}
-                        placeholder="Search opportunities, accounts, POCs..."
+                        placeholder="Search opportunities, accounts, stakeholders, OEMs..."
                         className="header-search"
                         aria-label="Search authorized business records"
                     />

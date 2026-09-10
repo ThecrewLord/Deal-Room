@@ -243,3 +243,69 @@ class DashboardRepository:
             }
             for log in logs
         ]
+
+
+    @staticmethod
+    def get_follow_up_summary(user, active_role):
+        from app.models.phase2 import FollowUp
+        today = datetime.utcnow().date()
+        ids = DashboardRepository._opportunity_ids(user, active_role)
+        q = FollowUp.query.filter(FollowUp.opportunity_id.in_(ids))
+        return {
+            "due_today": q.filter(FollowUp.due_date == today, FollowUp.status != "Completed").count(),
+            "overdue": q.filter(FollowUp.due_date < today, FollowUp.status != "Completed").count(),
+            "upcoming": q.filter(FollowUp.due_date > today, FollowUp.status != "Completed").count(),
+            "completed": q.filter(FollowUp.status == "Completed").count(),
+        }
+
+    @staticmethod
+    def get_activity_summary(user, active_role):
+        from app.models.phase2 import Activity
+        ids = DashboardRepository._opportunity_ids(user, active_role)
+        q = Activity.query.filter(Activity.opportunity_id.in_(ids))
+        return {"total": q.count()}
+
+    @staticmethod
+    def get_role_operational_summary(user, active_role):
+        from app.models.phase2 import DeliveryProject
+        summary = {
+            "overdue_follow_ups": DashboardRepository.get_follow_up_summary(user, active_role)["overdue"],
+            "stalled_opportunities": DashboardRepository.get_stalled_deals(user, active_role),
+            "active_pocs": DashboardRepository.get_active_pocs(user, active_role),
+        }
+        if active_role == "Delivery Manager":
+            projects = DeliveryProject.query.filter(DeliveryProject.manager_id == user.user_id)
+            summary.update({
+                "active_delivery_projects": projects.filter(DeliveryProject.status == "Active").count(),
+                "completed_delivery_projects": projects.filter(DeliveryProject.status == "Completed").count(),
+            })
+        else:
+            ids = DashboardRepository._opportunity_ids(user, active_role)
+            projects = DeliveryProject.query.filter(DeliveryProject.opportunity_id.in_(ids))
+            summary["active_delivery_projects"] = projects.filter(DeliveryProject.status == "Active").count()
+        return summary
+
+    @staticmethod
+    def get_opportunities_by_owner(user, active_role):
+        rows = DashboardRepository._open_filter(
+            DashboardRepository._opportunities(user, active_role)
+        ).join(User, User.user_id == Opportunity.sales_owner_id, isouter=True).with_entities(
+            Opportunity.sales_owner_id, User.full_name,
+            func.count(Opportunity.opportunity_id),
+            func.coalesce(func.sum(Opportunity.estimated_value), 0),
+        ).group_by(Opportunity.sales_owner_id, User.full_name).order_by(
+            func.coalesce(func.sum(Opportunity.estimated_value), 0).desc()
+        ).all()
+        return [
+            {"user_id": r[0], "full_name": r[1] or "Unassigned", "count": r[2], "value": float(r[3] or 0)}
+            for r in rows
+        ]
+
+
+    @staticmethod
+    def get_closed_won_revenue(user, active_role):
+        value = DashboardRepository._opportunities(user, active_role).filter(
+            Opportunity.outcome == "Closed Won",
+            Opportunity.operational_status == "Closed",
+        ).with_entities(func.coalesce(func.sum(Opportunity.final_revenue), 0)).scalar()
+        return float(value or 0)

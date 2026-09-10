@@ -19,6 +19,7 @@ from app.api.solution_design_routes import solution_design_bp
 from app.api.search_routes import search_bp
 from app.api.pre_sales_performance_routes import pre_sales_performance_bp
 from app.api.sales_manager_performance_routes import sales_manager_performance_bp
+from app.api.phase2_routes import phase2_bp
 
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
@@ -30,6 +31,7 @@ from app.models.account.contact import Contact
 from app.models.opportunity.stage_master import StageMaster
 from app.models.system.tag import Tag
 from app.models.system.notification import Notification
+from app.models.phase2 import (OEMOpportunity, RFXContext, NegotiationContext, POCTeamMember, DeliveryProject, DeliveryProjectMember, Activity, FollowUp)
 from app.services.oem_service import OEMService
 
 from flask import jsonify
@@ -64,6 +66,7 @@ def create_app(test_config=None):
     app.register_blueprint(search_bp)
     app.register_blueprint(pre_sales_performance_bp)
     app.register_blueprint(sales_manager_performance_bp)
+    app.register_blueprint(phase2_bp)
     
     @app.route("/")
     def root():

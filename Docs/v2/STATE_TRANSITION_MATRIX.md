@@ -63,11 +63,7 @@ Reason required.
 
 Result: `Lead -> Closed Lost`
 
-### Reject
-
-Result: `Sales Manager Review -> Lead`
-
-Reject is not Closed Lost. The rejection is audited.
+There is no Lead Reject/Rework action in the frozen Phase 1 workflow. A Sales Manager must choose Approve, Closed Won, or Closed Lost.
 
 ## 4. Qualified -\> RFX
 

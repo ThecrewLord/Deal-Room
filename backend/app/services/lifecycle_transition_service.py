@@ -1,10 +1,21 @@
 """Authoritative Deal Room v2 opportunity lifecycle transition engine."""
 from sqlalchemy import update
 from app.auth.authorization import AuthorizationDenied, AuthorizationService
-from app.constants.roles import ADMIN, LEADERSHIP, PRE_SALES_MANAGER, SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER
+from app.constants.roles import (
+    ADMIN,
+    LEADERSHIP,
+    PRE_SALES_MANAGER,
+    SALES_EXECUTIVE,
+    SALES_MANAGER,
+    SOLUTION_ENGINEER,
+    DELIVERY_MANAGER,
+    DEVOPS_ENGINEER,
+    DATA_ANALYST,
+)
+
+
 from app.constants.stages import (
-    LIFECYCLE_STAGES, LIFECYCLE_TO_LEGACY_STAGE, LEGACY_STAGE_TO_LIFECYCLE,
-    OPERATIONAL_STATUSES,
+    LIFECYCLE_STAGES, OPERATIONAL_STATUSES,
 )
 from app.database import db
 from app.models.opportunity.opportunity import Opportunity
@@ -55,19 +66,13 @@ class LifecycleTransitionService:
         cls._PRECONDITIONS.pop((from_stage, to_stage), None)
 
     @staticmethod
-    def _legacy_stage_id(lifecycle_stage):
-        legacy_name = LIFECYCLE_TO_LEGACY_STAGE.get(lifecycle_stage)
-        if not legacy_name:
-            return None
-        stage = StageRepository.get_by_name(legacy_name)
+    def _stage_id(lifecycle_stage):
+        stage = StageRepository.get_by_name(lifecycle_stage)
         return stage.stage_id if stage else None
 
     @staticmethod
     def _normalize_lifecycle(opportunity):
-        if opportunity.lifecycle_stage in LIFECYCLE_STAGES:
-            return opportunity.lifecycle_stage
-        legacy = opportunity.current_stage.stage_name if opportunity.current_stage else None
-        return LEGACY_STAGE_TO_LIFECYCLE.get(legacy)
+        return opportunity.lifecycle_stage if opportunity.lifecycle_stage in LIFECYCLE_STAGES else None
 
     @staticmethod
     def _load(opportunity_id):
@@ -101,14 +106,12 @@ class LifecycleTransitionService:
 
     @staticmethod
     def _write_stage_history(opportunity, previous_stage, next_stage, user, active_role, version, remarks=None):
-        legacy_stage_id = LifecycleTransitionService._legacy_stage_id(next_stage)
-        if legacy_stage_id is None:
-            # Delivery has no legacy equivalent. Keep the previous legacy stage
-            # id untouched so historical reports are not corrupted.
-            legacy_stage_id = opportunity.stage_id
+        stage_id = LifecycleTransitionService._stage_id(next_stage)
+        if stage_id is None:
+            raise TransitionInvalid(f"Lifecycle stage '{next_stage}' is not configured.")
         db.session.add(StageHistory(
             opportunity_id=opportunity.opportunity_id,
-            stage_id=legacy_stage_id,
+            stage_id=stage_id,
             from_lifecycle_stage=previous_stage,
             to_lifecycle_stage=next_stage,
             changed_by=user.user_id if user else None,
@@ -119,10 +122,14 @@ class LifecycleTransitionService:
 
     @staticmethod
     def _touch_state(opportunity, *, lifecycle_stage=None, outcome=None, operational_status=None, review_status=None,
-                     lost_reason=None, lost_explanation=None, sync_legacy=True):
+                     lost_reason=None, lost_explanation=None, final_revenue=None, sync_legacy=True):
         values = {"row_version": Opportunity.row_version + 1}
         if lifecycle_stage is not None:
             values["lifecycle_stage"] = lifecycle_stage
+            stage_id = LifecycleTransitionService._stage_id(lifecycle_stage)
+            if stage_id is None:
+                raise TransitionInvalid(f"Lifecycle stage '{lifecycle_stage}' is not configured.")
+            values["stage_id"] = stage_id
         if outcome is not None:
             values["outcome"] = outcome
         if operational_status is not None:
@@ -136,6 +143,8 @@ class LifecycleTransitionService:
             values["lost_reason"] = lost_reason
         if lost_explanation is not None:
             values["lost_explanation"] = lost_explanation
+        if final_revenue is not None:
+            values["final_revenue"] = final_revenue
         result = db.session.execute(
             update(Opportunity)
             .where(Opportunity.opportunity_id == opportunity.opportunity_id,
@@ -164,28 +173,35 @@ class LifecycleTransitionService:
         if target_stage not in FORWARD_TRANSITIONS.get(current, set()):
             raise TransitionInvalid(f"Transition from {current} to {target_stage} is not allowed.")
         if current == "Negotiations" and target_stage == "Delivery":
-            # A4: the terminal Negotiations -> Delivery transition is also a
-            # Closed Won path in the existing A2 engine. Capture Final Revenue
-            # from the server-side current Opportunity Value in this same
-            # transaction; clients never supply the revenue amount.
-            if opportunity.final_revenue is not None:
-                raise TransitionInvalid("Final Revenue has already been established and cannot be overwritten.")
-            opportunity.final_revenue = opportunity.estimated_value
+            raise AuthorizationDenied("Negotiations to Delivery is the final Closed Won approval gate; use explicit Closed Won approval.")
+        elif current == "RFX" and target_stage == "POC":
+            from app.models.phase2 import RFXContext
+            ctx = RFXContext.query.filter_by(opportunity_id=opportunity.opportunity_id).first()
+            if not ctx or not ctx.drive_link:
+                raise TransitionInvalid("A Google Drive link is required when moving RFX to POC.")
+            validator = precondition or LifecycleTransitionService._PRECONDITIONS.get((current, target_stage))
+            if validator:
+                validator(opportunity)
             LifecycleTransitionService._touch_state(
-                opportunity, lifecycle_stage="Delivery", outcome="Closed Won", operational_status="Closed",
-                review_status="Approved", sync_legacy=True,
+                opportunity, lifecycle_stage=target_stage, outcome="Open", operational_status="Active", sync_legacy=True
             )
-            ActivityService.log(
-                "Opportunity", opportunity.opportunity_id, "OPPORTUNITY_CLOSED_WON",
-                f"Opportunity closed won. Final Revenue established at {opportunity.final_revenue}.",
-                user.user_id, commit=False, active_role=active_role,
+        elif current == "POC" and target_stage == "Negotiations":
+            from app.models.opportunity.poc_tracker import POCTracker
+            valid_poc = POCTracker.query.filter(
+                POCTracker.opportunity_id == opportunity.opportunity_id,
+                POCTracker.status == "Completed",
+                POCTracker.result_view_link.isnot(None),
+            ).first()
+            if not valid_poc:
+                raise TransitionInvalid("A completed POC with a result/view link is required before Negotiations.")
+            validator = precondition or LifecycleTransitionService._PRECONDITIONS.get((current, target_stage))
+            if validator:
+                validator(opportunity)
+            LifecycleTransitionService._touch_state(
+                opportunity, lifecycle_stage=target_stage, outcome="Open", operational_status="Active", sync_legacy=True
             )
         else:
             validator = precondition or LifecycleTransitionService._PRECONDITIONS.get((current, target_stage))
-            if (current, target_stage) in {("RFX", "POC"), ("POC", "Negotiations")} and validator is None:
-                raise TransitionInvalid(
-                    f"{current} to {target_stage} requires a registered domain precondition; the owning later phase has not registered it."
-                )
             if validator:
                 validator(opportunity)
             LifecycleTransitionService._touch_state(
@@ -194,6 +210,14 @@ class LifecycleTransitionService:
         LifecycleTransitionService._write_stage_history(opportunity, current, target_stage, user, active_role, opportunity.row_version, remarks)
         ActivityService.log("Opportunity", opportunity.opportunity_id, "OPPORTUNITY_STAGE_CHANGED",
                             f"Lifecycle changed from '{current}' to '{target_stage}'.", user.user_id, commit=False, active_role=active_role)
+        # Reuse the single notification architecture for Phase 2 stage events.
+        role_by_stage = {"Qualified": SALES_MANAGER, "RFX": PRE_SALES_MANAGER, "POC": PRE_SALES_MANAGER, "Negotiations": PRE_SALES_MANAGER, "Delivery": DELIVERY_MANAGER}
+        notify_role = role_by_stage.get(target_stage)
+        if notify_role:
+            recipients = User.query.filter(User.active.is_(True), User.status=="APPROVED", User.roles.any(role=notify_role)).all()
+            event = "OPPORTUNITY_QUALIFIED" if target_stage=="Qualified" else ("RFX_ENTERED" if target_stage=="RFX" else ("NEGOTIATIONS_ENTERED" if target_stage=="Negotiations" else "DELIVERY_PROJECT_CREATED" if target_stage=="Delivery" else "POC_READY_FOR_REVIEW"))
+            for recipient in recipients:
+                NotificationService.queue(recipient.user_id, event, "Opportunity", opportunity.opportunity_id, f"Opportunity '{opportunity.opportunity_name}' entered {target_stage}.")
         db.session.commit()
         return opportunity
 
@@ -203,12 +227,12 @@ class LifecycleTransitionService:
         if not opportunity:
             return None
         LifecycleTransitionService.assert_opportunity_open_for_mutation(opportunity)
-        if active_role not in {SALES_EXECUTIVE, SALES_MANAGER, LEADERSHIP}:
+        if active_role not in {SALES_EXECUTIVE, SALES_MANAGER, PRE_SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST, LEADERSHIP}:
             raise AuthorizationDenied("This active role cannot submit a Lead for review.")
         if LifecycleTransitionService._normalize_lifecycle(opportunity) != "Lead":
             raise TransitionInvalid("Only a Lead can be submitted for Sales Manager review.")
-        if opportunity.review_status not in {"Draft", "Rejected"}:
-            raise TransitionInvalid("Only a draft or rejected Lead can be submitted for Sales Manager review.")
+        if opportunity.review_status != "Draft":
+            raise TransitionInvalid("Only a draft Lead can be submitted for Sales Manager review.")
         if opportunity.created_by != user.user_id:
             raise AuthorizationDenied("Only the Deal Finder can submit the Lead for review.")
         LifecycleTransitionService._check_expected_version(opportunity, expected_version)
@@ -233,28 +257,6 @@ class LifecycleTransitionService:
                     opportunity.opportunity_id,
                     f"Lead '{opportunity.opportunity_name}' is awaiting Sales Manager review.",
                 )
-            db.session.commit()
-            return opportunity
-        except Exception:
-            db.session.rollback()
-            raise
-
-    @staticmethod
-    def reject_lead(opportunity_id, expected_version, reason, user, active_role):
-        opportunity = LifecycleTransitionService._load(opportunity_id)
-        if not opportunity:
-            return None
-        if active_role not in {SALES_MANAGER, LEADERSHIP}:
-            raise AuthorizationDenied("Only Sales Manager or Leadership can reject a Lead.")
-        if LifecycleTransitionService._normalize_lifecycle(opportunity) != "Lead" or opportunity.review_status != "Pending Sales Manager Review":
-            raise TransitionInvalid("Lead is not awaiting Sales Manager review.")
-        if not reason or not reason.strip():
-            raise TransitionInvalid("A rejection reason is required.")
-        LifecycleTransitionService._check_expected_version(opportunity, expected_version)
-        try:
-            LifecycleTransitionService._touch_state(opportunity, review_status="Rejected")
-            ActivityService.log("Opportunity", opportunity.opportunity_id, "OPPORTUNITY_REJECTED",
-                                f"Lead rejected. Reason: {reason.strip()}", user.user_id, commit=False, active_role=active_role)
             db.session.commit()
             return opportunity
         except Exception:
@@ -341,10 +343,6 @@ class LifecycleTransitionService:
                 lost_explanation=(str(explanation).strip() if explanation else None),
                 sync_legacy=True,
             )
-            LifecycleTransitionService._write_stage_history(
-                opportunity, current, current, user, active_role, opportunity.row_version,
-                f"Closed Lost: {reason}",
-            )
             ActivityService.log(
                 "Opportunity", opportunity.opportunity_id, "OPPORTUNITY_CLOSED_LOST",
                 f"Opportunity closed lost. Previous stage: '{current}'. Reason: {reason}.",
@@ -373,7 +371,6 @@ class LifecycleTransitionService:
             opportunity.closed_won_request.resolved_active_role = active_role
             opportunity.closed_won_request.resolution_reason = "Closed Won approved directly through the authorized closure workflow."
             opportunity.closed_won_request.resolved_at = datetime.utcnow()
-        opportunity.final_revenue = opportunity.estimated_value
         target = "Delivery" if current == "Negotiations" else current
         cls._touch_state(
             opportunity,
@@ -381,17 +378,26 @@ class LifecycleTransitionService:
             outcome="Closed Won",
             operational_status="Closed",
             review_status="Approved",
+            final_revenue=opportunity.estimated_value,
             sync_legacy=True,
         )
-        cls._write_stage_history(
-            opportunity, current, target, user, active_role, opportunity.row_version,
-            "Opportunity closed won.",
-        )
+        if target != current:
+            cls._write_stage_history(
+                opportunity, current, target, user, active_role, opportunity.row_version,
+                "Final Closed Won approval moved Negotiations to Delivery.",
+            )
         ActivityService.log(
             "Opportunity", opportunity.opportunity_id, "OPPORTUNITY_CLOSED_WON",
             f"Opportunity closed won. Previous stage: '{current}'. Final Revenue established at {opportunity.final_revenue}.",
             user.user_id, commit=False, active_role=active_role,
         )
+        ActivityService.log(
+            "Opportunity", opportunity.opportunity_id, "FINAL_REVENUE_SNAPSHOTTED",
+            f"Final Revenue snapshot equals the server-side current Opportunity Value: {opportunity.final_revenue}.",
+            user.user_id, commit=False, active_role=active_role,
+        )
+        from app.services.phase2_service import Phase2Service
+        Phase2Service.create_delivery_project(opportunity, user, active_role)
         return opportunity
 
     @classmethod

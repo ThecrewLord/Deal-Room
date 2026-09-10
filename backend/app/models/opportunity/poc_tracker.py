@@ -68,6 +68,9 @@ class POCTracker(BaseModel):
         nullable=True,
     )
 
+    input_drive_link = db.Column(db.Text, nullable=True)
+    result_view_link = db.Column(db.Text, nullable=True)
+    submission_metadata = db.Column(db.JSON, nullable=True)
     outcome_notes = db.Column(
         db.Text,
         nullable=True,
@@ -83,6 +86,7 @@ class POCTracker(BaseModel):
 
     requester = db.relationship("User", foreign_keys=[requested_by])
     submitter = db.relationship("User", foreign_keys=[submitted_by])
+    team_members = db.relationship("POCTeamMember", backref="poc", cascade="all, delete-orphan", lazy=True)
 
     opportunity = db.relationship(
         "Opportunity",

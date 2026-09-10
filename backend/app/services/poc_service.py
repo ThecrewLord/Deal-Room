@@ -5,7 +5,7 @@ from app.models.opportunity.opportunity_team import OpportunityTeam
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.authorization import AuthorizationDenied, AuthorizationService
-from app.constants.roles import PRE_SALES_MANAGER, SOLUTION_ENGINEER
+from app.constants.roles import PRE_SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER
 from app.constants.activity_types import (
     POC_REQUESTED,
     POC_EXECUTION_STARTED, POC_RESULT_SUBMITTED, POC_COMPLETED,
@@ -18,6 +18,7 @@ from app.repositories.poc_repository import PocRepository
 from app.services.activity_service import ActivityService
 from app.services.notification_service import NotificationService
 from app.utils.concurrency import ConcurrencyManager
+from app.models.phase2 import POCTeamMember
 from app.constants.poc_outcome import (POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED)
 
 
@@ -450,7 +451,7 @@ class PocService:
             return None
         if not AuthorizationService.can_request_poc(user, active_role, opportunity):
             raise AuthorizationDenied("Only an assigned Solution Engineer can request a POC.")
-        required = ("objective", "success_metric", "exit_criteria", "target_date", "failure_condition")
+        required = ("objective", "success_metric", "exit_criteria", "target_date", "failure_condition", "input_drive_link")
         if any(not data.get(field) for field in required):
             raise ValueError("Objective, Success Criteria, Exit Criteria, Target Date and Failure Condition are required.")
         if data["target_date"] < date.today():
@@ -470,6 +471,9 @@ class PocService:
             f"POC design '{poc.poc_name}' created with the request.",
             user.user_id, commit=False,
         )
+        managers = User.query.filter(User.active.is_(True), User.status=="APPROVED", User.roles.any(role=DELIVERY_MANAGER)).all()
+        for manager in managers:
+            NotificationService.queue(manager.user_id, "POC_ASSIGNED", "POC", poc.poc_id, f"POC '{poc.poc_name}' is ready for Delivery Manager assignment.")
         db.session.commit()
         return poc
 
@@ -503,7 +507,7 @@ class PocService:
         if not poc:
             return None
         if not AuthorizationService.can_execute_poc(user, active_role, poc):
-            raise AuthorizationDenied("Only an assigned Solution Engineer can execute a draft POC.")
+            raise AuthorizationDenied("Only an assigned POC team member or Solution Engineer can execute a draft POC.")
         if poc.status != POC_STATUS_DRAFT:
             raise RuntimeError("Only a draft POC can start execution.")
         if ConcurrencyManager.has_conflict(updated_at, poc.updated_at):
@@ -564,6 +568,7 @@ class PocService:
         poc.status = POC_STATUS_SUBMITTED
         poc.outcome = data["outcome"]
         poc.outcome_notes = data["outcome_notes"]
+        poc.result_view_link = data.get("result_view_link")
         poc.remarks = data.get("remarks")
         poc.submitted_by = user.user_id
         poc.submitted_at = datetime.utcnow()

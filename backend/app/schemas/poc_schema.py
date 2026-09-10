@@ -8,6 +8,7 @@ class PocRequestSchema(Schema):
     exit_criteria = fields.Str(required=True, validate=validate.Length(min=1))
     target_date = fields.Date(required=True)
     failure_condition = fields.Str(required=True, validate=validate.Length(min=1))
+    input_drive_link = fields.Url(required=True)
     remarks = fields.Str(allow_none=True)
 
 
@@ -34,6 +35,7 @@ class PocResultSchema(Schema):
     )
     outcome = fields.Str(required=True, validate=validate.OneOf(POC_OUTCOMES))
     outcome_notes = fields.Str(load_default="", allow_none=True)
+    result_view_link = fields.Url(required=True)
     remarks = fields.Str(allow_none=True)
     updated_at = fields.DateTime(required=True)
 
@@ -60,6 +62,8 @@ class PocResponseSchema(Schema):
     exit_criteria = fields.Str(allow_none=True)
     target_date = fields.Date()
     failure_condition = fields.Str()
+    input_drive_link = fields.Url(allow_none=True)
+    result_view_link = fields.Url(allow_none=True)
     outcome = fields.Str(allow_none=True)
     outcome_notes = fields.Str(allow_none=True)
     requested_by = fields.Int(allow_none=True)

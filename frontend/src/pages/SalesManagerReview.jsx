@@ -56,22 +56,6 @@ export default function SalesManagerReview() {
         finally { setBusy(null); }
     };
 
-    const reject = async (opportunity) => {
-        const reason = selection[opportunity.opportunity_id]?.reason?.trim();
-        if (!reason) return setError("A rejection reason is required.");
-        if (!window.confirm("Reject this opportunity? The decision is final.")) return;
-        try {
-            setBusy(opportunity.opportunity_id);
-            setError("");
-            await reviewOpportunity(opportunity.opportunity_id, { decision: "REJECT", reason, expected_version: opportunity.row_version });
-            await load();
-        } catch (err) {
-            if (err?.response?.status === 409) await load();
-            setError(err?.response?.data?.message || "Rejection failed. The record was refreshed.");
-        }
-        finally { setBusy(null); }
-    };
-
     const close = async (opportunity, won) => {
         const reason = selection[opportunity.opportunity_id]?.reason?.trim();
         if (!won && !reason) return setError("A Closed Lost reason is required.");
@@ -112,9 +96,9 @@ export default function SalesManagerReview() {
                             <label className="field-label">Description<textarea rows={2} value={state.description ?? opportunity.description ?? ""} onChange={(e) => update(opportunity.opportunity_id, { description: e.target.value })} /></label>
                             <label className="field-label">Pain points<textarea rows={2} value={state.painPoints ?? opportunity.pain_points ?? ""} onChange={(e) => update(opportunity.opportunity_id, { painPoints: e.target.value })} /></label>
                             <label className="field-label">Sales Executive<select value={state.ownerId || ""} onChange={(e) => update(opportunity.opportunity_id, { ownerId: e.target.value })}><option value="">Select Sales Executive</option>{owners.map((owner) => <option key={owner.user_id} value={owner.user_id}>{owner.full_name}</option>)}</select></label>
-                            <label className="field-label">Rejection / loss reason<textarea rows={2} placeholder="Required for rejection or Closed Lost" value={state.reason || ""} onChange={(e) => update(opportunity.opportunity_id, { reason: e.target.value })} /></label>
+                            <label className="field-label">Closure reason<textarea rows={2} placeholder="Required for Closed Lost" value={state.reason || ""} onChange={(e) => update(opportunity.opportunity_id, { reason: e.target.value })} /></label>
                         </div>
-                        <div className="manager-review-actions"><Button variant="ghost" onClick={() => navigate(`/opportunity/${opportunity.opportunity_id}`)}>Open opportunity <ArrowRight size={14} /></Button><div><Button variant="danger" disabled={isBusy} onClick={() => reject(opportunity)}><XCircle size={14} /> Reject</Button><Button variant="danger" disabled={isBusy} onClick={() => close(opportunity, false)}><XCircle size={14} /> Close Lost</Button><Button disabled={isBusy} onClick={() => close(opportunity, true)}><CheckCircle2 size={14} /> Close Won</Button><Button disabled={isBusy} onClick={() => approve(opportunity)}><CheckCircle2 size={14} /> {isBusy ? "Saving…" : "Approve & assign"}</Button></div></div>
+                        <div className="manager-review-actions"><Button variant="ghost" onClick={() => navigate(`/opportunity/${opportunity.opportunity_id}`)}>Open opportunity <ArrowRight size={14} /></Button><div><Button variant="danger" disabled={isBusy} onClick={() => close(opportunity, false)}><XCircle size={14} /> Close Lost</Button><Button disabled={isBusy} onClick={() => close(opportunity, true)}><CheckCircle2 size={14} /> Close Won</Button><Button disabled={isBusy} onClick={() => approve(opportunity)}><CheckCircle2 size={14} /> {isBusy ? "Saving…" : "Approve & assign"}</Button></div></div>
                     </article>;
                 })}
                 {!filtered.length && <div className="manager-empty"><EmptyState message={queue.length ? "No review items match your search." : "No opportunities awaiting review."} /></div>}

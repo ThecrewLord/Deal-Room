@@ -19,6 +19,14 @@ response_list_schema = StakeholderResponseSchema(many=True)
 
 class StakeholderController:
     @staticmethod
+    def get_all():
+        from app.models.opportunity.stakeholder import Stakeholder
+        from app.auth.authorization import AuthorizationService
+        rows=Stakeholder.query.order_by(Stakeholder.created_at.desc()).all()
+        visible=[x for x in rows if AuthorizationService.can_view_stakeholder(g.auth_user,g.active_role,x)]
+        return jsonify(response_list_schema.dump(visible)),200
+
+    @staticmethod
     def create():
         try:
             data = create_schema.load(request.get_json() or {})

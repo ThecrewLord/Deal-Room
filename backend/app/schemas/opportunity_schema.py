@@ -170,7 +170,7 @@ class StageHistoryResponseSchema(Schema):
 
 
 class OpportunityReviewSchema(Schema):
-    decision = fields.Str(required=True, validate=validate.OneOf(["APPROVE", "REJECT"]))
+    decision = fields.Str(required=True, validate=validate.OneOf(["APPROVE", "CLOSE_WON", "CLOSE_LOST"]))
     sales_owner_id = fields.Int(allow_none=True)
     reason = fields.Str(allow_none=True, validate=validate.Length(max=2000))
     opportunity_name = fields.Str(allow_none=True, validate=validate.Length(min=2, max=200))
@@ -178,6 +178,7 @@ class OpportunityReviewSchema(Schema):
     pain_points = fields.Str(allow_none=True)
     probability = fields.Int(allow_none=True, validate=validate.Range(min=0, max=100))
     expected_close_date = fields.Date(allow_none=True)
+    lost_explanation = fields.Str(allow_none=True, validate=validate.Length(max=5000))
     expected_version = fields.Int(required=True, validate=validate.Range(min=1))
 
 

@@ -48,8 +48,25 @@ class OpportunityValueService:
 
     @classmethod
     def _authorize(cls, user, active_role, opportunity):
-        if not AuthorizationService.can_change_opportunity_value(user, active_role, opportunity):
-            raise AuthorizationDenied("This active role cannot change Opportunity Value for this opportunity.")
+        if not opportunity:
+            raise AuthorizationDenied(
+                "This active role cannot change Opportunity Value for this opportunity."
+            )
+
+        # A closed opportunity is immutable. Treat this as a state/concurrency
+        # conflict rather than an authorization failure.
+        if opportunity.operational_status == "Closed":
+            raise TransitionConflict(
+                "Closed opportunities cannot be modified."
+            )
+
+        if not AuthorizationService.can_change_opportunity_value(
+            user, active_role, opportunity
+        ):
+            raise AuthorizationDenied(
+                "This active role cannot change Opportunity Value for this opportunity."
+            )
+
         LifecycleTransitionService.assert_opportunity_open_for_mutation(opportunity)
 
     @classmethod

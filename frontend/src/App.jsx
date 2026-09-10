@@ -117,6 +117,9 @@ export default function App() {
                                 ROLES.SALES_MANAGER,
                                 ROLES.PRE_SALES_MANAGER,
                                 ROLES.SOLUTION_ENGINEER,
+                                ROLES.DELIVERY_MANAGER,
+                                ROLES.DEVOPS_ENGINEER,
+                                ROLES.DATA_ANALYST,
                             ]}
                         >
                             <Dashboard />
@@ -131,10 +134,14 @@ export default function App() {
                     <Layout>
                         <RoleRoute
                             roles={[
+                                ROLES.LEADERSHIP,
                                 ROLES.SALES_EXECUTIVE,
                                 ROLES.SALES_MANAGER,
                                 ROLES.PRE_SALES_MANAGER,
                                 ROLES.SOLUTION_ENGINEER,
+                                ROLES.DELIVERY_MANAGER,
+                                ROLES.DEVOPS_ENGINEER,
+                                ROLES.DATA_ANALYST,
                             ]}
                         >
                             <Opportunities />
@@ -147,7 +154,11 @@ export default function App() {
                 path="/accounts"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER]}>
+                        <RoleRoute roles={[
+                            ROLES.LEADERSHIP, ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER,
+                            ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER,
+                            ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST,
+                        ]}>
                             <Accounts />
                         </RoleRoute>
                     </Layout>
@@ -158,7 +169,7 @@ export default function App() {
                 path="/pocs"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.SOLUTION_ENGINEER]}>
+                        <RoleRoute roles={[ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST]}>
                             <Pocs />
                         </RoleRoute>
                     </Layout>
@@ -169,7 +180,7 @@ export default function App() {
                 path="/stakeholders"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.SOLUTION_ENGINEER]}>
+                        <RoleRoute roles={[ROLES.LEADERSHIP, ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER, ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST]}>
                             <Stakeholders />
                         </RoleRoute>
                     </Layout>
@@ -180,7 +191,7 @@ export default function App() {
                 path="/oem-registry"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.SOLUTION_ENGINEER]}>
+                        <RoleRoute roles={[ROLES.LEADERSHIP, ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER, ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST]}>
                             <OemRegistry />
                         </RoleRoute>
                     </Layout>
@@ -259,10 +270,14 @@ export default function App() {
                     <Layout>
                         <RoleRoute
                             roles={[
+                                ROLES.LEADERSHIP,
                                 ROLES.SALES_EXECUTIVE,
                                 ROLES.SALES_MANAGER,
                                 ROLES.PRE_SALES_MANAGER,
                                 ROLES.SOLUTION_ENGINEER,
+                                ROLES.DELIVERY_MANAGER,
+                                ROLES.DEVOPS_ENGINEER,
+                                ROLES.DATA_ANALYST,
                             ]}
                         >
                             <OpportunityDetail />

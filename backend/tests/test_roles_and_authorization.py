@@ -52,7 +52,7 @@ def auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_canonical_roles_are_exactly_nine():
+def test_canonical_roles_are_complete():
     assert AVAILABLE_ROLES == [
         LEADERSHIP, ADMIN, SALES_MANAGER, SALES_EXECUTIVE,
         PRE_SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER,
@@ -61,7 +61,7 @@ def test_canonical_roles_are_exactly_nine():
     assert LEGACY_DELIVERY not in AVAILABLE_ROLES
 
 
-def test_legacy_delivery_is_not_valid_active_role(app):
+def test_legacy_delivery_role_is_not_valid(app):
     with app.app_context():
         assert not __import__("app.constants.roles", fromlist=["is_valid_role"]).is_valid_role(LEGACY_DELIVERY)
 

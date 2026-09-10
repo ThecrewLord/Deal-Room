@@ -10,6 +10,8 @@ class Opportunity(BaseModel):
         db.CheckConstraint("lifecycle_stage IS NULL OR lifecycle_stage IN ('Lead','Qualified','RFX','POC','Negotiations','Delivery')", name="ck_opportunities_v2_lifecycle_stage"),
         db.CheckConstraint("(outcome = 'Open' AND operational_status IN ('Active','Stalled')) OR (outcome IN ('Closed Won','Closed Lost') AND operational_status = 'Closed')", name="ck_opportunities_v2_closed_consistency"),
         db.CheckConstraint("final_revenue IS NULL OR final_revenue >= 0", name="ck_opportunities_final_revenue_non_negative"),
+        db.CheckConstraint("review_status IN ('Draft','Pending Sales Manager Review','Approved')", name="ck_opportunities_v2_review_status"),
+        db.CheckConstraint("row_version >= 1", name="ck_opportunities_v2_row_version_positive"),
     )
 
     opportunity_id = db.Column(db.Integer, primary_key=True)
@@ -142,6 +144,13 @@ class Opportunity(BaseModel):
         cascade="all, delete-orphan",
         lazy=True,
     )
+
+    oem_associations = db.relationship("OEMOpportunity", back_populates="opportunity", cascade="all, delete-orphan", lazy=True)
+    rfx_context = db.relationship("RFXContext", back_populates="opportunity", uselist=False, cascade="all, delete-orphan")
+    negotiation_context = db.relationship("NegotiationContext", back_populates="opportunity", uselist=False, cascade="all, delete-orphan")
+    delivery_project = db.relationship("DeliveryProject", back_populates="opportunity", uselist=False)
+    activities = db.relationship("Activity", back_populates="opportunity", cascade="all, delete-orphan", lazy=True)
+    follow_ups = db.relationship("FollowUp", back_populates="opportunity", cascade="all, delete-orphan", lazy=True)
 
     solution_design = db.relationship(
         "SolutionDesign",

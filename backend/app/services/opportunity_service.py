@@ -7,7 +7,6 @@ from app.auth.authorization import AuthorizationDenied, AuthorizationService
 from app.constants.activity_types import (
     OPPORTUNITY_APPROVED,
     OPPORTUNITY_QUALIFIED,
-    OPPORTUNITY_REJECTED,
     OPPORTUNITY_SUBMITTED_FOR_REVIEW,
     SALES_OWNER_ASSIGNED,
     OPPORTUNITY_SENT_TO_PRE_SALES,
@@ -16,15 +15,13 @@ from app.constants.activity_types import (
     SOLUTION_ENGINEER_ASSIGNED,
 )
 from app.constants.auth_constants import STATUS_APPROVED
-from app.constants.roles import LEADERSHIP, PRE_SALES_MANAGER, SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER
+from app.constants.roles import LEADERSHIP, PRE_SALES_MANAGER, SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST
 from app.constants.stages import (
     ACTIVE_STATUS,
     APPROVED_STATUS,
     INITIAL_STAGE_NAME,
     OPEN_STATUS,
     PENDING_SALES_MANAGER_REVIEW_STATUS,
-    QUALIFICATION_STAGE_NAME,
-    REJECTED_STATUS,
 )
 from app.database import db
 from app.models.account.account import Account
@@ -52,7 +49,9 @@ class OpportunityService:
         account = Account.query.filter_by(account_id=data["account_id"]).first()
         if not account:
             raise ValueError("Canonical account does not exist.")
-        if not account.is_active:
+        if account.status == "Banned":
+            raise ValueError("this account is banned")
+        if account.status != "Active" or not account.is_active:
             raise ValueError("This account is not active and cannot be selected for a new opportunity.")
         if not AuthorizationService.can_view_account(user, active_role, account):
             raise AuthorizationDenied("You are not authorized to use this account.")
@@ -334,9 +333,11 @@ class OpportunityService:
                 opportunity_id, expected_version, sales_owner_id, user, active_role, validate_assignment,
                 editable_fields=editable_fields or {},
             )
-        if decision == "REJECT":
-            return LifecycleTransitionService.reject_lead(opportunity_id, expected_version, reason, user, active_role)
-        raise ValueError("Decision must be APPROVE or REJECT.")
+        if decision == "CLOSE_WON":
+            return LifecycleTransitionService.close_won(opportunity_id, expected_version, user, active_role)
+        if decision == "CLOSE_LOST":
+            return LifecycleTransitionService.close_lost(opportunity_id, expected_version, reason, editable_fields.get("lost_explanation") if editable_fields else None, user, active_role)
+        raise ValueError("Decision must be APPROVE, CLOSE_WON, or CLOSE_LOST.")
 
     @staticmethod
     def transition_stage(opportunity_id, target_stage_id, user, active_role, remarks=None, expected_version=None):
@@ -345,8 +346,7 @@ class OpportunityService:
         target = StageRepository.get_by_id(target_stage_id)
         if not target:
             raise TransitionInvalid("Invalid opportunity stage.")
-        from app.constants.stages import LEGACY_STAGE_TO_LIFECYCLE
-        lifecycle = LEGACY_STAGE_TO_LIFECYCLE.get(target.stage_name, target.stage_name)
+        lifecycle = target.stage_name
         return LifecycleTransitionService.transition(
             opportunity_id, lifecycle, expected_version, user, active_role, remarks=remarks
         )

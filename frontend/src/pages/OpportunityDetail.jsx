@@ -28,6 +28,7 @@ import StatusBadge from "../components/ui/StatusBadge";
 import LoadingState from "../components/ui/LoadingState";
 import ErrorState from "../components/ui/ErrorState";
 import EmptyState from "../components/ui/EmptyState";
+import Phase2OpportunityPanel from "../components/Phase2OpportunityPanel";
 
 const money = (value) => {
     if (value === null || value === undefined || value === "") return "—";
@@ -252,19 +253,19 @@ export default function OpportunityDetail() {
         opportunity?.operational_status !== "Closed";
 
     const canEditSales =
-        activeRole === ROLES.SALES_EXECUTIVE &&
+        [ROLES.LEADERSHIP, ROLES.SALES_MANAGER, ROLES.SALES_EXECUTIVE, ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST].includes(activeRole) &&
         opportunity?.created_by === currentUserId &&
         opportunity?.operational_status === "Active" &&
         stageName === "Lead" &&
-        ["Draft", "Rejected"].includes(opportunity?.review_status);
+        opportunity?.review_status === "Draft";
 
     const canSubmitLead =
-        [ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER, ROLES.LEADERSHIP].includes(activeRole) &&
+        [ROLES.LEADERSHIP, ROLES.SALES_MANAGER, ROLES.SALES_EXECUTIVE, ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST].includes(activeRole) &&
         opportunity?.created_by === currentUserId &&
         opportunity?.operational_status === "Active" &&
         opportunity?.outcome === "Open" &&
         stageName === "Lead" &&
-        ["Draft", "Rejected"].includes(opportunity?.review_status);
+        opportunity?.review_status === "Draft";
 
 
     const run = async (fn) => {
@@ -410,6 +411,7 @@ export default function OpportunityDetail() {
                     <div className="opportunity-stage-summary">
                         <div><span>Final revenue</span><strong>{money(opportunity.final_revenue)}</strong></div>
                         <div><span>Outcome</span><strong>{outcome}</strong></div>
+                        {outcome === "Closed Lost" && opportunity.lost_explanation && <div><span>Closed Lost Remark</span><strong>{opportunity.lost_explanation}</strong></div>}
                     </div>
                 </SectionCard>
             )}
@@ -430,7 +432,7 @@ export default function OpportunityDetail() {
             </SectionCard>
 
             <div className="ui-kpi-grid opportunity-summary-grid">
-                <KpiCard icon={DollarSign} label="Estimated Value" value={money(opportunity.estimated_value)} description="Commercial value" />
+                <KpiCard icon={DollarSign} label="Current Opportunity Value" value={money(opportunity.estimated_value)} description="Commercial value" />
                 <KpiCard icon={Target} label="Probability" value={`${probability}%`} description="Current win probability" />
                 <KpiCard icon={CalendarDays} label="Expected Close" value={dateLabel(opportunity.expected_close_date)} description="Target close date" />
                 <KpiCard icon={Layers3Icon} label="Stage" value={stageName} description={status} />
@@ -469,7 +471,7 @@ export default function OpportunityDetail() {
                     ) : (
                         <>
                             <InfoGrid>
-                                <InfoItem icon={DollarSign} label="Estimated value" value={money(opportunity.estimated_value)} />
+                                <InfoItem icon={DollarSign} label="Current Opportunity Value" value={money(opportunity.estimated_value)} />
                                 <InfoItem icon={DollarSign} label="Final revenue" value={money(opportunity.final_revenue)} />
                                 <InfoItem icon={Target} label="Probability" value={`${probability}%`} />
                                 <InfoItem icon={CalendarDays} label="Expected close" value={dateLabel(opportunity.expected_close_date)} />
@@ -573,7 +575,7 @@ export default function OpportunityDetail() {
                         {stageName === "Qualified" && <Button disabled={saving} onClick={() => run(() => advanceToRfx(opportunityId, opportunity.row_version))}><ArrowRight size={14} /> Advance to RFX</Button>}
                         {stageName === "RFX" && <Button disabled={saving} onClick={() => run(() => advanceToPoc(opportunityId, opportunity.row_version))}><ArrowRight size={14} /> Advance to POC</Button>}
                         {stageName === "POC" && <Button disabled={saving} onClick={() => run(() => advanceToNegotiations(opportunityId, opportunity.row_version))}><ArrowRight size={14} /> Advance to Negotiations</Button>}
-                        {stageName !== "Lead" && (activeRole === ROLES.PRE_SALES_MANAGER || activeRole === ROLES.LEADERSHIP) && <Button disabled={saving} onClick={() => close(true)}><CheckCircle2 size={14} /> Close Won</Button>}
+                        {stageName !== "Lead" && (activeRole === ROLES.PRE_SALES_MANAGER || activeRole === ROLES.LEADERSHIP) && <Button disabled={saving} onClick={() => close(true)}><CheckCircle2 size={14} /> {stageName === "Negotiations" ? "Final Closed Won Approval" : "Close Won"}</Button>}
                         {stageName !== "Lead" && (activeRole === ROLES.PRE_SALES_MANAGER || activeRole === ROLES.LEADERSHIP || (activeRole === ROLES.SOLUTION_ENGINEER && assignedSE)) && <Button variant="secondary" disabled={saving} onClick={() => close(false)}><CheckCircle2 size={14} /> Close Lost</Button>}
                         {stageName !== "Lead" && activeRole === ROLES.SOLUTION_ENGINEER && opportunity?.closed_won_request?.status !== "Pending" && <Button variant="secondary" disabled={saving} onClick={requestWon}><CheckCircle2 size={14} /> Request Closed Won</Button>}
                         {opportunity?.closed_won_request?.status === "Pending" && activeRole === ROLES.PRE_SALES_MANAGER && (
@@ -691,13 +693,15 @@ export default function OpportunityDetail() {
             )}
 
 
+            <Phase2OpportunityPanel opportunity={opportunity} activeRole={activeRole} onRefresh={() => retrySection("stakeholders")} />
+
             <SectionCard title="Stakeholders" description="Customer contacts connected to this opportunity." icon={Users}>
-                {((activeRole === ROLES.SALES_EXECUTIVE &&
+                {(([ROLES.LEADERSHIP, ROLES.SALES_MANAGER, ROLES.SALES_EXECUTIVE, ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST].includes(activeRole) &&
                     opportunity.created_by === currentUserId &&
                     opportunity.is_active &&
                     opportunity.operational_status === "Active" &&
                     stageName === "Lead" &&
-                    ["Draft", "Rejected"].includes(opportunity.review_status)) ||
+                    opportunity.review_status === "Draft") ||
                     (activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && opportunity.is_active)) && (
                     <StakeholderForm opportunityId={opportunityId} onCreated={() => retrySection("stakeholders")} />
                 )}

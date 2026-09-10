@@ -38,6 +38,12 @@ export default function Opportunities() {
     const [creating, setCreating] = useState(false);
     const [loading, setLoading] = useState(true);
 
+    const canCreateLead = [
+        ROLES.LEADERSHIP, ROLES.SALES_MANAGER, ROLES.SALES_EXECUTIVE,
+        ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER,
+        ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST,
+    ].includes(activeRole);
+
     const [form, setForm] = useState({
         account_id: "",
         opportunity_name: "",
@@ -56,7 +62,7 @@ export default function Opportunities() {
             const data = await getOpportunities();
             setOpportunities(data || []);
 
-            if (activeRole !== ROLES.ADMIN) {
+            if (canCreateLead) {
                 setAccounts(await getAccounts());
             }
         } catch (err) {
@@ -132,15 +138,9 @@ export default function Opportunities() {
             (o) => o.outcome === "Open" && o.operational_status === "Active"
         ).length;
 
-        const won = opportunities.filter(
-            (o) => o.outcome === "Closed Won" ||
-                String(o.lifecycle_stage || "").toLowerCase() === "closed won"
-        ).length;
+        const won = opportunities.filter((o) => o.outcome === "Closed Won").length;
 
-        const lost = opportunities.filter(
-            (o) => (o.outcome === "Closed Lost") ||
-                String(o.lifecycle_stage || "").toLowerCase() === "closed lost"
-        ).length;
+        const lost = opportunities.filter((o) => o.outcome === "Closed Lost").length;
 
         return { total, open, won, lost };
     }, [opportunities]);
@@ -206,7 +206,7 @@ export default function Opportunities() {
                 </div>
 
                 <div className="opportunities-header-actions">
-                    {activeRole !== ROLES.ADMIN && (
+                    {canCreateLead && (
                         <Button
                             variant={showCreate ? "danger" : "primary"}
                             onClick={() =>
@@ -293,7 +293,7 @@ export default function Opportunities() {
 
             {/* CREATE FORM */}
             {showCreate &&
-                activeRole !== ROLES.ADMIN && (
+                canCreateLead && (
                     <div className="opportunity-create-card">
 
                         <div className="opportunity-create-header">

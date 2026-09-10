@@ -44,7 +44,7 @@ def app(tmp_path, monkeypatch):
         multi=user("Multi","multi6@example.com",SOLUTION_ENGINEER,(DELIVERY,))
         account=Account(account_name="Phase 6 Account"); db.session.add(account); db.session.flush()
         opp=Opportunity(account_id=account.account_id, created_by=creator.user_id, sales_owner_id=owner.user_id,
-                        stage_id=stages[1].stage_id, opportunity_name="Phase 6 Opportunity",
+                        stage_id=stages[3].stage_id, opportunity_name="Phase 6 Opportunity",
                         status=ACTIVE_STATUS, is_active=True)
         db.session.add(opp); db.session.flush()
         db.session.add_all([
@@ -55,7 +55,18 @@ def app(tmp_path, monkeypatch):
             OpportunityTeam(opportunity_id=opp.opportunity_id,user_id=delivery.user_id,role=DELIVERY),
         ])
         db.session.commit()
-        application.config["P6"]={"opp":opp.opportunity_id,"se":se.email,"se2":se2.email,"delivery":delivery.email,"psm":psm.email,"manager":manager.email,"wrong":wrong.email,"multi":multi.email}
+        application.config["P6"]={
+            "opp":opp.opportunity_id,
+            "se":se.email,
+            "se_id":se.user_id,
+            "psm":psm.email,
+            "psm_id":psm.user_id,
+            "se2":se2.email,
+            "delivery":delivery.email,
+            "manager":manager.email,
+            "wrong":wrong.email,
+            "multi":multi.email,
+        }
     return application
 
 @pytest.fixture()
@@ -86,8 +97,8 @@ def test_assigned_se_can_create_design(client,app):
 def test_unassigned_se_cannot_request_poc(client,app):
     # The second SE is assigned in this fixture; use wrong sales user to assert membership is required.
     t=token_for(client,app.config["P6"]["wrong"],SALES_EXECUTIVE); oid,ts=oid_and_ts(app)
-    r=client.post("/api/poc/request",headers=auth(t),json={"opportunity_id":oid,"poc_name":"P","objective":"O","success_metric":"S","exit_criteria":"E","target_date":str(date.today()+timedelta(days=3)),"failure_condition":"F"})
-    assert r.status_code==403
+    r=client.post("/api/poc/request",headers=auth(t),json={"opportunity_id":oid,"poc_name":"POC 1","objective":"O","success_metric":"S","exit_criteria":"E","target_date":str(date.today()+timedelta(days=3)),"failure_condition":"F"})
+    print("RESPONSE:", r.status_code, r.get_json()); assert r.status_code==403
 
 def request_poc(client,app):
     t=token_for(client,app.config["P6"]["se"],SOLUTION_ENGINEER); oid,_=oid_and_ts(app)
@@ -100,12 +111,56 @@ def test_se_request_enters_draft(client,app):
 
 def test_se_can_execute_and_submit(client,app):
     p=request_poc(client,app)
-    t=token_for(client,app.config["P6"]["se"],SOLUTION_ENGINEER)
-    p=client.post(f"/api/poc/{p['poc_id']}/start-execution",headers=auth(t),json={"updated_at":p["updated_at"]}).get_json()
+
+    # Pre-Sales Manager assigns the POC to the Solution Engineer.
+    psm_token=token_for(
+        client,
+        app.config["P6"]["psm"],
+        PRE_SALES_MANAGER,
+    )
+
+    r=client.post(
+        f"/api/poc/{p['poc_id']}/assign",
+        headers=auth(psm_token),
+        json={
+            "user_id":app.config["P6"]["se_id"],
+        },
+    )
+
+    assert r.status_code==201
+
+    # Assigned Solution Engineer can now execute the POC.
+    se_token=token_for(
+        client,
+        app.config["P6"]["se"],
+        SOLUTION_ENGINEER,
+    )
+
+    r=client.post(
+        f"/api/poc/{p['poc_id']}/start-execution",
+        headers=auth(se_token),
+        json={
+            "updated_at":p["updated_at"],
+        },
+    )
+
+    assert r.status_code==200
+    p=r.get_json()
     assert p["status"]=="In Progress"
-    r=client.post(f"/api/poc/{p['poc_id']}/submit-result",headers=auth(t),
-                  json={"execution_status":"Submitted","outcome":"Success","outcome_notes":"Passed","updated_at":p["updated_at"]})
-    assert r.status_code==200 and r.get_json()["status"]=="Submitted"
+
+    r=client.post(
+        f"/api/poc/{p['poc_id']}/submit-result",
+        headers=auth(se_token),
+        json={
+            "execution_status":"Submitted",
+            "outcome":"Success",
+            "outcome_notes":"Passed",
+            "updated_at":p["updated_at"],
+        },
+    )
+
+    assert r.status_code==200
+    assert r.get_json()["status"]=="Submitted"
 
 def test_delivery_cannot_edit_poc_design(client,app):
     p=request_poc(client,app); td=token_for(client,app.config["P6"]["delivery"],DELIVERY)
@@ -123,11 +178,36 @@ def test_delivery_cannot_close(client,app):
     r=client.post(f"/api/opportunities/{oid}/close-won",headers=auth(t),json={"updated_at":ts})
     assert r.status_code==403
 
-def test_se_stage_transition_is_explicit(client,app):
-    oid,ts=oid_and_ts(app); t=token_for(client,app.config["P6"]["se"],SOLUTION_ENGINEER)
-    r=client.post(f"/api/opportunities/{oid}/transition-technical-stage",headers=auth(t),
-                  json={"target_stage":"Discovery","updated_at":ts})
-    assert r.status_code==200
+def test_se_stage_transition_is_explicit(client, app):
+    oid, ts = oid_and_ts(app)
+    t = token_for(
+        client,
+        app.config["P6"]["se"],
+        SOLUTION_ENGINEER,
+    )
+
+    # Move the fixture opportunity to Discovery for this transition test.
+    with app.app_context():
+        opportunity = Opportunity.query.get(oid)
+        discovery = StageMaster.query.filter_by(
+            stage_name="Discovery"
+        ).first()
+
+        opportunity.stage_id = discovery.stage_id
+        db.session.commit()
+
+    oid, ts = oid_and_ts(app)
+
+    r = client.post(
+        f"/api/opportunities/{oid}/transition-technical-stage",
+        headers=auth(t),
+        json={
+            "target_stage": "POC / Technical Evaluation",
+            "updated_at": ts,
+        },
+    )
+
+    assert r.status_code == 200
 
 def test_arbitrary_stage_jump_rejected(client,app):
     oid,ts=oid_and_ts(app); t=token_for(client,app.config["P6"]["se"],SOLUTION_ENGINEER)
@@ -148,5 +228,5 @@ def test_multi_role_delivery_active_cannot_request_poc(client,app):
     # Multi-role users must obey only the selected active role.
     t=token_for(client,app.config["P6"]["multi"],DELIVERY)
     oid,_=oid_and_ts(app)
-    r=client.post("/api/poc/request",headers=auth(t),json={"opportunity_id":oid,"poc_name":"P","objective":"O","success_metric":"S","exit_criteria":"E","target_date":str(date.today()+timedelta(days=3)),"failure_condition":"F"})
+    r=client.post("/api/poc/request",headers=auth(t),json={"opportunity_id":oid,"poc_name":"POC 1","objective":"O","success_metric":"S","exit_criteria":"E","target_date":str(date.today()+timedelta(days=3)),"failure_condition":"F"})
     assert r.status_code==403

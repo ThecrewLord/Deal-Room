@@ -82,7 +82,12 @@ class Opportunity(BaseModel):
         cascade="all, delete-orphan",
         lazy=True,
     )
-
+    stakeholder_tags = db.relationship(
+      "StakeholderTag",
+      back_populates="opportunity",
+      cascade="all, delete-orphan",
+      lazy=True,
+   )
     team_members = db.relationship(
         "OpportunityTeam",
         back_populates="opportunity",
@@ -110,6 +115,13 @@ class Opportunity(BaseModel):
         back_populates="opportunity",
         uselist=False,
         cascade="all, delete-orphan",
+    )
+
+    opportunity_oems = db.relationship(
+        "OpportunityOEM",
+        back_populates="opportunity",
+        cascade="all, delete-orphan",
+        lazy=True,
     )
 
     @property

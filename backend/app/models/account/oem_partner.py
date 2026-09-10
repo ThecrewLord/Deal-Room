@@ -54,5 +54,12 @@ class OEMPartner(BaseModel):
         back_populates="oem_partners",
     )
 
+    opportunity_oems = db.relationship(
+        "OpportunityOEM",
+        back_populates="oem_partner",
+        cascade="all, delete-orphan",
+        lazy=True,
+    )
+
     def __repr__(self):
         return f"<OEMPartner {self.partner_name}>"

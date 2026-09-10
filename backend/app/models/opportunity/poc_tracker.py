@@ -84,6 +84,13 @@ class POCTracker(BaseModel):
     requester = db.relationship("User", foreign_keys=[requested_by])
     submitter = db.relationship("User", foreign_keys=[submitted_by])
 
+    assignments = db.relationship(
+    "POCAssignment",
+    back_populates="poc",
+    cascade="all, delete-orphan",
+    lazy=True,
+    )
+
     opportunity = db.relationship(
         "Opportunity",
         back_populates="poc_trackers",

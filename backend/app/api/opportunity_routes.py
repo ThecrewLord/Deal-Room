@@ -2,6 +2,7 @@ from flask import Blueprint
 
 from app.auth.authorization import business_access_required
 from app.controllers.opportunity_controller import OpportunityController
+from app.controllers.opportunity_oem_controller import OpportunityOEMController
 
 opportunity_bp = Blueprint("opportunity", __name__, url_prefix="/api/opportunities")
 
@@ -110,3 +111,49 @@ def update_opportunity(opportunity_id):
 @business_access_required
 def delete_opportunity(opportunity_id):
     return OpportunityController.delete(opportunity_id)
+
+
+# ================================================================
+# OPPORTUNITY OEM ASSOCIATIONS (B3)
+# ================================================================
+
+@opportunity_bp.get("/<int:opportunity_id>/oems")
+@business_access_required
+def get_opportunity_oems(opportunity_id):
+    from flask import g
+
+    return OpportunityOEMController.get_for_opportunity(
+        opportunity_id,
+        g.auth_user,
+        g.active_role,
+    )
+
+
+@opportunity_bp.post("/<int:opportunity_id>/oems")
+@business_access_required
+def add_opportunity_oem(opportunity_id):
+    from flask import g
+
+    return OpportunityOEMController.add_oem(
+        opportunity_id,
+        g.auth_user,
+        g.active_role,
+    )
+
+
+@opportunity_bp.delete(
+    "/<int:opportunity_id>/oems/<int:oem_partner_id>"
+)
+@business_access_required
+def remove_opportunity_oem(
+    opportunity_id,
+    oem_partner_id,
+):
+    from flask import g
+
+    return OpportunityOEMController.remove_oem(
+        opportunity_id,
+        oem_partner_id,
+        g.auth_user,
+        g.active_role,
+    )

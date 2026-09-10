@@ -1,6 +1,6 @@
 from flask import g, jsonify, request, send_file
 from marshmallow import ValidationError
-
+from app.services.poc_assignment_service import PocAssignmentService
 from app.auth.authorization import AuthorizationDenied
 from app.schemas.poc_schema import (
     PocRequestSchema, PocResponseSchema,
@@ -56,6 +56,100 @@ class PocController:
             import traceback
             traceback.print_exc()
             return jsonify({"message": str(err)}), 500
+
+    @staticmethod
+    def assign(poc_id):
+        try:
+            data = request.get_json() or {}
+            user_id = data.get("user_id")
+
+            if not user_id:
+                return jsonify({"message": "user_id is required."}), 400
+
+            assignment = PocAssignmentService.assign(
+                poc_id=poc_id,
+                user_id=user_id,
+                assigned_by=g.auth_user.user_id,
+                active_role=g.active_role,
+            )
+
+            return jsonify({
+                "assignment_id": assignment.assignment_id,
+                "poc_id": assignment.poc_id,
+                "user_id": assignment.user_id,
+                "role": assignment.role,
+                "is_active": assignment.is_active,
+            }), 201
+
+        except ValueError as err:
+            return jsonify({"message": str(err)}), 400
+
+        except Exception as err:
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "message": "Failed to assign POC.",
+                "detail": str(err),
+            }), 500
+
+    @staticmethod
+    def get_assignments(poc_id):
+        try:
+            assignments = PocAssignmentService.get_assignments(poc_id)
+
+            return jsonify({
+                "assignments": [
+                    {
+                        "assignment_id": assignment.assignment_id,
+                        "poc_id": assignment.poc_id,
+                        "user_id": assignment.user_id,
+                        "role": assignment.role,
+                        "is_active": assignment.is_active,
+                        "assigned_at": (
+                            assignment.assigned_at.isoformat()
+                            if assignment.assigned_at
+                            else None
+                        ),
+                    }
+                    for assignment in assignments
+                ]
+            }), 200
+
+        except Exception as err:
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "message": "Failed to retrieve POC assignments.",
+                "detail": str(err),
+            }), 500
+
+    @staticmethod
+    def remove_assignment(poc_id, user_id):
+        try:
+            assignment = PocAssignmentService.remove_assignment(
+                poc_id=poc_id,
+                user_id=user_id,
+                removed_by=g.auth_user.user_id,
+                active_role=g.active_role,
+            )
+
+            return jsonify({
+                "assignment_id": assignment.assignment_id,
+                "poc_id": assignment.poc_id,
+                "user_id": assignment.user_id,
+                "is_active": assignment.is_active,
+            }), 200
+
+        except ValueError as err:
+            return jsonify({"message": str(err)}), 400
+
+        except Exception as err:
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "message": "Failed to remove POC assignment.",
+                "detail": str(err),
+            }), 500
 
     @staticmethod
     def get(poc_id):

@@ -5,12 +5,17 @@ from app.models.opportunity.opportunity_team import OpportunityTeam
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.authorization import AuthorizationDenied, AuthorizationService
-from app.constants.roles import PRE_SALES_MANAGER, SOLUTION_ENGINEER
+from app.constants.roles import (
+    PRE_SALES_MANAGER,
+    SOLUTION_ENGINEER,
+    DELIVERY_MANAGER,
+)
 from app.constants.activity_types import (
     POC_REQUESTED,
     POC_EXECUTION_STARTED, POC_RESULT_SUBMITTED, POC_COMPLETED,
     POC_DESIGN_CREATED, POC_DESIGN_UPDATED,
 )
+from app.constants.auth_constants import STATUS_APPROVED
 from app.database import db
 from app.models.auth.user import User
 from app.models.opportunity.poc_tracker import POCTracker
@@ -438,13 +443,7 @@ class PocService:
     @staticmethod
     def request_poc(data, user, active_role):
         opportunity = PocRepository.get_opportunity(data["opportunity_id"])
-        print(
-            "POC DEBUG:",
-            "user_id=", getattr(user, "user_id", None),
-            "user_name=", getattr(user, "full_name", None),
-            "active_role=", active_role,
-            "opportunity_id=", data.get("opportunity_id"),
-        )        
+        
 
         if not opportunity:
             return None
@@ -600,6 +599,29 @@ class PocService:
             f"POC '{poc.poc_name}' marked Completed after Solution Engineer review.",
             user.user_id, commit=False,
         )
+
+        delivery_managers = (
+            User.query
+            .filter(
+                User.active.is_(True),
+                User.status == STATUS_APPROVED,
+            )
+            .all()
+        )
+
+        for delivery_manager in delivery_managers:
+            if delivery_manager.has_role(DELIVERY_MANAGER):
+                NotificationService.queue(
+                    delivery_manager.user_id,
+                    POC_COMPLETED,
+                    "poc",
+                    poc.poc_id,
+                    (
+                        f"POC '{poc.poc_name}' has been completed "
+                        f"and is ready for delivery project creation."
+                    ),
+                )
+
         db.session.commit()
         return poc
 

@@ -102,6 +102,16 @@ def app(tmp_path, monkeypatch):
         )
         db.session.add(existing)
         db.session.flush()
+
+        db.session.add(
+            StageHistory(
+                opportunity_id=existing.opportunity_id,
+                stage_id=existing.stage_id,
+                changed_by=sales.user_id,
+                remarks="Opportunity created.",
+            )
+        )
+
         db.session.add(
             OpportunityTeam(
                 opportunity_id=existing.opportunity_id,

@@ -242,7 +242,7 @@ def test_6_admin_cannot_finalize(client, app):
     assert client.post(f"/api/opportunities/{oid}/finalize-pre-sales-assignment", headers=auth(token), json=payload).status_code == 403
 
 
-def test_7_pre_sales_manager_can_retrieve_eligible_se_candidates(client):
+def test_7_pre_sales_manager_can_retrieve_eligible_se_candidates(client, app):
     token = token_for(client, "psm5@example.com")
     response = client.get("/api/opportunities/pre-sales-assignment-candidates/Solution%20Engineer", headers=auth(token))
     assert response.status_code == 200

@@ -1,6 +1,15 @@
 from marshmallow import Schema, fields, validate
 
 
+ALLOWED_STAKEHOLDER_TAGS = [
+    "Economic Buyer",
+    "Technical Champion",
+    "End User",
+    "Blocker",
+    "Decision Maker",
+]
+
+
 class StakeholderCreateSchema(Schema):
 
     opportunity_id = fields.Int(required=True)
@@ -45,7 +54,7 @@ class StakeholderUpdateSchema(Schema):
 
     notes = fields.Str()
 
-    updated_at = fields.DateTime(required=True)
+    updated_at = fields.DateTime()
 
 
 class StakeholderResponseSchema(Schema):
@@ -65,6 +74,29 @@ class StakeholderResponseSchema(Schema):
     influence_level = fields.Str()
 
     notes = fields.Str()
+
+    created_at = fields.DateTime()
+
+    updated_at = fields.DateTime()
+
+
+class StakeholderTagCreateSchema(Schema):
+
+    tag = fields.Str(
+        required=True,
+        validate=validate.OneOf(ALLOWED_STAKEHOLDER_TAGS),
+    )
+
+
+class StakeholderTagResponseSchema(Schema):
+
+    stakeholder_tag_id = fields.Int()
+
+    stakeholder_id = fields.Int()
+
+    opportunity_id = fields.Int()
+
+    tag = fields.Str()
 
     created_at = fields.DateTime()
 

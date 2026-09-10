@@ -20,6 +20,32 @@ def eligible_opportunities():
 def download_poc(poc_id):
     return PocController.download(poc_id)
 
+@poc_bp.post("/<int:poc_id>/assign")
+@business_access_required
+def assign_poc(poc_id):
+    return PocController.assign(poc_id)
+
+
+@poc_bp.get("/<int:poc_id>/assignments")
+@business_access_required
+def get_poc_assignments(poc_id):
+    return PocController.get_assignments(poc_id)
+
+
+@poc_bp.delete("/<int:poc_id>/assign/<int:user_id>")
+@business_access_required
+def remove_poc_assignment(poc_id, user_id):
+    return PocController.remove_assignment(poc_id, user_id)
+
+
+@poc_bp.put("/<int:poc_id>")
+@business_access_required
+def legacy_update_poc(poc_id):
+    return {
+        "message": "Generic POC updates are not permitted. Use the explicit POC business actions."
+    }, 403
+
+
 @poc_bp.get("/<int:poc_id>")
 @business_access_required
 def get_poc(poc_id):

@@ -3,8 +3,10 @@ from app.models.auth import (
     UserRole,
     TokenBlocklist,
 )
+
 from app.models.account.account import Account
 from app.models.account.contact import Contact
+
 from app.models.opportunity.stage_master import StageMaster
 from app.models.system.tag import Tag
 
@@ -17,6 +19,16 @@ from app.models.opportunity import (
     POCTracker,
     SolutionDesign,
 )
+
+from app.models.poc import (
+    POCAssignment,
+)
+
+from app.models.delivery import (
+    DeliveryProject,
+    DeliveryAssignment,
+)
+
 
 __all__ = [
     "User",
@@ -32,4 +44,7 @@ __all__ = [
     "StageHistory",
     "POCTracker",
     "SolutionDesign",
+    "POCAssignment",
+    "DeliveryProject",
+    "DeliveryAssignment",
 ]

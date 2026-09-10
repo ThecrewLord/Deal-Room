@@ -13,9 +13,10 @@ from app.constants.activity_types import (
     PRE_SALES_ASSIGNMENT_FINALIZED,
     OPPORTUNITY_STAGE_CHANGED,
     SOLUTION_ENGINEER_ASSIGNED,
+    DELIVERY_ASSIGNED,
 )
 from app.constants.auth_constants import STATUS_APPROVED
-from app.constants.roles import PRE_SALES_MANAGER, SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER
+from app.constants.roles import PRE_SALES_MANAGER, SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY
 from app.constants.stages import (
     ACTIVE_STATUS,
     APPROVED_STATUS,
@@ -119,99 +120,313 @@ class OpportunityService:
 
     @staticmethod
     def get_eligible_pre_sales_users(user, active_role, role):
-        if not AuthorizationService.can_view_pending_pre_sales_assignment(user, active_role):
-            raise AuthorizationDenied("Only a Pre-Sales Manager can view technical assignment candidates.")
-        if role != SOLUTION_ENGINEER:
-            raise ValueError("The only technical assignment role is Solution Engineer.")
-        return OpportunityRepository.get_eligible_users(SOLUTION_ENGINEER)
+        if not AuthorizationService.can_view_pending_pre_sales_assignment(
+            user, active_role
+        ):
+            raise AuthorizationDenied(
+                "Only a Pre-Sales Manager can view technical assignment candidates."
+            )
+
+        if role not in {SOLUTION_ENGINEER, DELIVERY}:
+            raise ValueError(
+                "Assignment role must be Solution Engineer or Delivery."
+            )
+
+        return OpportunityRepository.get_eligible_users(role)
 
     @staticmethod
     def finalize_pre_sales_assignment(
-        opportunity_id, solution_engineer_ids, delivery_ids=None, updated_at=None, user=None, active_role=None
+        opportunity_id,
+        solution_engineer_ids,
+        delivery_ids=None,
+        updated_at=None,
+        user=None,
+        active_role=None,
     ):
         if active_role != PRE_SALES_MANAGER:
-            raise AuthorizationDenied("Only the active Pre-Sales Manager role can finalize technical assignment.")
+            raise AuthorizationDenied(
+                "Only the active Pre-Sales Manager role can finalize technical assignment."
+            )
+
         opportunity = OpportunityRepository.get_by_id(opportunity_id)
+
         if not opportunity:
             return None
-        if not AuthorizationService.can_view_opportunity(user, active_role, opportunity):
+
+        if not AuthorizationService.can_view_opportunity(
+            user, active_role, opportunity
+        ):
             return None
+
         if OpportunityTeam.query.filter(
             OpportunityTeam.opportunity_id == opportunity.opportunity_id,
             OpportunityTeam.role == SOLUTION_ENGINEER,
         ).first():
-            raise RuntimeError("Technical assignment has already been finalized.")
-        if not AuthorizationService.can_finalize_pre_sales_assignment(user, active_role, opportunity):
-            raise RuntimeError("Opportunity is not awaiting Pre-Sales assignment.")
+            raise RuntimeError(
+                "Technical assignment has already been finalized."
+            )
+
+        if not AuthorizationService.can_finalize_pre_sales_assignment(
+            user, active_role, opportunity
+        ):
+            raise RuntimeError(
+                "Opportunity is not awaiting Pre-Sales assignment."
+            )
+
         if isinstance(updated_at, str):
-            updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-        if ConcurrencyManager.has_conflict(updated_at, opportunity.updated_at):
-            raise RuntimeError("This opportunity has changed since you opened it. Refresh before assigning the technical team.")
+            updated_at = datetime.fromisoformat(
+                updated_at.replace("Z", "+00:00")
+            )
 
-        ids = [int(uid) for uid in (solution_engineer_ids or [])]
-        ids.extend(int(uid) for uid in (delivery_ids or []))
-        ids = list(dict.fromkeys(ids))
-        if not ids:
-            raise ValueError("At least one Solution Engineer is required.")
+        if ConcurrencyManager.has_conflict(
+            updated_at, opportunity.updated_at
+        ):
+            raise RuntimeError(
+                "This opportunity has changed since you opened it. "
+                "Refresh before assigning the technical team."
+            )
 
-        users = {u.user_id: u for u in User.query.filter(User.user_id.in_(ids)).all()}
-        if len(users) != len(ids):
-            raise ValueError("One or more selected users do not exist.")
-        for uid in ids:
+        # --------------------------------------------------------
+        # Keep the two assignment groups separate.
+        # --------------------------------------------------------
+
+        se_ids = [int(uid) for uid in (solution_engineer_ids or [])]
+        delivery_member_ids = [int(uid) for uid in (delivery_ids or [])]
+
+        if len(se_ids) != len(set(se_ids)):
+            raise ValueError(
+                "Duplicate Solution Engineer assignment is not allowed."
+            )
+
+        if len(delivery_member_ids) != len(set(delivery_member_ids)):
+            raise ValueError(
+                "Duplicate Delivery assignment is not allowed."
+            )
+
+        if not se_ids:
+            raise ValueError(
+                "At least one Solution Engineer is required."
+            )
+
+        if not delivery_member_ids:
+            raise ValueError(
+                "At least one Delivery member is required."
+            )
+
+        # A user cannot be assigned simultaneously to both groups.
+        overlap = set(se_ids).intersection(delivery_member_ids)
+
+        if overlap:
+            raise ValueError(
+                "A selected user cannot be assigned as both "
+                "Solution Engineer and Delivery."
+            )
+
+        all_ids = se_ids + delivery_member_ids
+
+        users = {
+            u.user_id: u
+            for u in User.query.filter(
+                User.user_id.in_(all_ids)
+            ).all()
+        }
+
+        if len(users) != len(all_ids):
+            raise ValueError(
+                "One or more selected users do not exist."
+            )
+
+        # --------------------------------------------------------
+        # Validate Solution Engineers.
+        # --------------------------------------------------------
+
+        for uid in se_ids:
             candidate = users.get(uid)
-            if not candidate or not candidate.active or candidate.status != STATUS_APPROVED or not candidate.has_role(SOLUTION_ENGINEER):
-                raise ValueError(f"User {uid} is not an eligible Solution Engineer.")
 
-        existing_ids = {row.user_id for row in OpportunityTeam.query.filter_by(opportunity_id=opportunity.opportunity_id).all()}
-        if existing_ids.intersection(ids):
-            raise ValueError("A selected user is already assigned to this opportunity.")
+            if (
+                not candidate
+                or not candidate.active
+                or candidate.status != STATUS_APPROVED
+                or not candidate.has_role(SOLUTION_ENGINEER)
+            ):
+                raise ValueError(
+                    f"User {uid} is not an eligible Solution Engineer."
+                )
+
+        # --------------------------------------------------------
+        # Validate Delivery members.
+        # --------------------------------------------------------
+
+        for uid in delivery_member_ids:
+            candidate = users.get(uid)
+
+            if (
+                not candidate
+                or not candidate.active
+                or candidate.status != STATUS_APPROVED
+                or not candidate.has_role(DELIVERY)
+            ):
+                raise ValueError(
+                    f"User {uid} is not an eligible Delivery member."
+                )
+
+        # --------------------------------------------------------
+        # Prevent duplicate opportunity assignments.
+        # --------------------------------------------------------
+
+        existing_ids = {
+            row.user_id
+            for row in OpportunityTeam.query.filter_by(
+                opportunity_id=opportunity.opportunity_id
+            ).all()
+        }
+
+        if existing_ids.intersection(all_ids):
+            raise ValueError(
+                "A selected user is already assigned to this opportunity."
+            )
+
+        # --------------------------------------------------------
+        # Approved -> Active is part of the existing Phase 5 flow.
+        # --------------------------------------------------------
 
         updated_rows = Opportunity.query.filter(
             Opportunity.opportunity_id == opportunity.opportunity_id,
             Opportunity.status == APPROVED_STATUS,
             Opportunity.sales_owner_id.isnot(None),
             Opportunity.is_active.is_(True),
-        ).update({"status": ACTIVE_STATUS}, synchronize_session=False)
+        ).update(
+            {"status": ACTIVE_STATUS},
+            synchronize_session=False,
+        )
+
         if updated_rows != 1:
             db.session.rollback()
-            raise RuntimeError("Technical assignment has already been finalized or the opportunity is no longer assignable.")
-        db.session.expire(opportunity, ["status", "updated_at"])
+            raise RuntimeError(
+                "Technical assignment has already been finalized or "
+                "the opportunity is no longer assignable."
+            )
+
+        db.session.expire(
+            opportunity,
+            ["status", "updated_at"],
+        )
         db.session.refresh(opportunity)
 
         try:
-            for uid in ids:
-                db.session.add(OpportunityTeam(
-                    opportunity_id=opportunity.opportunity_id,
-                    user_id=uid,
-                    role=SOLUTION_ENGINEER,
-                ))
+            # ----------------------------------------------------
+            # Create Solution Engineer assignments.
+            # ----------------------------------------------------
+
+            for uid in se_ids:
+                db.session.add(
+                    OpportunityTeam(
+                        opportunity_id=opportunity.opportunity_id,
+                        user_id=uid,
+                        role=SOLUTION_ENGINEER,
+                    )
+                )
+
+            # ----------------------------------------------------
+            # Create Delivery assignments.
+            # ----------------------------------------------------
+
+            for uid in delivery_member_ids:
+                db.session.add(
+                    OpportunityTeam(
+                        opportunity_id=opportunity.opportunity_id,
+                        user_id=uid,
+                        role=DELIVERY,
+                    )
+                )
+
+            # ----------------------------------------------------
+            # Finalization audit.
+            # ----------------------------------------------------
+
             ActivityService.log(
                 entity_type="Opportunity",
                 entity_id=opportunity.opportunity_id,
                 action=PRE_SALES_ASSIGNMENT_FINALIZED,
-                description=(f"Technical team assigned. Solution Engineers: "
-                             f"{', '.join(users[uid].full_name for uid in ids)}."),
+                description=(
+                    "Technical team assigned. "
+                    f"Solution Engineers: "
+                    f"{', '.join(users[uid].full_name for uid in se_ids)}. "
+                    f"Delivery: "
+                    f"{', '.join(users[uid].full_name for uid in delivery_member_ids)}."
+                ),
                 user_id=user.user_id,
                 commit=False,
             )
-            for uid in ids:
+
+            # ----------------------------------------------------
+            # Solution Engineer audit + notification.
+            # ----------------------------------------------------
+
+            for uid in se_ids:
                 ActivityService.log(
                     entity_type="Opportunity",
                     entity_id=opportunity.opportunity_id,
                     action=SOLUTION_ENGINEER_ASSIGNED,
-                    description=f"{users[uid].full_name} assigned as Solution Engineer.",
+                    description=(
+                        f"{users[uid].full_name} assigned "
+                        "as Solution Engineer."
+                    ),
                     user_id=user.user_id,
                     commit=False,
                 )
+
                 NotificationService.queue(
-                    uid, SOLUTION_ENGINEER_ASSIGNED, "Opportunity", opportunity.opportunity_id,
-                    f"You have been assigned to Opportunity '{opportunity.opportunity_name}' as Solution Engineer.",
+                    uid,
+                    SOLUTION_ENGINEER_ASSIGNED,
+                    "Opportunity",
+                    opportunity.opportunity_id,
+                    (
+                        f"You have been assigned to Opportunity "
+                        f"'{opportunity.opportunity_name}' "
+                        "as Solution Engineer."
+                    ),
                 )
+
+            # ----------------------------------------------------
+            # Delivery audit + notification.
+            # ----------------------------------------------------
+
+            for uid in delivery_member_ids:
+                ActivityService.log(
+                    entity_type="Opportunity",
+                    entity_id=opportunity.opportunity_id,
+                    action=DELIVERY_ASSIGNED,
+                    description=(
+                        f"{users[uid].full_name} assigned "
+                        "as Delivery."
+                    ),
+                    user_id=user.user_id,
+                    commit=False,
+                )
+
+                NotificationService.queue(
+                    uid,
+                    DELIVERY_ASSIGNED,
+                    "Opportunity",
+                    opportunity.opportunity_id,
+                    (
+                        f"You have been assigned to Opportunity "
+                        f"'{opportunity.opportunity_name}' "
+                        "as Delivery."
+                    ),
+                )
+
             db.session.commit()
             return opportunity
+
         except (IntegrityError, OperationalError):
             db.session.rollback()
-            raise RuntimeError("Technical assignment could not be finalized because the opportunity was changed concurrently.")
+            raise RuntimeError(
+                "Technical assignment could not be finalized because "
+                "the opportunity was changed concurrently."
+            )
+
         except Exception:
             db.session.rollback()
             raise
@@ -448,7 +663,7 @@ class OpportunityService:
             for manager in presales_managers:
                 NotificationService.queue(
                     manager.user_id,
-                    OPPORTUNITY_APPROVED,
+                    OPPORTUNITY_SENT_TO_PRE_SALES,
                     "Opportunity",
                     opportunity.opportunity_id,
                     "Opportunity '{}' was approved and requires technical team assignment.".format(opportunity.opportunity_name),

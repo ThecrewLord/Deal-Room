@@ -56,8 +56,9 @@ def test_activity_endpoint_rejects_unknown_entity_types():
 
 
 def test_phase10_frontend_search_calls_backend():
-    header = open(os.path.join(os.path.dirname(os.path.dirname(ROOT)), "frontend", "src", "components", "Header.jsx"), encoding="utf8").read()
-    api = open(os.path.join(os.path.dirname(os.path.dirname(ROOT)), "frontend", "src", "api", "searchApi.js"), encoding="utf8").read()
+    project_root = os.path.dirname(ROOT)
+    header = open(os.path.join(project_root, "frontend", "src", "components", "Header.jsx"), encoding="utf8").read()
+    api = open(os.path.join(project_root, "frontend", "src", "api", "searchApi.js"), encoding="utf8").read()
     assert "searchAuthorized" in header
     assert "setTimeout" in header
     assert '"/search"' in api

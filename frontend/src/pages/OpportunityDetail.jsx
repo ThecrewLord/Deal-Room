@@ -715,10 +715,10 @@ export default function OpportunityDetail() {
                     <div className="opportunity-stakeholder-list">
                         {stakeholders.map((stakeholder) => (
                             <div className="opportunity-stakeholder" key={stakeholder.stakeholder_id}>
-                                <span className="opportunity-avatar">{(stakeholder.stakeholder_name || "?").charAt(0).toUpperCase()}</span>
+                                <span className="opportunity-avatar">{(stakeholder.name || "?").charAt(0).toUpperCase()}</span>
                                 <div>
-                                    <strong>{stakeholder.stakeholder_name || "Unnamed stakeholder"}</strong>
-                                    <small>{stakeholder.designation || "Role not provided"}</small>
+                                    <strong>{stakeholder.name || "Unnamed stakeholder"}</strong>
+                                    <small>{stakeholder.job_title || "Role not provided"}</small>
                                 </div>
                                 <div className="opportunity-stakeholder-contact">
                                     {stakeholder.email && <span><UserRound size={12} />{stakeholder.email}</span>}

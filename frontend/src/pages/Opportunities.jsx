@@ -13,6 +13,7 @@ import {
 
 import { createOpportunity, getOpportunities } from "../api/opportunityApi";
 import { getAccounts } from "../api/accountApi";
+import { createStakeholder } from "../api/stakeholderApi";
 import { ROLES } from "../auth/roles";
 import { useAuth } from "../context/AuthContext";
 
@@ -54,6 +55,25 @@ export default function Opportunities() {
         expected_close_date: "",
     });
 
+    const [createStep, setCreateStep] = useState(1);
+
+    const [stakeholder, setStakeholder] = useState({
+        name: "",
+        job_title: "",
+        email: "",
+        phone: "",
+        company: "",
+        tags: [],
+    });
+
+    const stakeholderTags = [
+        "Economic Buyer",
+        "Technical Champion",
+        "End User",
+        "Blocker",
+        "Decision Maker",
+    ];
+
     const load = async () => {
         try {
             setError("");
@@ -84,10 +104,20 @@ export default function Opportunities() {
 
         try {
             setCreating(true);
+            setError("");
 
             const accountId = form.account_id;
+
             if (!accountId) {
                 setError("Select an existing canonical account.");
+                setCreating(false);
+                return;
+            }
+
+            if (!stakeholder.name.trim()) {
+                setError("Stakeholder name is required.");
+                setCreating(false);
+                setCreateStep(2);
                 return;
             }
 
@@ -100,16 +130,31 @@ export default function Opportunities() {
                 expected_close_date: form.expected_close_date || null,
             });
 
+            await createStakeholder({
+                ...stakeholder,
+                opportunity_id: Number(created.opportunity_id),
+            });
+
             setForm({
                 account_id: "",
                 opportunity_name: "",
                 description: "",
-                estimated_value: "",
                 pain_points: "",
+                estimated_value: "",
                 probability: 0,
                 expected_close_date: "",
             });
 
+            setStakeholder({
+                name: "",
+                job_title: "",
+                email: "",
+                phone: "",
+                company: "",
+                tags: [],
+            });
+
+            setCreateStep(1);
             setShowCreate(false);
 
             navigate(`/opportunity/${created.opportunity_id}`);
@@ -123,13 +168,24 @@ export default function Opportunities() {
         }
     };
 
-    const stages = useMemo(() => {
-        const values = opportunities
-            .map((o) => o.lifecycle_stage)
-            .filter(Boolean);
+    const toggleStakeholderTag = (tag) => {
+        setStakeholder((current) => ({
+            ...current,
+            tags: current.tags.includes(tag)
+                ? current.tags.filter((item) => item !== tag)
+                : [...current.tags, tag],
+        }));
+    };
 
-        return [...new Set(values)];
-    }, [opportunities]);
+
+    const stages = [
+        "Lead",
+        "Qualified",
+        "RFX",
+        "POC",
+        "Negotiations",
+        "Delivery",
+    ];
 
     const stats = useMemo(() => {
         const total = opportunities.length;
@@ -153,8 +209,9 @@ export default function Opportunities() {
                 !q ||
                 [
                     o.opportunity_name,
-                    o.status,
                     o.lifecycle_stage,
+                    o.operational_status,
+                    o.outcome,
                     o.account_name,
                     o.sales_owner?.full_name,
                 ]
@@ -305,162 +362,491 @@ export default function Opportunities() {
                                 <h2>New Opportunity</h2>
 
                                 <p>
-                                    Add a new sales opportunity
-                                    to the pipeline.
+                                    Create the opportunity, identify a key
+                                    stakeholder, and review before saving.
                                 </p>
                             </div>
                         </div>
 
-                        <form
-                            className="standard-form"
-                            onSubmit={submit}
-                        >
-                            <div className="field-grid">
+                        {/* CREATION STEPS */}
+                        <div className="opportunity-create-progress">
+                            {[
+                                [1, "Opportunity Details"],
+                                [2, "Stakeholder"],
+                                [3, "Review"],
+                            ].map(([step, label]) => {
+                                const completed = createStep > step;
+                                const current = createStep === step;
 
-                                <label className="field-label">
-                                    Account
-
-                                    <select
-                                        required
-                                        value={form.account_id}
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                account_id:
-                                                    e.target.value,
-                                            })
-                                        }
+                                return (
+                                    <div
+                                        key={step}
+                                        className={`opportunity-create-step ${
+                                            current
+                                                ? "current"
+                                                : completed
+                                                ? "completed"
+                                                : "future"
+                                        }`}
                                     >
-                                        <option value="">
-                                            Select account
-                                        </option>
+                                        <span className="opportunity-create-step-number">
+                                            {completed ? "✓" : step}
+                                        </span>
+                                        <span>{label}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
 
-                                        {accounts.filter((a) => a.is_active !== false).map((a) => (
-                                            <option
-                                                key={a.account_id}
-                                                value={a.account_id}
-                                            >
-                                                {a.account_name}
+                        {/* STEP 1 */}
+                        {createStep === 1 && (
+                            <div className="standard-form">
+                                <div className="field-grid">
+
+                                    <label className="field-label">
+                                        Account
+
+                                        <select
+                                            required
+                                            value={form.account_id}
+                                            onChange={(e) =>
+                                                setForm({
+                                                    ...form,
+                                                    account_id:
+                                                        e.target.value,
+                                                })
+                                            }
+                                        >
+                                            <option value="">
+                                                Select account
                                             </option>
+
+                                            {accounts
+                                                .filter(
+                                                    (a) =>
+                                                        a.is_active !== false
+                                                )
+                                                .map((a) => (
+                                                    <option
+                                                        key={a.account_id}
+                                                        value={a.account_id}
+                                                    >
+                                                        {a.account_name}
+                                                    </option>
+                                                ))}
+                                        </select>
+                                    </label>
+
+                                    <label className="field-label">
+                                        Opportunity name
+
+                                        <input
+                                            required
+                                            minLength={2}
+                                            value={form.opportunity_name}
+                                            onChange={(e) =>
+                                                setForm({
+                                                    ...form,
+                                                    opportunity_name:
+                                                        e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                    <label className="field-label">
+                                        Initial Opportunity Value
+
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            required
+                                            value={form.estimated_value}
+                                            onChange={(e) =>
+                                                setForm({
+                                                    ...form,
+                                                    estimated_value:
+                                                        e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                    <label className="field-label">
+                                        Pain points
+
+                                        <textarea
+                                            required
+                                            rows={3}
+                                            value={form.pain_points}
+                                            onChange={(e) =>
+                                                setForm({
+                                                    ...form,
+                                                    pain_points:
+                                                        e.target.value,
+                                                })
+                                            }
+                                            placeholder="What customer problem is this opportunity solving?"
+                                        />
+                                    </label>
+
+                                    <label className="field-label">
+                                        Probability %
+
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            value={form.probability}
+                                            onChange={(e) =>
+                                                setForm({
+                                                    ...form,
+                                                    probability:
+                                                        e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                    <label className="field-label">
+                                        Expected close
+
+                                        <input
+                                            type="date"
+                                            value={
+                                                form.expected_close_date
+                                            }
+                                            onChange={(e) =>
+                                                setForm({
+                                                    ...form,
+                                                    expected_close_date:
+                                                        e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                    <label className="field-label">
+                                        Description
+
+                                        <textarea
+                                            rows={3}
+                                            value={form.description}
+                                            onChange={(e) =>
+                                                setForm({
+                                                    ...form,
+                                                    description:
+                                                        e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                </div>
+
+                                <div className="record-actions">
+                                    <Button
+                                        type="button"
+                                        onClick={() => {
+                                            setError("");
+                                            if (!form.account_id) {
+                                                setError(
+                                                    "Select an existing canonical account."
+                                                );
+                                                return;
+                                            }
+                                            if (
+                                                !form.opportunity_name.trim()
+                                            ) {
+                                                setError(
+                                                    "Opportunity name is required."
+                                                );
+                                                return;
+                                            }
+                                            if (
+                                                form.estimated_value === ""
+                                            ) {
+                                                setError(
+                                                    "Initial Opportunity Value is required."
+                                                );
+                                                return;
+                                            }
+                                            if (!form.pain_points.trim()) {
+                                                setError(
+                                                    "Pain points are required."
+                                                );
+                                                return;
+                                            }
+                                            setCreateStep(2);
+                                        }}
+                                    >
+                                        Next: Stakeholder
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* STEP 2 */}
+                        {createStep === 2 && (
+                            <div className="standard-form">
+                                <div className="field-grid">
+
+                                    <label className="field-label">
+                                        Stakeholder name
+
+                                        <input
+                                            required
+                                            value={stakeholder.name}
+                                            onChange={(e) =>
+                                                setStakeholder({
+                                                    ...stakeholder,
+                                                    name: e.target.value,
+                                                })
+                                            }
+                                            placeholder="Customer stakeholder"
+                                        />
+                                    </label>
+
+                                    <label className="field-label">
+                                        Job title
+
+                                        <input
+                                            value={stakeholder.job_title}
+                                            onChange={(e) =>
+                                                setStakeholder({
+                                                    ...stakeholder,
+                                                    job_title:
+                                                        e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                    <label className="field-label">
+                                        Email
+
+                                        <input
+                                            type="email"
+                                            value={stakeholder.email}
+                                            onChange={(e) =>
+                                                setStakeholder({
+                                                    ...stakeholder,
+                                                    email: e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                    <label className="field-label">
+                                        Phone
+
+                                        <input
+                                            value={stakeholder.phone}
+                                            onChange={(e) =>
+                                                setStakeholder({
+                                                    ...stakeholder,
+                                                    phone: e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                    <label className="field-label">
+                                        Company
+
+                                        <input
+                                            value={stakeholder.company}
+                                            onChange={(e) =>
+                                                setStakeholder({
+                                                    ...stakeholder,
+                                                    company:
+                                                        e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                </div>
+
+                                <div style={{ marginTop: 16 }}>
+                                    <strong>Stakeholder tags</strong>
+
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            gap: 8,
+                                            flexWrap: "wrap",
+                                            marginTop: 10,
+                                        }}
+                                    >
+                                        {stakeholderTags.map((tag) => (
+                                            <button
+                                                type="button"
+                                                key={tag}
+                                                className={
+                                                    stakeholder.tags.includes(
+                                                        tag
+                                                    )
+                                                        ? "tag-selected"
+                                                        : ""
+                                                }
+                                                onClick={() =>
+                                                    toggleStakeholderTag(
+                                                        tag
+                                                    )
+                                                }
+                                            >
+                                                {tag}
+                                            </button>
                                         ))}
-                                    </select>
-                                </label>
+                                    </div>
+                                </div>
 
-                                <label className="field-label">
-                                    Opportunity name
+                                <div className="record-actions">
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        onClick={() => {
+                                            setError("");
+                                            setCreateStep(1);
+                                        }}
+                                    >
+                                        Back
+                                    </Button>
 
-                                    <input
-                                        required
-                                        minLength={2}
-                                        value={
-                                            form.opportunity_name
-                                        }
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                opportunity_name:
-                                                    e.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
+                                    <Button
+                                        type="button"
+                                        onClick={() => {
+                                            setError("");
 
-                                <label className="field-label">
-                                    Initial Opportunity Value
+                                            if (
+                                                !stakeholder.name.trim()
+                                            ) {
+                                                setError(
+                                                    "Stakeholder name is required."
+                                                );
+                                                return;
+                                            }
 
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        required
-                                        value={form.estimated_value}
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                estimated_value:
-                                                    e.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-
-                                <label className="field-label">
-                                    Pain points
-
-                                    <textarea
-                                        required
-                                        rows={3}
-                                        value={form.pain_points}
-                                        onChange={(e) => setForm({ ...form, pain_points: e.target.value })}
-                                        placeholder="What customer problem is this opportunity solving?"
-                                    />
-                                </label>
-
-                                <label className="field-label">
-                                    Probability %
-
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        value={form.probability}
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                probability:
-                                                    e.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-
-                                <label className="field-label">
-                                    Expected close
-
-                                    <input
-                                        type="date"
-                                        value={
-                                            form.expected_close_date
-                                        }
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                expected_close_date:
-                                                    e.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-
-                                <label className="field-label">
-                                    Description
-
-                                    <input
-                                        value={form.description}
-                                        onChange={(e) =>
-                                            setForm({
-                                                ...form,
-                                                description:
-                                                    e.target.value,
-                                            })
-                                        }
-                                    />
-                                </label>
-
+                                            setCreateStep(3);
+                                        }}
+                                    >
+                                        Next: Review
+                                    </Button>
+                                </div>
                             </div>
+                        )}
 
-                            <div className="record-actions">
-                                <Button
-                                    type="submit"
-                                    disabled={creating}
+                        {/* STEP 3 */}
+                        {createStep === 3 && (
+                            <form
+                                className="standard-form"
+                                onSubmit={submit}
+                            >
+                                <div
+                                    style={{
+                                        padding: 16,
+                                        border: "1px solid #ddd",
+                                        borderRadius: 10,
+                                    }}
                                 >
-                                    {creating
-                                        ? "Creating..."
-                                        : "Create Opportunity"}
-                                </Button>
-                            </div>
-                        </form>
+                                    <h3>Review Opportunity</h3>
+
+                                    <p>
+                                        <strong>Account:</strong>{" "}
+                                        {accounts.find(
+                                            (a) =>
+                                                String(a.account_id) ===
+                                                String(form.account_id)
+                                        )?.account_name || "—"}
+                                    </p>
+
+                                    <p>
+                                        <strong>Opportunity:</strong>{" "}
+                                        {form.opportunity_name}
+                                    </p>
+
+                                    <p>
+                                        <strong>Initial Value:</strong>{" "}
+                                        {form.estimated_value}
+                                    </p>
+
+                                    <p>
+                                        <strong>Probability:</strong>{" "}
+                                        {form.probability || 0}%
+                                    </p>
+
+                                    <p>
+                                        <strong>Expected Close:</strong>{" "}
+                                        {form.expected_close_date || "—"}
+                                    </p>
+
+                                    <p>
+                                        <strong>Pain Points:</strong>{" "}
+                                        {form.pain_points || "—"}
+                                    </p>
+
+                                    <hr />
+
+                                    <h3>Stakeholder</h3>
+
+                                    <p>
+                                        <strong>Name:</strong>{" "}
+                                        {stakeholder.name}
+                                    </p>
+
+                                    <p>
+                                        <strong>Job Title:</strong>{" "}
+                                        {stakeholder.job_title || "—"}
+                                    </p>
+
+                                    <p>
+                                        <strong>Email:</strong>{" "}
+                                        {stakeholder.email || "—"}
+                                    </p>
+
+                                    <p>
+                                        <strong>Company:</strong>{" "}
+                                        {stakeholder.company || "—"}
+                                    </p>
+
+                                    <p>
+                                        <strong>Tags:</strong>{" "}
+                                        {stakeholder.tags.length
+                                            ? stakeholder.tags.join(", ")
+                                            : "None"}
+                                    </p>
+                                </div>
+
+                                <div className="record-actions">
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        onClick={() => {
+                                            setError("");
+                                            setCreateStep(2);
+                                        }}
+                                        disabled={creating}
+                                    >
+                                        Back
+                                    </Button>
+
+                                    <Button
+                                        type="submit"
+                                        disabled={creating}
+                                    >
+                                        {creating
+                                            ? "Creating..."
+                                            : "Create Opportunity"}
+                                    </Button>
+                                </div>
+                            </form>
+                        )}
                     </div>
                 )}
+
+
 
             {/* OPPORTUNITY TABLE */}
             <div className="opportunity-table-card">
@@ -536,117 +922,211 @@ export default function Opportunities() {
                 {/* TABLE */}
                 <div className="opportunity-table-wrapper">
 
-                    <table className="opportunity-table">
+    <table className="opportunity-table">
 
-                        <thead>
-                            <tr>
-                                <th>Opportunity</th>
-                                <th>Account</th>
-                                <th>Stage</th>
-                                <th>Status</th>
-                                <th>Owner</th>
-                                <th></th>
-                            </tr>
-                        </thead>
+        <thead>
+            <tr>
+                <th>Opportunity</th>
+                <th>Account</th>
+                <th>Deal Finder</th>
+                <th>Owner</th>
+                <th>Lifecycle</th>
+                <th>Operational</th>
+                <th>Outcome</th>
+                <th>Value</th>
+                <th>Expected Close</th>
+                <th>Age</th>
+                <th>Last Activity</th>
+                <th>Stalled</th>
+                <th></th>
+            </tr>
+        </thead>
 
-                        <tbody>
+        <tbody>
 
-                            {loading ? (
-                                <tr>
-                                    <td
-                                        colSpan="6"
-                                        className="opportunity-loading"
-                                    >
-                                        Loading opportunities...
-                                    </td>
-                                </tr>
-                            ) : (
-                                visible.map((o) => (
-                                    <tr
-                                        key={o.opportunity_id}
-                                        onClick={() =>
-                                            navigate(
-                                                `/opportunity/${o.opportunity_id}`
-                                            )
-                                        }
-                                        className="opportunity-table-row"
-                                    >
+            {loading ? (
+                <tr>
+                    <td
+                        colSpan="13"
+                        className="opportunity-loading"
+                    >
+                        Loading opportunities...
+                    </td>
+                </tr>
+            ) : (
+                visible.map((o) => {
 
-                                        <td>
-                                            <div className="opportunity-name">
-                                                <strong>
-                                                    {
-                                                        o.opportunity_name
-                                                    }
-                                                </strong>
+                    const createdAt = o.created_at
+                        ? new Date(o.created_at)
+                        : null;
 
-                                                <span>
-                                                    Opportunity #
-                                                    {
-                                                        o.opportunity_id
-                                                    }
-                                                </span>
-                                            </div>
-                                        </td>
+                    const ageDays = createdAt
+                        ? Math.max(
+                              0,
+                              Math.floor(
+                                  (Date.now() - createdAt.getTime()) /
+                                      (1000 * 60 * 60 * 24)
+                              )
+                          )
+                        : "—";
 
-                                        <td>
-                                            <span className="opportunity-account">
-                                                {o.account_name ||
-                                                    `Account #${o.account_id}`}
-                                            </span>
-                                        </td>
+                    const isStalled =
+                        o.operational_status === "Stalled";
 
-                                        <td>
-                                            <StageBadge
-                                                stage={o.lifecycle_stage}
-                                            />
-                                        </td>
+                    return (
+                        <tr
+                            key={o.opportunity_id}
+                            onClick={() =>
+                                navigate(
+                                    `/opportunity/${o.opportunity_id}`
+                                )
+                            }
+                            className="opportunity-table-row"
+                        >
 
-                                        <td>
-                                            <StatusBadge
-                                                status={o.outcome || o.operational_status}
-                                            />
-                                        </td>
+                            {/* Opportunity */}
+                            <td>
+                                <div className="opportunity-name">
+                                    <strong>
+                                        {o.opportunity_name}
+                                    </strong>
 
-                                        <td>
-                                            {o.sales_owner ? (
-                                                <div className="opportunity-owner-cell">
+                                    <span>
+                                        Opportunity #
+                                        {o.opportunity_id}
+                                    </span>
+                                </div>
+                            </td>
 
-                                                    <div className="opportunity-owner-avatar">
-                                                        {o.sales_owner.full_name
-                                                            ?.charAt(0)
-                                                            ?.toUpperCase() ||
-                                                            "U"}
-                                                    </div>
+                            {/* Account */}
+                            <td>
+                                <span className="opportunity-account">
+                                    {o.account_name ||
+                                        `Account #${o.account_id}`}
+                                </span>
+                            </td>
 
-                                                    <span>
-                                                        {
-                                                            o.sales_owner
-                                                                .full_name
-                                                        }
-                                                    </span>
+                            {/* Deal Finder */}
+                            <td>
+                                {o.deal_finder ? (
+                                    <div className="opportunity-owner-cell">
+                                        <div className="opportunity-owner-avatar">
+                                            {o.deal_finder.full_name
+                                                ?.charAt(0)
+                                                ?.toUpperCase() || "U"}
+                                        </div>
 
-                                                </div>
-                                            ) : (
-                                                <span className="opportunity-owner-empty">
-                                                    Unassigned
-                                                </span>
-                                            )}
-                                        </td>
+                                        <span>
+                                            {o.deal_finder.full_name}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <span className="opportunity-owner-empty">
+                                        Unassigned
+                                    </span>
+                                )}
+                            </td>
 
-                                        <td>
-                                            <div className="opportunity-arrow">
-                                                <ChevronRight
-                                                    size={16}
-                                                />
-                                            </div>
-                                        </td>
+                            {/* Owner */}
+                            <td>
+                                {o.sales_owner ? (
+                                    <div className="opportunity-owner-cell">
+                                        <div className="opportunity-owner-avatar">
+                                            {o.sales_owner.full_name
+                                                ?.charAt(0)
+                                                ?.toUpperCase() || "U"}
+                                        </div>
 
-                                    </tr>
-                                ))
-                            )}
+                                        <span>
+                                            {o.sales_owner.full_name}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <span className="opportunity-owner-empty">
+                                        Unassigned
+                                    </span>
+                                )}
+                            </td>
 
-                        </tbody>
+                            {/* Lifecycle */}
+                            <td>
+                                <StageBadge
+                                    stage={o.lifecycle_stage}
+                                />
+                            </td>
+
+                            {/* Operational Status */}
+                            <td>
+                                <StatusBadge
+                                    status={o.operational_status}
+                                />
+                            </td>
+
+                            {/* Outcome */}
+                            <td>
+                                <StatusBadge
+                                    status={o.outcome}
+                                />
+                            </td>
+
+                            {/* Value */}
+                            <td>
+                                ₹
+                                {Number(
+                                    o.estimated_value || 0
+                                ).toLocaleString("en-IN")}
+                            </td>
+
+                            {/* Expected Close */}
+                            <td>
+                                {o.expected_close_date
+                                    ? new Date(
+                                          o.expected_close_date
+                                      ).toLocaleDateString("en-IN")
+                                    : "—"}
+                            </td>
+
+                            {/* Age */}
+                            <td>
+                                {ageDays === "—"
+                                    ? "—"
+                                    : `${ageDays}d`}
+                            </td>
+
+                            {/* Last Activity */}
+                            <td>
+                                {o.last_activity
+                                    ? new Date(
+                                          o.last_activity
+                                      ).toLocaleDateString("en-IN")
+                                    : "—"}
+                            </td>
+
+                            {/* Stalled */}
+                            <td>
+                                <StatusBadge
+                                    status={
+                                        isStalled
+                                            ? "Stalled"
+                                            : "Active"
+                                    }
+                                />
+                            </td>
+
+                            {/* Open */}
+                            <td>
+                                <div className="opportunity-arrow">
+                                    <ChevronRight size={16} />
+                                </div>
+                            </td>
+
+                        </tr>
+                    );
+                })
+            )}
+
+        </tbody>
+
 
                     </table>
 

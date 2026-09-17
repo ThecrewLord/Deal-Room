@@ -36,7 +36,7 @@ export default function Header() {
     const searchTimer = useRef(null);
 
     const title = getPageTitle(location.pathname);
-    const canCreateOpportunity = activeRole === ROLES.SALES_EXECUTIVE;
+    const canCreateOpportunity = activeRole && activeRole !== ROLES.ADMIN;
 
     useEffect(() => {
         setSearchValue("");
@@ -118,7 +118,7 @@ export default function Header() {
                         value={searchValue}
                         onFocus={() => searchValue.trim().length >= 2 && setShowSearchResults(true)}
                         onChange={(event) => setSearchValue(event.target.value)}
-                        placeholder="Search opportunities, accounts, stakeholders, OEMs..."
+                        placeholder="Search opportunities, accounts, or POCs..."
                         className="header-search"
                         aria-label="Search authorized business records"
                     />

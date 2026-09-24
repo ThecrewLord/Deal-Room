@@ -29,6 +29,7 @@ e6f7a8b9c0d1
 ```
 
 Do not use `db.drop_all()` as part of normal development setup.
+Run `flask --app run.py db upgrade` after replacing the backend so the stakeholder primary-key sequence repair is applied.
 
 ## Tests
 
@@ -41,3 +42,22 @@ pytest -q
 ```bash
 python -m compileall app tests migrations seed_test_data.py run.py
 ```
+
+## A2 database cutover requirement
+
+A2 adds authoritative opportunity state columns (`lifecycle_stage`, `outcome`,
+`operational_status`, `review_status`, `row_version`, and Closed Lost fields).
+Before starting the API against an existing database, run the Alembic upgrade:
+
+```bash
+flask --app run.py db upgrade
+```
+
+If this project uses the Alembic CLI directly, the equivalent is:
+
+```bash
+alembic upgrade head
+```
+
+Do not manually alter the PostgreSQL schema. The A2 migration is
+`j1k2l3m4n5o6_phase2_lifecycle_transition_engine`.

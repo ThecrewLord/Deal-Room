@@ -22,10 +22,7 @@ import PreSalesAssignment from "./pages/PreSalesAssignment";
 import PreSalesManagerTeamPerformance from "./pages/PreSalesManagerTeamPerformance";
 import PreSalesManagerEmployeePerformance from "./pages/PreSalesManagerEmployeePerformance";
 
-import UserApproval from "./pages/admin/UserApproval";
 import UserManagement from "./pages/admin/UserManagement";
-import RoleManagement from "./pages/admin/RoleManagement";
-import AccessManagement from "./pages/admin/AccessManagement";
 
 
 import ProtectedRoute from "./routes/ProtectedRoute";
@@ -114,11 +111,15 @@ export default function App() {
                     <Layout>
                         <RoleRoute
                             roles={[
+                                ROLES.LEADERSHIP,
                                 ROLES.ADMIN,
                                 ROLES.SALES_EXECUTIVE,
                                 ROLES.SALES_MANAGER,
                                 ROLES.PRE_SALES_MANAGER,
                                 ROLES.SOLUTION_ENGINEER,
+                                ROLES.DELIVERY_MANAGER,
+                                ROLES.DEVOPS_ENGINEER,
+                                ROLES.DATA_ANALYST,
                             ]}
                         >
                             <Dashboard />
@@ -133,10 +134,14 @@ export default function App() {
                     <Layout>
                         <RoleRoute
                             roles={[
+                                ROLES.LEADERSHIP,
                                 ROLES.SALES_EXECUTIVE,
                                 ROLES.SALES_MANAGER,
                                 ROLES.PRE_SALES_MANAGER,
                                 ROLES.SOLUTION_ENGINEER,
+                                ROLES.DELIVERY_MANAGER,
+                                ROLES.DEVOPS_ENGINEER,
+                                ROLES.DATA_ANALYST,
                             ]}
                         >
                             <Opportunities />
@@ -149,7 +154,11 @@ export default function App() {
                 path="/accounts"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER]}>
+                        <RoleRoute roles={[
+                            ROLES.LEADERSHIP, ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER,
+                            ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER,
+                            ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST,
+                        ]}>
                             <Accounts />
                         </RoleRoute>
                     </Layout>
@@ -160,7 +169,7 @@ export default function App() {
                 path="/pocs"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.SOLUTION_ENGINEER]}>
+                        <RoleRoute roles={[ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST]}>
                             <Pocs />
                         </RoleRoute>
                     </Layout>
@@ -171,7 +180,7 @@ export default function App() {
                 path="/stakeholders"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.SOLUTION_ENGINEER]}>
+                        <RoleRoute roles={[ROLES.LEADERSHIP, ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER, ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST]}>
                             <Stakeholders />
                         </RoleRoute>
                     </Layout>
@@ -182,7 +191,7 @@ export default function App() {
                 path="/oem-registry"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.SOLUTION_ENGINEER]}>
+                        <RoleRoute roles={[ROLES.LEADERSHIP, ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER, ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST]}>
                             <OemRegistry />
                         </RoleRoute>
                     </Layout>
@@ -261,10 +270,14 @@ export default function App() {
                     <Layout>
                         <RoleRoute
                             roles={[
+                                ROLES.LEADERSHIP,
                                 ROLES.SALES_EXECUTIVE,
                                 ROLES.SALES_MANAGER,
                                 ROLES.PRE_SALES_MANAGER,
                                 ROLES.SOLUTION_ENGINEER,
+                                ROLES.DELIVERY_MANAGER,
+                                ROLES.DEVOPS_ENGINEER,
+                                ROLES.DATA_ANALYST,
                             ]}
                         >
                             <OpportunityDetail />
@@ -273,49 +286,19 @@ export default function App() {
                 }
             />
 
-            <Route
-                path="/admin/approval"
-                element={
-                    <Layout>
-                        <RoleRoute roles={[ROLES.ADMIN]}>
-                            <UserApproval />
-                        </RoleRoute>
-                    </Layout>
-                }
-            />
 
             <Route
                 path="/admin/users"
                 element={
                     <Layout>
-                        <RoleRoute roles={[ROLES.ADMIN]}>
+                        <RoleRoute roles={[ROLES.LEADERSHIP, ROLES.ADMIN]}>
                             <UserManagement />
                         </RoleRoute>
                     </Layout>
                 }
             />
 
-            <Route
-                path="/admin/roles"
-                element={
-                    <Layout>
-                        <RoleRoute roles={[ROLES.ADMIN]}>
-                            <RoleManagement />
-                        </RoleRoute>
-                    </Layout>
-                }
-            />
 
-            <Route
-                path="/admin/access"
-                element={
-                    <Layout>
-                        <RoleRoute roles={[ROLES.ADMIN]}>
-                            <AccessManagement />
-                        </RoleRoute>
-                    </Layout>
-                }
-            />
 
             <Route
                 path="*"

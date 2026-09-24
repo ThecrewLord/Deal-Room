@@ -84,7 +84,7 @@ export default function Pocs() {
     };
 
     useEffect(() => {
-        if (activeRole === ROLES.SOLUTION_ENGINEER) load();
+        if ([ROLES.SOLUTION_ENGINEER,ROLES.DELIVERY_MANAGER,ROLES.DEVOPS_ENGINEER,ROLES.DATA_ANALYST].includes(activeRole)) load();
         else setLoading(false);
     }, [activeRole]);
 
@@ -108,10 +108,10 @@ export default function Pocs() {
     const completed = items.filter((item) => item.status === "Completed").length;
     const active = items.filter((item) => ["Draft", "In Progress", "Submitted"].includes(item.status)).length;
 
-    if (activeRole !== ROLES.SOLUTION_ENGINEER) {
+    if (![ROLES.SOLUTION_ENGINEER,ROLES.DELIVERY_MANAGER,ROLES.DEVOPS_ENGINEER,ROLES.DATA_ANALYST].includes(activeRole)) {
         return (
             <div className="standard-page">
-                <PageHeader title="POC Tracker" description="This workspace is available to Solution Engineers." />
+                <PageHeader title="POC Tracker" description="POC workspace for Solution Engineers, Delivery Managers and assigned execution members." />
             </div>
         );
     }
@@ -123,13 +123,7 @@ export default function Pocs() {
     description="Plan, execute and close technical proofs of concept."
     actions={
         <div className="poc-header-actions">
-            <Button
-                variant="primary"
-                onClick={() => setShowAddPoc(true)}
-            >
-                <Plus size={15} />
-                Add POC
-            </Button>
+            {activeRole === ROLES.SOLUTION_ENGINEER && <Button variant="primary" onClick={() => setShowAddPoc(true)}><Plus size={15} />Add POC</Button>}
 
             <Button
                 variant="secondary"

@@ -229,3 +229,5 @@
     .admin-role-overview{grid-template-columns:1fr}
     .admin-role-summary{padding:10px}
 }
+
+.admin-section-block{margin:0 0 20px}.admin-section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 0 12px}.admin-section-heading h2{margin:0;font-size:18px}.admin-section-heading p{margin:4px 0 0;color:var(--text-muted,#6b7280);font-size:13px}.admin-section-heading .admin-result-count{white-space:nowrap}

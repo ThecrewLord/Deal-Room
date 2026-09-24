@@ -34,4 +34,8 @@ export default {
     updateManager(userId, managerId, updatedAt) {
         return api.patch(`/auth/admin/users/${userId}/manager`, { manager_id: managerId, updated_at: updatedAt }).then((r) => r.data);
     },
+
+    setAdminDelegation(userId, enabled) {
+        return api.post(`/auth/admin/users/${userId}/admin-delegation`, { enabled }).then((r) => r.data);
+    },
 };

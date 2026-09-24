@@ -10,6 +10,7 @@ const REQUIRED_FIELDS = [
     "exit_criteria",
     "target_date",
     "failure_condition",
+    "input_drive_link",
 ];
 
 const INITIAL_FORM = {
@@ -20,6 +21,7 @@ const INITIAL_FORM = {
     exit_criteria: "",
     target_date: "",
     failure_condition: "",
+    input_drive_link: "",
     remarks: "",
 };
 
@@ -291,7 +293,7 @@ export default function PocForm({ onSubmit, submitting = false, onCancel, fixedO
                         <span className="hint">e.g. Deal moves to Closed Lost</span>
                     </div>
 
-                    <div className="poc-field poc-field-full">
+                    <div className="poc-field poc-field-full"><label htmlFor="input_drive_link">Input Google Drive link</label><input id="input_drive_link" name="input_drive_link" type="url" value={form.input_drive_link} onChange={handleChange} placeholder="https://drive.google.com/..." required /><small>Ensure the assigned team has the required Google Drive access. The application does not verify Drive permissions.</small></div><div className="poc-field poc-field-full">
                         <label htmlFor="remarks">Remarks <span className="optional-tag">Optional</span></label>
                         <textarea id="remarks" name="remarks" value={form.remarks} onChange={handleChange} placeholder="Add any additional context..." disabled={submitting} />
                     </div>

@@ -28,5 +28,6 @@ class Tag(BaseModel):
         default=True,
     )
 
+    stakeholders = db.relationship("Stakeholder", secondary="stakeholder_tag_links", back_populates="tags", lazy="selectin")
     def __repr__(self):
         return f"<Tag {self.name}>"

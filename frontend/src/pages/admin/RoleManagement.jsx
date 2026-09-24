@@ -90,7 +90,7 @@ function RoleEditor({ user, onClose, onSaved, onError }) {
     const [loadingCandidates, setLoadingCandidates] = useState(true);
     const [saving, setSaving] = useState(false);
     const [candidateError, setCandidateError] = useState("");
-    const managerRequired = roles.some((role) => [ROLES.SALES_EXECUTIVE, ROLES.SOLUTION_ENGINEER, ROLES.SOLUTION_ENGINEER].includes(role));
+    const managerRequired = roles.some((role) => [ROLES.SALES_EXECUTIVE, ROLES.SOLUTION_ENGINEER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST].includes(role));
 
     useEffect(() => {
         let mounted = true;

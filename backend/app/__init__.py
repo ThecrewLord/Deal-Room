@@ -1,4 +1,5 @@
 from flask import Flask
+import os
 from app.config.config import Config
 from app.middleware.cors import configure_cors
 from app.database import db, init_db
@@ -18,9 +19,11 @@ from app.api.solution_design_routes import solution_design_bp
 from app.api.search_routes import search_bp
 from app.api.pre_sales_performance_routes import pre_sales_performance_bp
 from app.api.sales_manager_performance_routes import sales_manager_performance_bp
+from app.api.phase2_routes import phase2_bp
 
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
+from app.models.auth.user_system_permission import UserSystemPermission
 from app.models.poc.poc import Poc
 from app.models.opportunity.solution_design import SolutionDesign
 from app.models.account.account import Account
@@ -28,14 +31,22 @@ from app.models.account.contact import Contact
 from app.models.opportunity.stage_master import StageMaster
 from app.models.system.tag import Tag
 from app.models.system.notification import Notification
+from app.models.phase2 import (OEMOpportunity, RFXContext, NegotiationContext, POCTeamMember, DeliveryProject, DeliveryProjectMember, Activity, FollowUp)
 from app.services.oem_service import OEMService
 
 from flask import jsonify
 
-def create_app():
-    
+def create_app(test_config=None):
     app = Flask(__name__)
     app.config.from_object(Config)
+    # Resolve environment values at app-construction time so isolated tests and
+    # deployments can select their own database/JWT settings safely.
+    if test_config:
+        app.config.update(test_config)
+    else:
+        app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL") or os.getenv("SQLALCHEMY_DATABASE_URI") or app.config.get("SQLALCHEMY_DATABASE_URI")
+        if os.getenv("JWT_SECRET_KEY"):
+            app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 
     configure_cors(app)
     init_jwt(app)
@@ -55,6 +66,7 @@ def create_app():
     app.register_blueprint(search_bp)
     app.register_blueprint(pre_sales_performance_bp)
     app.register_blueprint(sales_manager_performance_bp)
+    app.register_blueprint(phase2_bp)
     
     @app.route("/")
     def root():
@@ -73,6 +85,7 @@ def create_app():
 __all__ = [
     "User",
     "UserRole",
+    "UserSystemPermission",
     "Poc",
     "Account",
     "Contact",

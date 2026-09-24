@@ -5,6 +5,8 @@ from .stage_history import StageHistory
 from .stage_master import StageMaster
 from .poc_tracker import POCTracker
 from .solution_design import SolutionDesign
+from .opportunity_value_history import OpportunityValueHistory
+from .closed_won_request import ClosedWonRequest
 
 __all__ = [
 "Opportunity",
@@ -12,4 +14,4 @@ __all__ = [
     "OpportunityTeam",
     "StageHistory",
     "StageMaster",
-    "POCTracker", "SolutionDesign"]   
+    "POCTracker", "SolutionDesign", "OpportunityValueHistory", "ClosedWonRequest"]   

@@ -21,3 +21,18 @@ def create_account():
 @business_access_required
 def get_account(account_id):
     return AccountController.get(account_id, g.auth_user, g.active_role)
+
+@account_bp.post("/<int:account_id>/archive")
+@business_access_required
+def archive_account(account_id):
+    return AccountController.archive(account_id, g.auth_user, g.active_role)
+
+@account_bp.post("/<int:account_id>/ban")
+@business_access_required
+def ban_account(account_id):
+    return AccountController.ban(account_id, g.auth_user, g.active_role)
+
+@account_bp.delete("/<int:account_id>/duplicate")
+@business_access_required
+def delete_duplicate_account(account_id):
+    return AccountController.delete_duplicate(account_id, g.auth_user, g.active_role)

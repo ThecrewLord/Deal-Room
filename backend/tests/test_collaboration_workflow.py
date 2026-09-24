@@ -77,7 +77,7 @@ def test_poc_team_is_limited_to_two_members(app):
         o=Opportunity.query.get(oid); o.lifecycle_stage="POC"; o.review_status="Approved"; o.sales_owner_id=U(app,SALES_EXECUTIVE).user_id
         se=U(app,SOLUTION_ENGINEER); dm=U(app,DELIVERY_MANAGER)
         db.session.add(OpportunityTeam(opportunity_id=oid,user_id=se.user_id,role=SOLUTION_ENGINEER)); db.session.commit()
-        p=Phase2Service.request_poc(oid,{"objective":"o","success_metrics":"s","exit_criteria":"e","input_drive_link":"https://drive.google.com/x","target_date":__import__("datetime").date.today(),"failure_condition":"f"},se,SOLUTION_ENGINEER)
+        p=Phase2Service.request_poc(oid,{"target_date":__import__("datetime").date.today()},se,SOLUTION_ENGINEER)
         with pytest.raises(ValueError,match="at most two"):
             Phase2Service.assign_poc_team(p.poc_id,[U(app,DEVOPS_ENGINEER).user_id,U(app,DATA_ANALYST).user_id,1],dm,DELIVERY_MANAGER)
 
@@ -88,3 +88,145 @@ def test_delivery_project_is_a_separate_aggregate(app):
         db.session.add(o); db.session.flush()
         p=Phase2Service.create_delivery_project(o,se,SOLUTION_ENGINEER)
         assert p.opportunity_id==o.opportunity_id and p.account_id==o.account_id and DeliveryProject.query.filter_by(opportunity_id=o.opportunity_id).count()==1
+
+def test_poc_contract_excludes_obsolete_document_fields(app):
+    from app.models.opportunity.poc_tracker import POCTracker
+    from app.services.lifecycle_transition_service import TransitionInvalid
+
+    with app.app_context():
+        obsolete = {
+            "objective": "legacy objective",
+            "success_metrics": "legacy success criteria",
+            "exit_criteria": "legacy exit criteria",
+            "failure_condition": "legacy failure condition",
+            "input_drive_link": "https://drive.google.com/legacy",
+        }
+        columns = set(POCTracker.__table__.columns.keys())
+        assert columns.isdisjoint({"objective", "success_metric", "exit_criteria", "failure_condition", "input_drive_link"})
+
+        oid = opp(app)
+        o = Opportunity.query.get(oid)
+        o.lifecycle_stage = "POC"
+        o.review_status = "Approved"
+        o.sales_owner_id = U(app, SALES_EXECUTIVE).user_id
+        se = U(app, SOLUTION_ENGINEER)
+        db.session.add(OpportunityTeam(opportunity_id=oid, user_id=se.user_id, role=SOLUTION_ENGINEER))
+        db.session.commit()
+
+        with pytest.raises(TransitionInvalid):
+            Phase2Service.request_poc(
+                oid,
+                {**obsolete, "target_date": __import__("datetime").date.today()},
+                se,
+                SOLUTION_ENGINEER,
+            )
+        db.session.rollback()
+
+
+def test_poc_history_is_created_for_submit_and_is_append_only(app):
+    from app.models.opportunity.poc_history import POCHistory
+
+    assert set(POCHistory.__table__.columns.keys()) == {
+        "history_id", "opportunity_id", "actor_id", "event_type", "reason", "created_at"
+    }
+
+    oid = opp(app)
+    with app.app_context():
+        o = Opportunity.query.get(oid)
+        o.lifecycle_stage = "POC"
+        o.review_status = "Approved"
+        o.sales_owner_id = U(app, SALES_EXECUTIVE).user_id
+        se = U(app, SOLUTION_ENGINEER)
+        db.session.add(OpportunityTeam(opportunity_id=oid, user_id=se.user_id, role=SOLUTION_ENGINEER))
+        db.session.commit()
+
+        p = Phase2Service.request_poc(
+            oid,
+            {"target_date": __import__("datetime").date.today()},
+            se,
+            SOLUTION_ENGINEER,
+        )
+        assert POCHistory.query.filter_by(opportunity_id=oid).count() == 0
+
+        dm = U(app, DELIVERY_MANAGER)
+        submitter = U(app, DEVOPS_ENGINEER)
+
+        Phase2Service.assign_poc_team(
+            p.poc_id,
+            [submitter.user_id],
+            dm,
+            DELIVERY_MANAGER,
+        )
+
+        Phase2Service.submit_poc(
+            p.poc_id,
+            {"result_view_link": "https://drive.google.com/result", "row_version": p.row_version},
+            submitter,
+            DEVOPS_ENGINEER,
+        )
+                
+        rows = POCHistory.query.filter_by(opportunity_id=oid).order_by(POCHistory.history_id).all()
+        assert [r.event_type for r in rows] == ["POC_SUBMITTED"]
+        assert rows[0].actor_id == submitter.user_id
+
+        rows[0].reason = "attempted mutation"
+        with pytest.raises(ValueError, match="immutable"):
+            db.session.flush()
+        db.session.rollback()
+
+        assert POCHistory.query.filter_by(opportunity_id=oid).count() == 1
+
+        db.session.delete(rows[0])
+        with pytest.raises(ValueError, match="immutable"):
+            db.session.flush()
+        db.session.rollback()
+        assert POCHistory.query.filter_by(opportunity_id=oid).count() == 1
+
+
+def test_poc_history_requires_reason_for_new_poc_request(app):
+    from app.models.opportunity.poc_history import POCHistory
+    from app.services.poc_history_service import POCHistoryService
+
+    oid = opp(app)
+    with app.app_context():
+        se = U(app, SOLUTION_ENGINEER)
+        for bad_reason in (None, "", "   "):
+            with pytest.raises(ValueError, match="reason is required"):
+                POCHistoryService.record_poc_history(oid, se, "NEW_POC_REQUESTED", bad_reason)
+            db.session.rollback()
+
+        history = POCHistoryService.record_poc_history(
+            oid, se, "NEW_POC_REQUESTED", "Customer requested another validation cycle"
+        )
+        db.session.flush()
+        assert history.reason == "Customer requested another validation cycle"
+        assert history.actor_id == se.user_id
+        db.session.rollback()
+        assert POCHistory.query.filter_by(opportunity_id=oid).count() == 0
+
+
+def test_poc_history_supports_started_event_without_committing(app):
+    from app.models.opportunity.poc_history import POCHistory
+    from app.services.poc_history_service import POCHistoryService
+
+    oid = opp(app)
+    with app.app_context():
+        history = POCHistoryService.record_poc_history(
+            oid, U(app, SOLUTION_ENGINEER), "POC_STARTED"
+        )
+        db.session.flush()
+        assert history.event_type == "POC_STARTED"
+        assert history.actor_id == U(app, SOLUTION_ENGINEER).user_id
+        db.session.rollback()
+        assert POCHistory.query.filter_by(opportunity_id=oid).count() == 0
+
+
+def test_poc_history_rejects_unsupported_event_type(app):
+    from app.services.poc_history_service import POCHistoryService
+
+    oid = opp(app)
+    with app.app_context():
+        with pytest.raises(ValueError, match="Unsupported POC history event type"):
+            POCHistoryService.record_poc_history(
+                oid, U(app, SOLUTION_ENGINEER), "POC_CHANGED"
+            )

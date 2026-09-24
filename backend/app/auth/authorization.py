@@ -292,9 +292,18 @@ class AuthorizationService:
 
     @staticmethod
     def can_manage_rfx(user, active_role, opportunity):
-        return bool(opportunity and opportunity.operational_status != "Closed" and
-                    AuthorizationService.can_view_opportunity(user, active_role, opportunity) and
-                    active_role in {PRE_SALES_MANAGER, SOLUTION_ENGINEER, LEADERSHIP})
+        # RFX is technical ownership. A Solution Engineer must both hold the
+        # active SE role and be assigned to this specific opportunity.
+        return bool(
+            user
+            and opportunity
+            and opportunity.operational_status != "Closed"
+            and opportunity.outcome == "Open"
+            and opportunity.lifecycle_stage == "RFX"
+            and active_role == SOLUTION_ENGINEER
+            and AuthorizationService.is_assigned_role(user, opportunity, SOLUTION_ENGINEER)
+            and AuthorizationService.can_view_opportunity(user, active_role, opportunity)
+        )
 
     @staticmethod
     def can_manage_negotiation(user, active_role, opportunity):
@@ -319,9 +328,24 @@ class AuthorizationService:
 
     @staticmethod
     def can_submit_poc_result(user, active_role, poc):
-        return bool(poc and poc.opportunity and poc.opportunity.operational_status != "Closed" and
-                    active_role in {DEVOPS_ENGINEER, DATA_ANALYST} and
-                    POCTeamMember.query.filter_by(poc_id=poc.poc_id, user_id=user.user_id).first() is not None)
+        # POC submission is deliberately narrower than general opportunity
+        # visibility: the actor must be an active approved POC-team member,
+        # hold an allowed execution role, and be authorized for this exact
+        # opportunity.
+        return bool(
+            user
+            and user.active
+            and user.status == STATUS_APPROVED
+            and poc
+            and poc.opportunity
+            and poc.opportunity.operational_status != "Closed"
+            and poc.opportunity.outcome == "Open"
+            and poc.opportunity.lifecycle_stage == "POC"
+            and active_role in {DEVOPS_ENGINEER, DATA_ANALYST}
+            and POCTeamMember.query.filter_by(
+                poc_id=poc.poc_id, user_id=user.user_id, role=active_role
+            ).first() is not None
+        )
 
     @staticmethod
     def can_manage_delivery_project(user, active_role, project):
@@ -380,19 +404,19 @@ class AuthorizationService:
             return entity_type.lower() in {"admin", "user", "access"}
 
         if entity_type.lower() == "opportunity":
-            opportunity = Opportunity.query.get(entity_id)
+            opportunity = db.session.get(Opportunity, entity_id)
             return AuthorizationService.can_view_opportunity(user, active_role, opportunity)
 
         if entity_type.lower() == "account":
-            account = Account.query.get(entity_id)
+            account = db.session.get(Account, entity_id)
             return AuthorizationService.can_view_account(user, active_role, account)
 
         if entity_type.lower() == "stakeholder":
-            stakeholder = Stakeholder.query.get(entity_id)
+            stakeholder = db.session.get(Stakeholder, entity_id)
             return AuthorizationService.can_view_stakeholder(user, active_role, stakeholder)
 
         if entity_type.lower() in {"poc", "poctracker"}:
-            poc = POCTracker.query.get(entity_id)
+            poc = db.session.get(POCTracker, entity_id)
             return AuthorizationService.can_view_poc(user, active_role, poc)
 
         return False
@@ -454,11 +478,21 @@ class AuthorizationService:
 
     @staticmethod
     def can_finalize_pre_sales_assignment(user, active_role, opportunity):
+        """Authorize the domain action that assigns the technical owner."""
+        if active_role != PRE_SALES_MANAGER or not user or not opportunity:
+            return False
+        if (
+            not user.active
+            or user.status != STATUS_APPROVED
+            or not user.has_role(PRE_SALES_MANAGER)
+        ):
+            return False
+        if not AuthorizationService.can_view_opportunity(user, active_role, opportunity):
+            return False
         return (
-            active_role == PRE_SALES_MANAGER
-            and bool(opportunity)
-            and AuthorizationService.can_view_opportunity(user, active_role, opportunity)
-            and opportunity.is_active
+            opportunity.is_active
+            and opportunity.lifecycle_stage == "Qualified"
+            and opportunity.outcome == "Open"
             and opportunity.operational_status == "Active"
             and opportunity.review_status == "Approved"
             and opportunity.sales_owner_id is not None
@@ -532,9 +566,19 @@ class AuthorizationService:
 
     @staticmethod
     def is_assigned_role(user, opportunity, role):
+        """Return whether the authenticated actor is assigned that role on this opportunity.
+
+        Assignment is relationship-scoped: having the system role alone is not
+        sufficient. The actor must also be an active/approved holder of the
+        role and have an OpportunityTeam row for this specific opportunity.
+        """
         return bool(
-            user and opportunity and
-            OpportunityTeam.query.filter_by(
+            user
+            and opportunity
+            and user.active
+            and user.status == STATUS_APPROVED
+            and user.has_role(role)
+            and OpportunityTeam.query.filter_by(
                 opportunity_id=opportunity.opportunity_id,
                 user_id=user.user_id,
                 role=role,
@@ -568,6 +612,24 @@ class AuthorizationService:
                 user, active_role, opportunity
             )
             and opportunity.lifecycle_stage == "POC"
+        )
+
+    @staticmethod
+    def can_request_new_poc(user, active_role, opportunity):
+        """Authorize a repeat/new POC request against the opportunity."""
+        return (
+            active_role == SOLUTION_ENGINEER
+            and bool(opportunity)
+            and opportunity.is_active
+            and opportunity.operational_status != "Closed"
+            and opportunity.outcome == "Open"
+            and opportunity.lifecycle_stage == "POC"
+            and AuthorizationService.is_assigned_role(
+                user, opportunity, SOLUTION_ENGINEER
+            )
+            and AuthorizationService.can_view_opportunity(
+                user, active_role, opportunity
+            )
         )
 
     @staticmethod
@@ -616,16 +678,40 @@ class AuthorizationService:
 
     @staticmethod
     def can_change_lifecycle_stage(user, active_role, opportunity, target_stage=None):
-        if not opportunity or opportunity.operational_status == "Closed":
+        """Authorize lifecycle progression for the specific opportunity.
+
+        Technical progression after qualification is relationship-scoped:
+        the active Solution Engineer must be assigned to this opportunity.
+        Leadership retains its existing governance access; Pre-Sales Manager
+        does not receive generic stage-transition authority merely from the
+        PSM role.
+        """
+        if not (
+            user
+            and user.active
+            and user.status == STATUS_APPROVED
+            and user.has_role(active_role)
+        ):
+            return False
+        if not opportunity or opportunity.operational_status == "Closed" or opportunity.outcome != "Open":
             return False
         if target_stage == "Delivery":
-            return False  # final Closed Won approval has a dedicated action
+            return False  # final approval/closure path owns Delivery.
         if opportunity.lifecycle_stage == "Lead":
             return False
-        if active_role == LEADERSHIP or active_role == PRE_SALES_MANAGER:
-            return True
-        if active_role == SOLUTION_ENGINEER:
-            return AuthorizationService.is_assigned_role(user, opportunity, SOLUTION_ENGINEER)
+
+        if active_role == LEADERSHIP:
+            return AuthorizationService.can_view_opportunity(user, active_role, opportunity)
+
+        if target_stage in {"RFX", "POC", "Negotiations"}:
+            return (
+                active_role == SOLUTION_ENGINEER
+                and AuthorizationService.is_assigned_role(user, opportunity, SOLUTION_ENGINEER)
+                and AuthorizationService.can_view_opportunity(user, active_role, opportunity)
+            )
+
+        # Preserve only existing non-technical lifecycle authorization; do
+        # not grant PSM generic transition authority.
         return False
 
     @staticmethod
@@ -656,19 +742,21 @@ class AuthorizationService:
         return False
 
     @staticmethod
-    def can_request_closed_won(user, active_role, opportunity):
+    def can_request_closure(user, active_role, opportunity):
+        """Authorize the no-POC closure request action."""
         return (
             bool(user and opportunity)
             and active_role == SOLUTION_ENGINEER
             and opportunity.operational_status != "Closed"
             and opportunity.outcome == "Open"
-            and opportunity.lifecycle_stage in {"Qualified", "RFX", "POC", "Negotiations"}
+            and opportunity.lifecycle_stage in {"Qualified", "RFX"}
             and AuthorizationService.can_view_opportunity(user, active_role, opportunity)
             and AuthorizationService.is_assigned_role(user, opportunity, SOLUTION_ENGINEER)
         )
 
     @staticmethod
-    def can_approve_closed_won_request(user, active_role, opportunity):
+    def can_approve_closure_request(user, active_role, opportunity):
+        """Authorize PSM review of a pending closure request."""
         return (
             bool(user and opportunity)
             and active_role == PRE_SALES_MANAGER

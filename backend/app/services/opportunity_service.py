@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError, OperationalError
 
@@ -36,7 +34,6 @@ from app.services.stage_service import StageService
 from app.services.lifecycle_transition_service import LifecycleTransitionService, TransitionConflict, TransitionInvalid
 from app.services.opportunity_value_service import OpportunityValueService
 from app.repositories.stage_repository import StageRepository
-from app.utils.concurrency import ConcurrencyManager
 
 
 class OpportunityService:
@@ -156,92 +153,137 @@ class OpportunityService:
 
     @staticmethod
     def finalize_pre_sales_assignment(
-        opportunity_id, solution_engineer_ids, delivery_ids=None, updated_at=None, user=None, active_role=None
+        opportunity_id, solution_engineer_id, row_version, user=None, active_role=None
     ):
+        """Assign exactly one Solution Engineer to a Qualified opportunity.
+
+        This is a domain action: the client supplies only the candidate and
+        expected opportunity version. Lifecycle, outcome, operational status,
+        team membership, and authorization are all derived server-side.
+        """
         if active_role != PRE_SALES_MANAGER:
-            raise AuthorizationDenied("Only the active Pre-Sales Manager role can finalize technical assignment.")
+            raise AuthorizationDenied(
+                "Only the active Pre-Sales Manager role can assign a Solution Engineer."
+            )
+
         opportunity = OpportunityRepository.get_by_id(opportunity_id)
         if not opportunity:
             return None
-        if not AuthorizationService.can_view_opportunity(user, active_role, opportunity):
-            return None
-        if OpportunityTeam.query.filter(
-            OpportunityTeam.opportunity_id == opportunity.opportunity_id,
-            OpportunityTeam.role == SOLUTION_ENGINEER,
-        ).first():
-            raise RuntimeError("Technical assignment has already been finalized.")
-        if not AuthorizationService.can_finalize_pre_sales_assignment(user, active_role, opportunity):
-            raise RuntimeError("Opportunity is not awaiting Pre-Sales assignment.")
-        if isinstance(updated_at, str):
-            updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-        if ConcurrencyManager.has_conflict(updated_at, opportunity.updated_at):
-            raise RuntimeError("This opportunity has changed since you opened it. Refresh before assigning the technical team.")
 
-        ids = [int(uid) for uid in (solution_engineer_ids or [])]
-        ids.extend(int(uid) for uid in (delivery_ids or []))
-        ids = list(dict.fromkeys(ids))
-        if not ids:
-            raise ValueError("At least one Solution Engineer is required.")
-
-        users = {u.user_id: u for u in User.query.filter(User.user_id.in_(ids)).all()}
-        if len(users) != len(ids):
-            raise ValueError("One or more selected users do not exist.")
-        for uid in ids:
-            candidate = users.get(uid)
-            if not candidate or not candidate.active or candidate.status != STATUS_APPROVED or not candidate.has_role(SOLUTION_ENGINEER):
-                raise ValueError(f"User {uid} is not an eligible Solution Engineer.")
-
-        existing_ids = {row.user_id for row in OpportunityTeam.query.filter_by(opportunity_id=opportunity.opportunity_id).all()}
-        if existing_ids.intersection(ids):
-            raise ValueError("A selected user is already assigned to this opportunity.")
-
-        updated_rows = Opportunity.query.filter(
-            Opportunity.opportunity_id == opportunity.opportunity_id,
-            Opportunity.operational_status == ACTIVE_STATUS,
-            Opportunity.review_status == APPROVED_STATUS,
-            Opportunity.sales_owner_id.isnot(None),
-            Opportunity.is_active.is_(True),
-        ).update({"status": ACTIVE_STATUS}, synchronize_session=False)
-        if updated_rows != 1:
-            db.session.rollback()
-            raise RuntimeError("Technical assignment has already been finalized or the opportunity is no longer assignable.")
-        db.session.expire(opportunity, ["status", "updated_at"])
-        db.session.refresh(opportunity)
+        if not AuthorizationService.can_finalize_pre_sales_assignment(
+            user, active_role, opportunity
+        ):
+            raise AuthorizationDenied(
+                "You are not authorized to assign a Solution Engineer to this opportunity."
+            )
 
         try:
-            for uid in ids:
-                db.session.add(OpportunityTeam(
-                    opportunity_id=opportunity.opportunity_id,
-                    user_id=uid,
-                    role=SOLUTION_ENGINEER,
-                ))
+            expected_version = int(row_version)
+        except (TypeError, ValueError):
+            raise ValueError("row_version is required and must be an integer.")
+
+        try:
+            candidate_id = int(solution_engineer_id)
+        except (TypeError, ValueError):
+            raise ValueError("solution_engineer_id must be an integer.")
+
+        if expected_version != opportunity.row_version:
+            raise RuntimeError(
+                "Opportunity version is stale. Refresh before retrying."
+            )
+
+        candidate = User.query.filter_by(user_id=candidate_id).first()
+        if (
+            not candidate
+            or not candidate.active
+            or candidate.status != STATUS_APPROVED
+            or not candidate.has_role(SOLUTION_ENGINEER)
+        ):
+            raise ValueError("Selected user is not an eligible Solution Engineer.")
+
+        existing_assignment = OpportunityTeam.query.filter_by(
+            opportunity_id=opportunity.opportunity_id,
+            role=SOLUTION_ENGINEER,
+        ).first()
+        if existing_assignment:
+            if existing_assignment.user_id == candidate.user_id:
+                raise ValueError(
+                    "A Solution Engineer is already assigned to this opportunity."
+                )
+            raise ValueError(
+                "A different Solution Engineer is already assigned to this opportunity."
+            )
+
+        try:
+            # The version predicate makes the assignment itself the
+            # optimistic-concurrency boundary. No unrelated opportunity
+            # fields are modified.
+            result = db.session.execute(
+                update(Opportunity)
+                .where(
+                    Opportunity.opportunity_id == opportunity.opportunity_id,
+                    Opportunity.row_version == expected_version,
+                    Opportunity.lifecycle_stage == "Qualified",
+                    Opportunity.outcome == "Open",
+                    Opportunity.operational_status == "Active",
+                    Opportunity.review_status == "Approved",
+                    Opportunity.sales_owner_id.isnot(None),
+                    Opportunity.is_active.is_(True),
+                )
+                .values(row_version=Opportunity.row_version + 1)
+            )
+            if result.rowcount != 1:
+                db.session.rollback()
+                raise RuntimeError(
+                    "Opportunity version is stale or the opportunity is no longer assignable."
+                )
+
+            assignment = OpportunityTeam(
+                opportunity_id=opportunity.opportunity_id,
+                user_id=candidate.user_id,
+                role=SOLUTION_ENGINEER,
+            )
+            db.session.add(assignment)
+
             ActivityService.log(
                 entity_type="Opportunity",
                 entity_id=opportunity.opportunity_id,
                 action=PRE_SALES_ASSIGNMENT_FINALIZED,
-                description=(f"Technical team assigned. Solution Engineers: "
-                             f"{', '.join(users[uid].full_name for uid in ids)}."),
+                description=(
+                    f"Solution Engineer assigned: {candidate.full_name}."
+                ),
                 user_id=user.user_id,
                 commit=False,
+                active_role=active_role,
             )
-            for uid in ids:
-                ActivityService.log(
-                    entity_type="Opportunity",
-                    entity_id=opportunity.opportunity_id,
-                    action=SOLUTION_ENGINEER_ASSIGNED,
-                    description=f"{users[uid].full_name} assigned as Solution Engineer.",
-                    user_id=user.user_id,
-                    commit=False,
-                )
-                NotificationService.queue(
-                    uid, SOLUTION_ENGINEER_ASSIGNED, "Opportunity", opportunity.opportunity_id,
-                    f"You have been assigned to Opportunity '{opportunity.opportunity_name}' as Solution Engineer.",
-                )
+            ActivityService.log(
+                entity_type="Opportunity",
+                entity_id=opportunity.opportunity_id,
+                action=SOLUTION_ENGINEER_ASSIGNED,
+                description=f"{candidate.full_name} assigned as Solution Engineer.",
+                user_id=user.user_id,
+                commit=False,
+                active_role=active_role,
+            )
+            NotificationService.queue(
+                candidate.user_id,
+                SOLUTION_ENGINEER_ASSIGNED,
+                "Opportunity",
+                opportunity.opportunity_id,
+                f"You have been assigned to Opportunity '{opportunity.opportunity_name}' as Solution Engineer.",
+            )
+
             db.session.commit()
+            db.session.expire(opportunity)
+            db.session.refresh(opportunity)
             return opportunity
         except (IntegrityError, OperationalError):
             db.session.rollback()
-            raise RuntimeError("Technical assignment could not be finalized because the opportunity was changed concurrently.")
+            raise RuntimeError(
+                "Solution Engineer assignment could not be completed because the opportunity changed concurrently."
+            )
+        except RuntimeError:
+            raise
         except Exception:
             db.session.rollback()
             raise

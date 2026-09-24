@@ -22,11 +22,11 @@ class StakeholderRepository:
 
     @staticmethod
     def get_by_id(stakeholder_id):
-        return Stakeholder.query.get(stakeholder_id)
+        return db.session.get(Stakeholder, stakeholder_id)
 
     @staticmethod
     def get_opportunity(opportunity_id):
-        return Opportunity.query.get(opportunity_id)
+        return db.session.get(Opportunity, opportunity_id)
 
     @staticmethod
     def get_by_opportunity(opportunity_id):

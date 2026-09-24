@@ -226,7 +226,9 @@ class SearchService:
                 POCTracker.opportunity_id.in_(visible_ids),
                 or_(
                     POCTracker.poc_name.ilike(pattern),
-                    POCTracker.objective.ilike(pattern),
+                    POCTracker.poc_name.ilike(pattern),
+                    POCTracker.status.ilike(pattern),
+                    POCTracker.outcome.ilike(pattern),
                 ),
             ).order_by(POCTracker.updated_at.desc(), POCTracker.poc_id.desc())
             for row in q.limit(cls.MAX_PAGE_SIZE * 2).all():

@@ -42,7 +42,7 @@ class AccountService:
 
     @staticmethod
     def archive(account_id, user, active_role):
-        account = Account.query.get(account_id)
+        account = db.session.get(Account, account_id)
         if not AuthorizationService.can_govern_account(user, active_role, account):
             raise AuthorizationDenied("Only Leadership can archive accounts.")
         if account.status == "Archived":
@@ -53,7 +53,7 @@ class AccountService:
 
     @staticmethod
     def ban(account_id, user, active_role):
-        account = Account.query.get(account_id)
+        account = db.session.get(Account, account_id)
         if not AuthorizationService.can_govern_account(user, active_role, account):
             raise AuthorizationDenied("Only Leadership can ban accounts.")
         if account.status == "Banned":
@@ -64,7 +64,7 @@ class AccountService:
 
     @staticmethod
     def delete_duplicate(account_id, user, active_role):
-        account = Account.query.get(account_id)
+        account = db.session.get(Account, account_id)
         if not AuthorizationService.can_govern_account(user, active_role, account):
             raise AuthorizationDenied("Only Leadership can perform duplicate cleanup.")
         if account.opportunities:

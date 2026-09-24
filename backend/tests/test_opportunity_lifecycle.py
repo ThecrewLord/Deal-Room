@@ -12,6 +12,7 @@ from datetime import date
 from app import create_app
 from app.auth.authorization import AuthorizationDenied, AuthorizationService
 from app.auth.password import hash_password
+from app.auth.token_service import create_access
 from app.constants.roles import (
     ADMIN, DATA_ANALYST, DEVOPS_ENGINEER, DELIVERY_MANAGER, LEADERSHIP,
     PRE_SALES_MANAGER, SALES_EXECUTIVE, SALES_MANAGER, SOLUTION_ENGINEER,
@@ -180,9 +181,15 @@ def test_lifecycle_progression_and_delivery_gate(app):
     submit(app, oid); approve(app, oid)
     with app.app_context():
         psm = user(app, PRE_SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        db.session.add(OpportunityTeam(
+            opportunity_id=oid, user_id=se.user_id, role=SOLUTION_ENGINEER
+        ))
+        db.session.commit()
         opp = Opportunity.query.get(oid)
 
-        LifecycleTransitionService.transition(oid, "RFX", opp.row_version, psm, PRE_SALES_MANAGER)
+        LifecycleTransitionService.transition(oid, "RFX", opp.row_version, se, SOLUTION_ENGINEER)
         opp = Opportunity.query.get(oid)
 
         db.session.add(RFXContext(
@@ -193,21 +200,16 @@ def test_lifecycle_progression_and_delivery_gate(app):
         db.session.commit()
         opp = Opportunity.query.get(oid)
 
-        LifecycleTransitionService.transition(oid, "POC", opp.row_version, psm, PRE_SALES_MANAGER)
+        LifecycleTransitionService.transition(oid, "POC", opp.row_version, se, SOLUTION_ENGINEER)
         opp = Opportunity.query.get(oid)
         assert opp.lifecycle_stage == "POC"
 
         poc = POCTracker(
             opportunity_id=oid,
             poc_name="Certification POC",
-            objective="Validate the solution",
-            success_metric="All acceptance criteria pass",
-            exit_criteria="Stakeholders accept the result",
             target_date=date.today(),
-            failure_condition="Acceptance criteria are not met",
             status="Completed",
             outcome="Success",
-            input_drive_link="https://drive.google.com/poc-input",
             result_view_link="https://drive.google.com/poc-result",
             requested_by=psm.user_id,
             submitted_by=psm.user_id,
@@ -216,12 +218,12 @@ def test_lifecycle_progression_and_delivery_gate(app):
         db.session.commit()
         opp = Opportunity.query.get(oid)
 
-        LifecycleTransitionService.transition(oid, "Negotiations", opp.row_version, psm, PRE_SALES_MANAGER)
+        LifecycleTransitionService.transition(oid, "Negotiations", opp.row_version, se, SOLUTION_ENGINEER)
         opp = Opportunity.query.get(oid)
         assert opp.lifecycle_stage == "Negotiations"
 
         with pytest.raises(AuthorizationDenied):
-            LifecycleTransitionService.transition(oid, "Delivery", opp.row_version, psm, PRE_SALES_MANAGER)
+            LifecycleTransitionService.transition(oid, "Delivery", opp.row_version, se, SOLUTION_ENGINEER)
         assert Opportunity.query.get(oid).outcome == "Open"
 
 
@@ -239,7 +241,14 @@ def test_closed_won_from_open_stages_snapshots_revenue(app):
         oid = make_lead(app, SALES_EXECUTIVE, f"{stage} Won")
         submit(app, oid); approve(app, oid)
         with app.app_context():
-            psm = user(app, PRE_SALES_MANAGER); opp = Opportunity.query.get(oid)
+            psm = user(app, PRE_SALES_MANAGER)
+            se = user(app, SOLUTION_ENGINEER)
+            opp = Opportunity.query.get(oid)
+            db.session.add(OpportunityTeam(
+                opportunity_id=oid, user_id=se.user_id, role=SOLUTION_ENGINEER
+            ))
+            db.session.commit()
+            opp = Opportunity.query.get(oid)
             stage_order = ["Qualified", "RFX", "POC", "Negotiations"]
             target_index = stage_order.index(stage)
             for target in stage_order[1:target_index + 1]:
@@ -251,21 +260,16 @@ def test_closed_won_from_open_stages_snapshots_revenue(app):
                     ))
                     db.session.commit()
                     opp = Opportunity.query.get(oid)
-                LifecycleTransitionService.transition(oid, target, opp.row_version, psm, PRE_SALES_MANAGER)
+                LifecycleTransitionService.transition(oid, target, opp.row_version, se, SOLUTION_ENGINEER)
                 opp = Opportunity.query.get(oid)
                 if target == "POC":
                     poc = POCTracker(
                         opportunity_id=oid,
                         poc_name="Certification POC",
-                        objective="Validate the solution",
-                        success_metric="All acceptance criteria pass",
-                        exit_criteria="Stakeholders accept the result",
-                        target_date=date.today(),
-                        failure_condition="Acceptance criteria are not met",
-                        status="Completed",
+                                                            target_date=date.today(),
+                                    status="Completed",
                         outcome="Success",
-                        input_drive_link="https://drive.google.com/poc-input",
-                        result_view_link="https://drive.google.com/poc-result",
+                                    result_view_link="https://drive.google.com/poc-result",
                         requested_by=psm.user_id,
                         submitted_by=psm.user_id,
                     )
@@ -336,3 +340,541 @@ def test_leadership_sees_business_data_admin_does_not(app):
         opp = Opportunity.query.get(oid)
         assert AuthorizationService.can_view_opportunity(user(app, LEADERSHIP), LEADERSHIP, opp)
         assert not AuthorizationService.can_view_opportunity(user(app, ADMIN), ADMIN, opp)
+
+
+def _qualify_and_assign_se(app, name="Group1"):
+    oid = make_lead(app, SALES_EXECUTIVE, name)
+    submit(app, oid)
+    approve(app, oid)
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        db.session.add(OpportunityTeam(
+            opportunity_id=oid, user_id=se.user_id, role=SOLUTION_ENGINEER
+        ))
+        db.session.commit()
+        return oid
+
+
+def test_group1_qualified_to_rfx_requires_assigned_se(app):
+    oid = _qualify_and_assign_se(app, "Assigned SE RFX")
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.transition(oid, "RFX", opp.row_version, se, SOLUTION_ENGINEER)
+        assert Opportunity.query.get(oid).lifecycle_stage == "RFX"
+
+
+def test_group1_unassigned_and_sales_exec_cannot_enter_rfx(app):
+    oid = _qualify_and_assign_se(app, "Unauthorized RFX")
+    with app.app_context():
+        assigned_se = user(app, SOLUTION_ENGINEER)
+        other_se = User(
+            full_name="Unrelated SE",
+            email="unrelated-se@phase1.test",
+            password_hash=hash_password("Password123!"),
+            status="APPROVED", active=True,
+        )
+        other_se.roles.append(UserRole(role=SOLUTION_ENGINEER))
+        db.session.add(other_se)
+        db.session.commit()
+        opp = Opportunity.query.get(oid)
+
+        with pytest.raises(AuthorizationDenied):
+            LifecycleTransitionService.transition(
+                oid, "RFX", opp.row_version, other_se, SOLUTION_ENGINEER
+            )
+
+        with pytest.raises(AuthorizationDenied):
+            LifecycleTransitionService.transition(
+                oid, "RFX", opp.row_version,
+                user(app, SALES_EXECUTIVE), SALES_EXECUTIVE
+            )
+
+        assert Opportunity.query.get(oid).lifecycle_stage == "Qualified"
+
+
+def test_group1_psm_does_not_gain_technical_transition_authority(app):
+    oid = _qualify_and_assign_se(app, "PSM Cannot Transition")
+    with app.app_context():
+        psm = user(app, PRE_SALES_MANAGER)
+        opp = Opportunity.query.get(oid)
+        with pytest.raises(AuthorizationDenied):
+            LifecycleTransitionService.transition(
+                oid, "RFX", opp.row_version, psm, PRE_SALES_MANAGER
+            )
+
+
+def test_group1_rfx_to_poc_requires_drive_context_and_assigned_se(app):
+    oid = _qualify_and_assign_se(app, "RFX POC")
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.transition(oid, "RFX", opp.row_version, se, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+
+        with pytest.raises(TransitionInvalid):
+            LifecycleTransitionService.transition(
+                oid, "POC", opp.row_version, se, SOLUTION_ENGINEER
+            )
+
+        db.session.add(RFXContext(
+            opportunity_id=oid,
+            drive_link="https://drive.google.com/test-rfx-context",
+            created_by=se.user_id,
+        ))
+        db.session.commit()
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.transition(oid, "POC", opp.row_version, se, SOLUTION_ENGINEER)
+        assert Opportunity.query.get(oid).lifecycle_stage == "POC"
+
+
+def test_group1_poc_to_negotiations_is_explicit_and_assigned_se_only(app):
+    oid = _qualify_and_assign_se(app, "POC Negotiations")
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        sales_exec = user(app, SALES_EXECUTIVE)
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.transition(oid, "RFX", opp.row_version, se, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        db.session.add(RFXContext(
+            opportunity_id=oid,
+            drive_link="https://drive.google.com/test-rfx-context",
+            created_by=se.user_id,
+        ))
+        db.session.commit()
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.transition(oid, "POC", opp.row_version, se, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+
+        # A POC artifact does not automatically move the lifecycle. The
+        # explicit SE action is the only thing that enters Negotiations.
+        with pytest.raises(AuthorizationDenied):
+            LifecycleTransitionService.transition(
+                oid, "Negotiations", opp.row_version, sales_exec, SALES_EXECUTIVE
+            )
+
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.transition(
+            oid, "Negotiations", opp.row_version, se, SOLUTION_ENGINEER
+        )
+        assert Opportunity.query.get(oid).lifecycle_stage == "Negotiations"
+
+
+@pytest.mark.parametrize("current,target", [
+    ("Lead", "RFX"),
+    ("Lead", "POC"),
+    ("Qualified", "POC"),
+    ("Qualified", "Negotiations"),
+    ("RFX", "Negotiations"),
+    ("POC", "Delivery"),
+])
+def test_group1_stage_skipping_rejected(app, current, target):
+    oid = make_lead(app, SALES_EXECUTIVE, f"Skip {current} {target}")
+    if current != "Lead":
+        submit(app, oid)
+        approve(app, oid)
+
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        db.session.add(OpportunityTeam(
+            opportunity_id=oid, user_id=se.user_id, role=SOLUTION_ENGINEER
+        ))
+        db.session.commit()
+        opp = Opportunity.query.get(oid)
+
+        if current == "Lead":
+            # Lead cannot be advanced directly by the technical transition path.
+            with pytest.raises(AuthorizationDenied):
+                LifecycleTransitionService.transition(
+                    oid, target, opp.row_version, se, SOLUTION_ENGINEER
+                )
+            return
+
+        if current in {"RFX", "POC"}:
+            LifecycleTransitionService.transition(
+                oid, "RFX", opp.row_version, se, SOLUTION_ENGINEER
+            )
+            opp = Opportunity.query.get(oid)
+
+        if current == "POC":
+            db.session.add(RFXContext(
+                opportunity_id=oid,
+                drive_link="https://drive.google.com/test-rfx-context",
+                created_by=se.user_id,
+            ))
+            db.session.commit()
+            opp = Opportunity.query.get(oid)
+            LifecycleTransitionService.transition(
+                oid, "POC", opp.row_version, se, SOLUTION_ENGINEER
+            )
+            opp = Opportunity.query.get(oid)
+
+        with pytest.raises(TransitionInvalid):
+            LifecycleTransitionService.transition(
+                oid, target, opp.row_version, se, SOLUTION_ENGINEER
+            )
+
+
+def test_group1_stale_version_returns_conflict(app):
+    oid = _qualify_and_assign_se(app, "Stale Version")
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        stale = opp.row_version
+        LifecycleTransitionService.transition(
+            oid, "RFX", stale, se, SOLUTION_ENGINEER
+        )
+        with pytest.raises(TransitionConflict):
+            LifecycleTransitionService.transition(
+                oid, "POC", stale, se, SOLUTION_ENGINEER
+            )
+
+
+def test_group1_closed_opportunity_rejects_lifecycle_mutation(app):
+    oid = _qualify_and_assign_se(app, "Closed Lifecycle Lock")
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        psm = user(app, PRE_SALES_MANAGER)
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.close_won(
+            oid, opp.row_version, psm, PRE_SALES_MANAGER
+        )
+        closed = Opportunity.query.get(oid)
+
+        with pytest.raises(TransitionConflict):
+            LifecycleTransitionService.transition(
+                oid, "RFX", closed.row_version, se, SOLUTION_ENGINEER
+            )
+
+        assert (
+            Opportunity.query.get(oid).outcome,
+            Opportunity.query.get(oid).operational_status,
+            Opportunity.query.get(oid).lifecycle_stage,
+        ) == ("Closed Won", "Closed", "Qualified")
+
+
+def test_group1_generic_update_schema_cannot_accept_lifecycle_state(app):
+    from marshmallow import ValidationError
+    from app.schemas.opportunity_schema import OpportunityUpdateSchema
+
+    with pytest.raises(ValidationError):
+        OpportunityUpdateSchema().load({
+            "lifecycle_stage": "Negotiations",
+            "expected_version": 1,
+        })
+
+def test_group1_direct_api_enforces_transition_authorization_and_stale_version(app):
+    oid = _qualify_and_assign_se(app, "Direct API Security")
+    client = app.test_client()
+
+    with app.app_context():
+        sales_exec = user(app, SALES_EXECUTIVE)
+        assigned_se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        version = opp.row_version
+
+        # Direct API call must not allow Sales Executive to bypass lifecycle
+        # authorization merely because the endpoint exists.
+        sales_exec_token = create_access(sales_exec, SALES_EXECUTIVE)
+        response = client.post(
+            f"/api/opportunities/{oid}/advance-to-rfx",
+            json={"expected_version": version},
+            headers={"Authorization": f"Bearer {sales_exec_token}"},
+        )
+        assert response.status_code == 403
+
+        # Assigned SE can use the domain action through the API.
+        se_token = create_access(assigned_se, SOLUTION_ENGINEER)
+        response = client.post(
+            f"/api/opportunities/{oid}/advance-to-rfx",
+            json={"expected_version": version},
+            headers={"Authorization": f"Bearer {se_token}"},
+        )
+        assert response.status_code == 200
+
+        # Reusing the previous version through the API must be a 409.
+        response = client.post(
+            f"/api/opportunities/{oid}/advance-to-poc",
+            json={"expected_version": version},
+            headers={"Authorization": f"Bearer {se_token}"},
+        )
+        assert response.status_code == 409
+
+
+def test_group1_direct_api_rejects_client_controlled_lifecycle_fields(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Direct API State Injection")
+    client = app.test_client()
+
+    with app.app_context():
+        actor = user(app, SALES_EXECUTIVE)
+        opp = Opportunity.query.get(oid)
+        token = create_access(actor, SALES_EXECUTIVE)
+        response = client.put(
+            f"/api/opportunities/{oid}",
+            json={
+                "lifecycle_stage": "Negotiations",
+                "expected_version": opp.row_version,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 400
+        assert Opportunity.query.get(oid).lifecycle_stage == "Lead"
+
+
+
+def _qualified_without_se(app, name="Group2"):
+    oid = make_lead(app, SALES_EXECUTIVE, name)
+    submit(app, oid)
+    approve(app, oid)
+    return oid
+
+
+def test_group2_psm_can_assign_valid_solution_engineer(app):
+    oid = _qualified_without_se(app, "G2 Valid Assignment")
+    with app.app_context():
+        psm = user(app, PRE_SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        old_version = opp.row_version
+
+        updated = OpportunityService.finalize_pre_sales_assignment(
+            oid, se.user_id, old_version, psm, PRE_SALES_MANAGER
+        )
+
+        assert updated.lifecycle_stage == "Qualified"
+        assert updated.row_version == old_version + 1
+        team = OpportunityTeam.query.filter_by(
+            opportunity_id=oid, user_id=se.user_id, role=SOLUTION_ENGINEER
+        ).one()
+        assert team.user_id == se.user_id
+        assert Opportunity.query.get(oid).created_by == user(app, SALES_EXECUTIVE).user_id
+        assert Opportunity.query.get(oid).sales_owner_id == user(app, SALES_EXECUTIVE).user_id
+
+
+@pytest.mark.parametrize("role", [
+    SALES_MANAGER, SALES_EXECUTIVE, SOLUTION_ENGINEER,
+    DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST,
+])
+def test_group2_non_psm_cannot_assign_solution_engineer(app, role):
+    oid = _qualified_without_se(app, f"G2 Unauthorized {role}")
+    with app.app_context():
+        actor = user(app, role)
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        with pytest.raises(AuthorizationDenied):
+            OpportunityService.finalize_pre_sales_assignment(
+                oid, se.user_id, opp.row_version, actor, role
+            )
+        assert OpportunityTeam.query.filter_by(
+            opportunity_id=oid, role=SOLUTION_ENGINEER
+        ).count() == 0
+
+
+def test_group2_candidate_must_really_be_solution_engineer(app):
+    oid = _qualified_without_se(app, "G2 Candidate Role Validation")
+    with app.app_context():
+        psm = user(app, PRE_SALES_MANAGER)
+        invalid = user(app, SALES_EXECUTIVE)
+        opp = Opportunity.query.get(oid)
+        with pytest.raises(ValueError, match="eligible Solution Engineer"):
+            OpportunityService.finalize_pre_sales_assignment(
+                oid, invalid.user_id, opp.row_version, psm, PRE_SALES_MANAGER
+            )
+        assert OpportunityTeam.query.filter_by(
+            opportunity_id=oid, role=SOLUTION_ENGINEER
+        ).count() == 0
+
+
+def test_group2_inactive_candidate_rejected(app):
+    oid = _qualified_without_se(app, "G2 Inactive Candidate")
+    with app.app_context():
+        psm = user(app, PRE_SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        se.active = False
+        db.session.commit()
+        opp = Opportunity.query.get(oid)
+        with pytest.raises(ValueError, match="eligible Solution Engineer"):
+            OpportunityService.finalize_pre_sales_assignment(
+                oid, se.user_id, opp.row_version, psm, PRE_SALES_MANAGER
+            )
+
+
+@pytest.mark.parametrize("stage", ["Lead", "RFX", "POC", "Negotiations", "Delivery"])
+def test_group2_assignment_only_allowed_at_qualified(app, stage):
+    oid = _qualified_without_se(app, f"G2 Wrong Stage {stage}")
+    with app.app_context():
+        opp = Opportunity.query.get(oid)
+        opp.lifecycle_stage = stage
+        db.session.commit()
+        psm = user(app, PRE_SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        with pytest.raises(AuthorizationDenied):
+            OpportunityService.finalize_pre_sales_assignment(
+                oid, se.user_id, opp.row_version, psm, PRE_SALES_MANAGER
+            )
+        assert OpportunityTeam.query.filter_by(
+            opportunity_id=oid, role=SOLUTION_ENGINEER
+        ).count() == 0
+
+
+@pytest.mark.parametrize("outcome", ["Closed Won", "Closed Lost"])
+def test_group2_closed_opportunity_cannot_receive_se(app, outcome):
+    oid = _qualified_without_se(app, f"G2 Closed {outcome}")
+    with app.app_context():
+        opp = Opportunity.query.get(oid)
+        opp.outcome = outcome
+        opp.operational_status = "Closed"
+        db.session.commit()
+        psm = user(app, PRE_SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        with pytest.raises(AuthorizationDenied):
+            OpportunityService.finalize_pre_sales_assignment(
+                oid, se.user_id, opp.row_version, psm, PRE_SALES_MANAGER
+            )
+        assert OpportunityTeam.query.filter_by(
+            opportunity_id=oid, role=SOLUTION_ENGINEER
+        ).count() == 0
+
+
+def test_group2_duplicate_assignment_is_rejected(app):
+    oid = _qualified_without_se(app, "G2 Duplicate Assignment")
+    with app.app_context():
+        psm = user(app, PRE_SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        OpportunityService.finalize_pre_sales_assignment(
+            oid, se.user_id, opp.row_version, psm, PRE_SALES_MANAGER
+        )
+        opp = Opportunity.query.get(oid)
+        assert AuthorizationService.can_finalize_pre_sales_assignment(
+            psm, PRE_SALES_MANAGER, opp
+        ) is False
+        with pytest.raises(AuthorizationDenied):
+            OpportunityService.finalize_pre_sales_assignment(
+                oid, se.user_id, opp.row_version, psm, PRE_SALES_MANAGER
+            )
+        assert OpportunityTeam.query.filter_by(
+            opportunity_id=oid, role=SOLUTION_ENGINEER
+        ).count() == 1
+
+
+def test_group2_stale_row_version_returns_conflict(app):
+    oid = _qualified_without_se(app, "G2 Stale Version")
+    with app.app_context():
+        psm = user(app, PRE_SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        stale = opp.row_version - 1
+        with pytest.raises(RuntimeError, match="stale"):
+            OpportunityService.finalize_pre_sales_assignment(
+                oid, se.user_id, stale, psm, PRE_SALES_MANAGER
+            )
+        assert Opportunity.query.get(oid).row_version == opp.row_version
+        assert OpportunityTeam.query.filter_by(
+            opportunity_id=oid, role=SOLUTION_ENGINEER
+        ).count() == 0
+
+
+def test_group2_direct_api_rejects_non_psm_and_accepts_psm(app):
+    oid = _qualified_without_se(app, "G2 Direct API")
+    client = app.test_client()
+    with app.app_context():
+        psm = user(app, PRE_SALES_MANAGER)
+        sales_manager = user(app, SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        version = opp.row_version
+
+        sm_response = client.post(
+            f"/api/opportunities/{oid}/finalize-pre-sales-assignment",
+            json={"solution_engineer_id": se.user_id, "row_version": version},
+            headers={"Authorization": f"Bearer {create_access(sales_manager, SALES_MANAGER)}"},
+        )
+        assert sm_response.status_code == 403
+
+        psm_response = client.post(
+            f"/api/opportunities/{oid}/finalize-pre-sales-assignment",
+            json={"solution_engineer_id": se.user_id, "row_version": version},
+            headers={"Authorization": f"Bearer {create_access(psm, PRE_SALES_MANAGER)}"},
+        )
+        assert psm_response.status_code == 200
+
+        # A stale client must be rejected before any assignment is created.
+        stale_oid = _qualified_without_se(app, "G2 Direct API Stale")
+        stale_opp = Opportunity.query.get(stale_oid)
+        stale_response = client.post(
+            f"/api/opportunities/{stale_oid}/finalize-pre-sales-assignment",
+            json={"solution_engineer_id": se.user_id, "row_version": stale_opp.row_version - 1},
+            headers={"Authorization": f"Bearer {create_access(psm, PRE_SALES_MANAGER)}"},
+        )
+        assert stale_response.status_code == 409
+        assert OpportunityTeam.query.filter_by(
+            opportunity_id=stale_oid, role=SOLUTION_ENGINEER
+        ).count() == 0
+
+
+def test_group2_assignment_request_cannot_control_unrelated_fields(app):
+    oid = _qualified_without_se(app, "G2 Field Protection")
+    client = app.test_client()
+    with app.app_context():
+        psm = user(app, PRE_SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+        original_creator = opp.created_by
+        original_stage = opp.lifecycle_stage
+        original_outcome = opp.outcome
+        original_status = opp.operational_status
+
+        response = client.post(
+            f"/api/opportunities/{oid}/finalize-pre-sales-assignment",
+            json={
+                "solution_engineer_id": se.user_id,
+                "row_version": opp.row_version,
+                "lifecycle_stage": "Negotiations",
+                "outcome": "Closed Won",
+                "operational_status": "Closed",
+                "created_by": 999999,
+            },
+            headers={"Authorization": f"Bearer {create_access(psm, PRE_SALES_MANAGER)}"},
+        )
+        assert response.status_code == 400
+
+        fresh = Opportunity.query.get(oid)
+        assert fresh.created_by == original_creator
+        assert fresh.lifecycle_stage == original_stage
+        assert fresh.outcome == original_outcome
+        assert fresh.operational_status == original_status
+        assert OpportunityTeam.query.filter_by(
+            opportunity_id=oid, role=SOLUTION_ENGINEER
+        ).count() == 0
+
+
+def test_group2_direct_api_rejects_unauthenticated_and_role_spoofing(app):
+    oid = _qualified_without_se(app, "G2 API Role Spoofing")
+    client = app.test_client()
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        psm = user(app, PRE_SALES_MANAGER)
+        opp = Opportunity.query.get(oid)
+
+        unauthenticated = client.post(
+            f"/api/opportunities/{oid}/finalize-pre-sales-assignment",
+            json={"solution_engineer_id": se.user_id, "row_version": opp.row_version},
+        )
+        assert unauthenticated.status_code in (401, 403)
+
+        spoofed = client.post(
+            f"/api/opportunities/{oid}/finalize-pre-sales-assignment",
+            json={
+                "solution_engineer_id": se.user_id,
+                "row_version": opp.row_version,
+                "role": SOLUTION_ENGINEER,
+            },
+            headers={"Authorization": f"Bearer {create_access(psm, PRE_SALES_MANAGER)}"},
+        )
+        assert spoofed.status_code == 400
+        assert OpportunityTeam.query.filter_by(
+            opportunity_id=oid, role=SOLUTION_ENGINEER
+        ).count() == 0

@@ -8,7 +8,7 @@ from app.models.auth.user import User
 from app.models.opportunity.opportunity import Opportunity
 from app.models.opportunity.poc_tracker import POCTracker
 from app.models.system.audit_log import AuditLog
-from app.constants.poc_outcome import POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS
+from app.constants.poc_outcome import POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED
 from app.constants.stages import LIFECYCLE_STAGES
 
 
@@ -135,7 +135,7 @@ class DashboardRepository:
         ids = DashboardRepository._opportunity_ids(user, active_role)
         return POCTracker.query.filter(
             POCTracker.opportunity_id.in_(ids),
-            POCTracker.status.in_([POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS]),
+            POCTracker.status.in_([POC_STATUS_DRAFT, POC_STATUS_IN_PROGRESS, POC_STATUS_SUBMITTED]),
         ).count()
 
     @staticmethod
@@ -212,7 +212,7 @@ class DashboardRepository:
             {
                 "id": p.poc_id,
                 "opportunity": p.opportunity.opportunity_name if p.opportunity else "-",
-                "objective": p.objective,
+                "poc_name": p.poc_name,
                 "target_date": p.target_date,
                 "status": p.status,
             }

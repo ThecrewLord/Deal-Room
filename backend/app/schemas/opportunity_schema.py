@@ -75,6 +75,9 @@ class ClosedWonRequestResponseSchema(Schema):
     opportunity_id = fields.Int()
     requested_by = fields.Int()
     requested_active_role = fields.Str()
+    requested_outcome = fields.Str()
+    requested_reason = fields.Str(allow_none=True)
+    requested_explanation = fields.Str(allow_none=True)
     status = fields.Str()
     resolved_by = fields.Int(allow_none=True)
     resolved_active_role = fields.Str(allow_none=True)
@@ -183,17 +186,8 @@ class OpportunityReviewSchema(Schema):
 
 
 class PreSalesAssignmentSchema(Schema):
-    solution_engineer_ids = fields.List(
-        fields.Int(),
-        required=True,
-        validate=validate.Length(min=1),
-    )
-    delivery_ids = fields.List(
-        fields.Int(),
-        required=False,
-        load_default=list,
-    )
-    updated_at = fields.DateTime(required=True)
+    solution_engineer_id = fields.Int(required=True, validate=validate.Range(min=1))
+    row_version = fields.Int(required=True, validate=validate.Range(min=1))
 
 class OpportunityCloseSchema(Schema):
     reason = fields.Str(allow_none=True, validate=validate.Length(max=2000))
@@ -201,11 +195,14 @@ class OpportunityCloseSchema(Schema):
     expected_version = fields.Int(required=True, validate=validate.Range(min=1))
 
 
-class ClosedWonRequestSchema(Schema):
+class ClosureRequestSchema(Schema):
+    requested_outcome = fields.Str(required=True, validate=validate.OneOf(["Closed Won", "Closed Lost"]))
+    reason = fields.Str(allow_none=True, validate=validate.Length(max=2000))
+    explanation = fields.Str(allow_none=True, validate=validate.Length(max=5000))
     expected_version = fields.Int(required=True, validate=validate.Range(min=1))
 
 
-class ClosedWonRequestResolutionSchema(Schema):
+class ClosureRequestResolutionSchema(Schema):
     expected_version = fields.Int(required=True, validate=validate.Range(min=1))
     reason = fields.Str(allow_none=True, validate=validate.Length(max=2000))
 

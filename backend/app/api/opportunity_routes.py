@@ -114,22 +114,22 @@ def get_technical_team(opportunity_id):
     return OpportunityController.get_technical_team(opportunity_id)
 
 
-@opportunity_bp.post("/<int:opportunity_id>/request-closed-won")
+@opportunity_bp.post("/<int:opportunity_id>/request-closure")
 @business_access_required
-def request_closed_won(opportunity_id):
-    return OpportunityController.request_closed_won(opportunity_id)
+def request_closure(opportunity_id):
+    return OpportunityController.request_closure(opportunity_id)
 
 
-@opportunity_bp.post("/<int:opportunity_id>/approve-closed-won")
+@opportunity_bp.post("/<int:opportunity_id>/approve-closure")
 @business_access_required
-def approve_closed_won(opportunity_id):
-    return OpportunityController.resolve_closed_won(opportunity_id, True)
+def approve_closure(opportunity_id):
+    return OpportunityController.resolve_closure(opportunity_id, True)
 
 
-@opportunity_bp.post("/<int:opportunity_id>/reject-closed-won")
+@opportunity_bp.post("/<int:opportunity_id>/reject-closure")
 @business_access_required
-def reject_closed_won(opportunity_id):
-    return OpportunityController.resolve_closed_won(opportunity_id, False)
+def reject_closure(opportunity_id):
+    return OpportunityController.resolve_closure(opportunity_id, False)
 
 
 @opportunity_bp.post("/<int:opportunity_id>/close-won")

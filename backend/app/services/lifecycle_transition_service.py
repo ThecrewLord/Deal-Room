@@ -186,14 +186,9 @@ class LifecycleTransitionService:
                 opportunity, lifecycle_stage=target_stage, outcome="Open", operational_status="Active", sync_legacy=True
             )
         elif current == "POC" and target_stage == "Negotiations":
-            from app.models.opportunity.poc_tracker import POCTracker
-            valid_poc = POCTracker.query.filter(
-                POCTracker.opportunity_id == opportunity.opportunity_id,
-                POCTracker.status == "Completed",
-                POCTracker.result_view_link.isnot(None),
-            ).first()
-            if not valid_poc:
-                raise TransitionInvalid("A completed POC with a result/view link is required before Negotiations.")
+            # Negotiations is an explicit technical decision by the assigned
+            # Solution Engineer. POC submission/completion/result artifacts
+            # must not implicitly drive the lifecycle transition.
             validator = precondition or LifecycleTransitionService._PRECONDITIONS.get((current, target_stage))
             if validator:
                 validator(opportunity)
@@ -309,47 +304,53 @@ class LifecycleTransitionService:
             db.session.rollback()
             raise
 
-    @staticmethod
-    def close_lost(opportunity_id, expected_version, reason, explanation, user, active_role):
-        opportunity = LifecycleTransitionService._load(opportunity_id)
+    @classmethod
+    def _close_lost_locked(cls, opportunity, reason, explanation, user, active_role):
+        """Close a locked opportunity without committing; caller owns the transaction."""
+        cls.assert_opportunity_open_for_mutation(opportunity)
+        cls._authorize_close(user, active_role, opportunity, False)
+        current = cls._normalize_lifecycle(opportunity)
+        if current == "Lead" and opportunity.review_status != "Pending Sales Manager Review":
+            raise TransitionInvalid("Initial Lead closure is only available during Sales Manager review.")
+        if not reason or not str(reason).strip():
+            raise TransitionInvalid("A Closed Lost standard reason is required.")
+        reason = str(reason).strip()
+        if reason.lower() == "other" and (explanation is None or not str(explanation).strip()):
+            raise TransitionInvalid("Explanation is required when Closed Lost reason is Other.")
+        explanation = str(explanation).strip() if explanation is not None and str(explanation).strip() else None
+        cls._touch_state(
+            opportunity,
+            outcome="Closed Lost",
+            operational_status="Closed",
+            lost_reason=reason,
+            lost_explanation=explanation,
+            sync_legacy=True,
+        )
+        ActivityService.log(
+            "Opportunity", opportunity.opportunity_id, "OPPORTUNITY_CLOSED_LOST",
+            f"Opportunity closed lost. Previous stage: '{current}'. Reason: {reason}.",
+            user.user_id, commit=False, active_role=active_role,
+        )
+        return opportunity
+
+    @classmethod
+    def close_lost(cls, opportunity_id, expected_version, reason, explanation, user, active_role):
+        opportunity = cls._load(opportunity_id)
         if not opportunity:
             return None
         try:
-            LifecycleTransitionService.assert_opportunity_open_for_mutation(opportunity)
-            LifecycleTransitionService._authorize_close(user, active_role, opportunity, False)
-            LifecycleTransitionService._check_expected_version(opportunity, expected_version)
-            if LifecycleTransitionService._normalize_lifecycle(opportunity) == "Lead" and opportunity.review_status != "Pending Sales Manager Review":
-                raise TransitionInvalid("Initial Lead closure is only available during Sales Manager review.")
-            if not reason or not str(reason).strip():
-                raise TransitionInvalid("A Closed Lost standard reason is required.")
-            reason = str(reason).strip()
-            if reason.lower() == "other" and not explanation:
-                raise TransitionInvalid("Explanation is required when Closed Lost reason is Other.")
-            if explanation is not None and not str(explanation).strip():
-                explanation = None
-            current = LifecycleTransitionService._normalize_lifecycle(opportunity)
-            if opportunity.closed_won_request and opportunity.closed_won_request.status == "Pending":
+            cls._check_expected_version(opportunity, expected_version)
+            result = cls._close_lost_locked(opportunity, reason, explanation, user, active_role)
+            pending = cls._pending_closure_request(opportunity)
+            if pending:
+                pending.status = "Rejected"
+                pending.resolved_by = user.user_id
+                pending.resolved_active_role = active_role
+                pending.resolution_reason = "Closed Lost was performed through the authorized direct closure workflow."
                 from datetime import datetime
-                opportunity.closed_won_request.status = "Rejected"
-                opportunity.closed_won_request.resolved_by = user.user_id
-                opportunity.closed_won_request.resolved_active_role = active_role
-                opportunity.closed_won_request.resolution_reason = "Closed Lost superseded the pending Closed Won request."
-                opportunity.closed_won_request.resolved_at = datetime.utcnow()
-            LifecycleTransitionService._touch_state(
-                opportunity,
-                outcome="Closed Lost",
-                operational_status="Closed",
-                lost_reason=reason,
-                lost_explanation=(str(explanation).strip() if explanation else None),
-                sync_legacy=True,
-            )
-            ActivityService.log(
-                "Opportunity", opportunity.opportunity_id, "OPPORTUNITY_CLOSED_LOST",
-                f"Opportunity closed lost. Previous stage: '{current}'. Reason: {reason}.",
-                user.user_id, commit=False, active_role=active_role,
-            )
+                pending.resolved_at = datetime.utcnow()
             db.session.commit()
-            return opportunity
+            return result
         except Exception:
             db.session.rollback()
             raise
@@ -364,13 +365,20 @@ class LifecycleTransitionService:
             raise TransitionInvalid("Initial Lead closure is only available during Sales Manager review.")
         if opportunity.final_revenue is not None:
             raise TransitionInvalid("Final Revenue has already been established and cannot be overwritten.")
-        if opportunity.closed_won_request and opportunity.closed_won_request.status == "Pending":
+
+        pending = cls._pending_closure_request(opportunity)
+        if pending:
             from datetime import datetime
-            opportunity.closed_won_request.status = "Approved"
-            opportunity.closed_won_request.resolved_by = user.user_id
-            opportunity.closed_won_request.resolved_active_role = active_role
-            opportunity.closed_won_request.resolution_reason = "Closed Won approved directly through the authorized closure workflow."
-            opportunity.closed_won_request.resolved_at = datetime.utcnow()
+            if pending.requested_outcome == "Closed Won":
+                pending.status = "Approved"
+                pending.resolution_reason = pending.resolution_reason or "Closure approved through the authorized closure workflow."
+            else:
+                pending.status = "Rejected"
+                pending.resolution_reason = "Closed Won superseded the pending Closed Lost request."
+            pending.resolved_by = user.user_id
+            pending.resolved_active_role = active_role
+            pending.resolved_at = datetime.utcnow()
+
         target = "Delivery" if current == "Negotiations" else current
         cls._touch_state(
             opportunity,
@@ -415,44 +423,70 @@ class LifecycleTransitionService:
             raise
 
     @staticmethod
-    def request_closed_won(opportunity_id, expected_version, user, active_role):
+    def _closure_requests(opportunity):
+        return opportunity.closed_won_requests
+
+    @staticmethod
+    def _pending_closure_request(opportunity):
+        for request in opportunity.closed_won_requests:
+            if request.status == "Pending":
+                return request
+        return None
+
+    @staticmethod
+    def request_closure(opportunity_id, expected_version, requested_outcome, reason, explanation, user, active_role):
         opportunity = LifecycleTransitionService._load(opportunity_id)
         if not opportunity:
             return None
         try:
             LifecycleTransitionService.assert_opportunity_open_for_mutation(opportunity)
-            if not AuthorizationService.can_request_closed_won(user, active_role, opportunity):
-                raise AuthorizationDenied("Only an assigned Solution Engineer in an open post-Lead stage can request Closed Won.")
-            LifecycleTransitionService._check_expected_version(opportunity, expected_version)
-            current_request = opportunity.closed_won_request
-            if current_request and current_request.status == "Pending":
-                raise TransitionInvalid("A Closed Won request is already pending.")
-            if current_request and current_request.status == "Approved":
-                raise TransitionInvalid("Closed Won has already been approved for this opportunity.")
-            if current_request:
-                from datetime import datetime
-                current_request.status = "Pending"
-                current_request.requested_by = user.user_id
-                current_request.requested_active_role = active_role
-                current_request.requested_at = datetime.utcnow()
-                current_request.resolved_by = None
-                current_request.resolved_active_role = None
-                current_request.resolution_reason = None
-                current_request.resolved_at = None
-            else:
-                current_request = ClosedWonRequest(
-                    opportunity_id=opportunity.opportunity_id,
-                    requested_by=user.user_id,
-                    requested_active_role=active_role,
-                    status="Pending",
+            if not AuthorizationService.can_request_closure(user, active_role, opportunity):
+                raise AuthorizationDenied(
+                    "Only the assigned Solution Engineer can request closure from Qualified or RFX."
                 )
-                db.session.add(current_request)
-            LifecycleTransitionService._touch_state(opportunity, review_status="Approved")
+            LifecycleTransitionService._check_expected_version(opportunity, expected_version)
+
+            requested_outcome = str(requested_outcome or "").strip()
+            if requested_outcome not in {"Closed Won", "Closed Lost"}:
+                raise TransitionInvalid("requested_outcome must be Closed Won or Closed Lost.")
+
+            reason = str(reason).strip() if reason is not None else None
+            explanation = str(explanation).strip() if explanation is not None else None
+            if requested_outcome == "Closed Lost":
+                if not reason:
+                    raise TransitionInvalid("A Closed Lost reason is required.")
+                if reason.lower() == "other" and not explanation:
+                    raise TransitionInvalid("Explanation is required when Closed Lost reason is Other.")
+            elif reason or explanation:
+                # Ignore neither accidental nor attacker-supplied closure metadata.
+                # Closed Won has no request reason contract.
+                reason = None
+                explanation = None
+
+            if LifecycleTransitionService._pending_closure_request(opportunity):
+                raise TransitionInvalid("A closure request is already pending.")
+
+            request = ClosedWonRequest(
+                opportunity_id=opportunity.opportunity_id,
+                requested_by=user.user_id,
+                requested_active_role=active_role,
+                requested_outcome=requested_outcome,
+                requested_reason=reason,
+                requested_explanation=explanation,
+                status="Pending",
+            )
+            db.session.add(request)
+
+            # The opportunity remains Open and at its current lifecycle stage.
+            # The request itself is a versioned business mutation.
+            LifecycleTransitionService._touch_state(opportunity)
+
             ActivityService.log(
-                "Opportunity", opportunity.opportunity_id, "CLOSED_WON_REQUESTED",
-                f"Solution Engineer requested Closed Won from stage '{opportunity.lifecycle_stage}'.",
+                "Opportunity", opportunity.opportunity_id, "CLOSURE_APPROVAL_REQUESTED",
+                f"Solution Engineer requested {requested_outcome} closure from stage '{opportunity.lifecycle_stage}'.",
                 user.user_id, commit=False, active_role=active_role,
             )
+
             managers = User.query.filter(
                 User.active.is_(True),
                 User.status == "APPROVED",
@@ -460,9 +494,9 @@ class LifecycleTransitionService:
             ).all()
             for manager in managers:
                 NotificationService.queue(
-                    manager.user_id, "CLOSED_WON_REQUESTED", "Opportunity",
+                    manager.user_id, "CLOSURE_APPROVAL_REQUESTED", "Opportunity",
                     opportunity.opportunity_id,
-                    f"Closed Won approval is requested for '{opportunity.opportunity_name}'.",
+                    f"{requested_outcome} approval is requested for '{opportunity.opportunity_name}'.",
                 )
             db.session.commit()
             return opportunity
@@ -471,58 +505,86 @@ class LifecycleTransitionService:
             raise
 
     @staticmethod
-    def resolve_closed_won_request(opportunity_id, expected_version, approve, reason, user, active_role):
+    def resolve_closure_request(opportunity_id, expected_version, approve, reason, user, active_role):
         opportunity = LifecycleTransitionService._load(opportunity_id)
         if not opportunity:
             return None
         try:
             LifecycleTransitionService.assert_opportunity_open_for_mutation(opportunity)
-            if not AuthorizationService.can_approve_closed_won_request(user, active_role, opportunity):
-                raise AuthorizationDenied("Only the active Pre-Sales Manager role can resolve a Closed Won request.")
+            if not AuthorizationService.can_approve_closure_request(user, active_role, opportunity):
+                raise AuthorizationDenied("Only the active Pre-Sales Manager role can resolve a closure request.")
             LifecycleTransitionService._check_expected_version(opportunity, expected_version)
-            request = opportunity.closed_won_request
-            if not request or request.status != "Pending":
-                raise TransitionInvalid("There is no pending Closed Won request for this opportunity.")
-            if approve:
-                request.status = "Approved"
+
+            request = LifecycleTransitionService._pending_closure_request(opportunity)
+            if not request:
+                raise TransitionInvalid("There is no pending closure request for this opportunity.")
+
+            from datetime import datetime
+            if not approve:
+                if reason is None or not str(reason).strip():
+                    raise TransitionInvalid("A rejection reason is required for a closure request.")
+                request.status = "Rejected"
                 request.resolved_by = user.user_id
                 request.resolved_active_role = active_role
-                request.resolution_reason = (str(reason).strip() if reason else None)
-                from datetime import datetime
+                request.resolution_reason = str(reason).strip()
                 request.resolved_at = datetime.utcnow()
+                ActivityService.log(
+                    "Opportunity", opportunity.opportunity_id, "CLOSURE_APPROVAL_REJECTED",
+                    f"{request.requested_outcome} closure request rejected. Reason: {request.resolution_reason}",
+                    user.user_id, commit=False, active_role=active_role,
+                )
+                NotificationService.queue(
+                    request.requested_by, "CLOSURE_APPROVAL_REJECTED", "Opportunity",
+                    opportunity.opportunity_id,
+                    f"{request.requested_outcome} closure request for '{opportunity.opportunity_name}' was rejected.",
+                )
+                LifecycleTransitionService._touch_state(opportunity)
+                db.session.commit()
+                return opportunity
+
+            if request.requested_outcome == "Closed Won":
+                request.resolution_reason = str(reason).strip() if reason else None
                 result = LifecycleTransitionService._close_won_locked(opportunity, user, active_role)
                 ActivityService.log(
-                    "Opportunity", opportunity.opportunity_id, "CLOSED_WON_REQUEST_APPROVED",
+                    "Opportunity", opportunity.opportunity_id, "CLOSURE_APPROVAL_APPROVED",
                     "Closed Won request approved by Pre-Sales Manager.",
                     user.user_id, commit=False, active_role=active_role,
                 )
                 NotificationService.queue(
-                    request.requested_by, "CLOSED_WON_REQUEST_APPROVED", "Opportunity",
+                    request.requested_by, "CLOSURE_APPROVAL_APPROVED", "Opportunity",
                     opportunity.opportunity_id,
                     f"Closed Won request for '{opportunity.opportunity_name}' was approved.",
                 )
                 db.session.commit()
                 return result
-            if reason is None or not str(reason).strip():
-                raise TransitionInvalid("A rejection reason is required for a Closed Won request.")
-            request.status = "Rejected"
+
+            # Closed Lost approval uses the exact reason/explanation captured in
+            # the request; the PSM does not get to silently substitute a different
+            # outcome or client-supplied closure fields.
+            result = LifecycleTransitionService._close_lost_locked(
+                opportunity,
+                request.requested_reason,
+                request.requested_explanation,
+                user,
+                active_role,
+            )
+            request.status = "Approved"
             request.resolved_by = user.user_id
             request.resolved_active_role = active_role
-            request.resolution_reason = str(reason).strip()
-            from datetime import datetime
+            request.resolution_reason = str(reason).strip() if reason else "Closed Lost approved by Pre-Sales Manager."
             request.resolved_at = datetime.utcnow()
             ActivityService.log(
-                "Opportunity", opportunity.opportunity_id, "CLOSED_WON_REQUEST_REJECTED",
-                f"Closed Won request rejected. Reason: {request.resolution_reason}",
+                "Opportunity", opportunity.opportunity_id, "CLOSURE_APPROVAL_APPROVED",
+                "Closed Lost request approved by Pre-Sales Manager.",
                 user.user_id, commit=False, active_role=active_role,
             )
             NotificationService.queue(
-                request.requested_by, "CLOSED_WON_REQUEST_REJECTED", "Opportunity",
+                request.requested_by, "CLOSURE_APPROVAL_APPROVED", "Opportunity",
                 opportunity.opportunity_id,
-                f"Closed Won request for '{opportunity.opportunity_name}' was rejected.",
+                f"Closed Lost request for '{opportunity.opportunity_name}' was approved.",
             )
             db.session.commit()
-            return opportunity
+            return result
         except Exception:
             db.session.rollback()
             raise

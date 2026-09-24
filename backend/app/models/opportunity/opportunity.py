@@ -115,12 +115,18 @@ class Opportunity(BaseModel):
         lazy=True,
     )
 
-    closed_won_request = db.relationship(
+    closed_won_requests = db.relationship(
         "ClosedWonRequest",
         back_populates="opportunity",
-        uselist=False,
         cascade="all, delete-orphan",
+        order_by="ClosedWonRequest.requested_at.desc()",
+        lazy=True,
     )
+
+    @property
+    def closed_won_request(self):
+        """Backward-compatible view of the most recent closure request."""
+        return self.closed_won_requests[0] if self.closed_won_requests else None
 
     value_history = db.relationship(
         "OpportunityValueHistory",
@@ -143,6 +149,14 @@ class Opportunity(BaseModel):
         back_populates="opportunity",
         cascade="all, delete-orphan",
         lazy=True,
+    )
+
+    poc_history = db.relationship(
+        "POCHistory",
+        back_populates="opportunity",
+        passive_deletes=True,
+        lazy=True,
+        order_by="POCHistory.created_at",
     )
 
     oem_associations = db.relationship("OEMOpportunity", back_populates="opportunity", cascade="all, delete-orphan", lazy=True)

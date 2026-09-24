@@ -5,6 +5,8 @@ from app.constants.roles import (
     SALES_MANAGER,
     SOLUTION_ENGINEER,
     DELIVERY_MANAGER,
+    DEVOPS_ENGINEER,
+    DATA_ANALYST,
 )
 from app.database import db
 from app.models.system.notification import Notification
@@ -32,10 +34,14 @@ ROLE_BY_NOTIFICATION = {
     "POC_REJECTED": SOLUTION_ENGINEER,
     "POC_SUBMITTED": SOLUTION_ENGINEER,
     "POC_RESULT_SUBMITTED": SOLUTION_ENGINEER,
+    "NEW_POC_REQUESTED": {DEVOPS_ENGINEER, DATA_ANALYST},
     "DELIVERY_PROJECT_CREATED": DELIVERY_MANAGER,
     "CLOSED_WON_REQUESTED": PRE_SALES_MANAGER,
     "CLOSED_WON_REQUEST_APPROVED": SOLUTION_ENGINEER,
     "CLOSED_WON_REQUEST_REJECTED": SOLUTION_ENGINEER,
+    "CLOSURE_APPROVAL_REQUESTED": PRE_SALES_MANAGER,
+    "CLOSURE_APPROVAL_APPROVED": SOLUTION_ENGINEER,
+    "CLOSURE_APPROVAL_REJECTED": SOLUTION_ENGINEER,
 }
 
 BUSINESS_ENTITY_TYPES = {"opportunity", "poc", "account", "stakeholder"}
@@ -67,16 +73,16 @@ class NotificationService:
         if notification.entity_id is None:
             return False
         if entity_type == "opportunity":
-            entity = Opportunity.query.get(notification.entity_id)
+            entity = db.session.get(Opportunity, notification.entity_id)
             return AuthorizationService.can_view_opportunity(user, active_role, entity)
         if entity_type == "poc":
-            entity = POCTracker.query.get(notification.entity_id)
+            entity = db.session.get(POCTracker, notification.entity_id)
             return AuthorizationService.can_view_poc(user, active_role, entity)
         if entity_type == "account":
-            entity = Account.query.get(notification.entity_id)
+            entity = db.session.get(Account, notification.entity_id)
             return AuthorizationService.can_view_account(user, active_role, entity)
         if entity_type == "stakeholder":
-            entity = Stakeholder.query.get(notification.entity_id)
+            entity = db.session.get(Stakeholder, notification.entity_id)
             return AuthorizationService.can_view_stakeholder(user, active_role, entity)
         return False
 
@@ -86,7 +92,10 @@ class NotificationService:
         if active_role == ADMIN:
             return notification.entity_type.lower() in ADMIN_ENTITY_TYPES and expected_role is None
         # Unknown notification types are not exposed to a business role.
-        if expected_role != active_role:
+        if isinstance(expected_role, (set, tuple, list, frozenset)):
+            if active_role not in expected_role:
+                return False
+        elif expected_role != active_role:
             return False
         return NotificationService._entity_authorized(notification, user, active_role)
 

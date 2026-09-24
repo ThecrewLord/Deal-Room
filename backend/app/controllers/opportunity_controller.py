@@ -13,8 +13,8 @@ from app.schemas.opportunity_schema import (
     OpportunityStatusSchema,
     OpportunityValueChangeSchema,
     OpportunityValueHistoryResponseSchema,
-    ClosedWonRequestSchema,
-    ClosedWonRequestResolutionSchema,
+    ClosureRequestSchema,
+    ClosureRequestResolutionSchema,
 )
 from app.services.opportunity_service import OpportunityService
 from app.services.lifecycle_transition_service import LifecycleTransitionService, TransitionConflict, TransitionInvalid
@@ -109,9 +109,8 @@ class OpportunityController:
             data = PreSalesAssignmentSchema().load(request.get_json() or {})
             opportunity = OpportunityService.finalize_pre_sales_assignment(
                 opportunity_id=opportunity_id,
-                solution_engineer_ids=data["solution_engineer_ids"],
-                delivery_ids=data["delivery_ids"],
-                updated_at=data["updated_at"],
+                solution_engineer_id=data["solution_engineer_id"],
+                row_version=data["row_version"],
                 user=g.auth_user,
                 active_role=g.active_role,
             )
@@ -329,11 +328,17 @@ class OpportunityController:
             return jsonify({"message": "Failed to close opportunity"}), 500
 
     @staticmethod
-    def request_closed_won(opportunity_id):
+    def request_closure(opportunity_id):
         try:
-            data = ClosedWonRequestSchema().load(request.get_json() or {})
-            opportunity = LifecycleTransitionService.request_closed_won(
-                opportunity_id, data["expected_version"], g.auth_user, g.active_role
+            data = ClosureRequestSchema().load(request.get_json() or {})
+            opportunity = LifecycleTransitionService.request_closure(
+                opportunity_id,
+                data["expected_version"],
+                data["requested_outcome"],
+                data.get("reason"),
+                data.get("explanation"),
+                g.auth_user,
+                g.active_role,
             )
             if not opportunity:
                 return jsonify({"message": "Opportunity not found"}), 404
@@ -347,15 +352,19 @@ class OpportunityController:
         except TransitionInvalid as err:
             return jsonify({"message": str(err)}), 400
         except Exception:
-            return jsonify({"message": "Failed to request Closed Won"}), 500
+            return jsonify({"message": "Failed to request closure"}), 500
 
     @staticmethod
-    def resolve_closed_won(opportunity_id, approve):
+    def resolve_closure(opportunity_id, approve):
         try:
-            data = ClosedWonRequestResolutionSchema().load(request.get_json() or {})
-            opportunity = LifecycleTransitionService.resolve_closed_won_request(
-                opportunity_id, data["expected_version"], approve, data.get("reason"),
-                g.auth_user, g.active_role,
+            data = ClosureRequestResolutionSchema().load(request.get_json() or {})
+            opportunity = LifecycleTransitionService.resolve_closure_request(
+                opportunity_id,
+                data["expected_version"],
+                approve,
+                data.get("reason"),
+                g.auth_user,
+                g.active_role,
             )
             if not opportunity:
                 return jsonify({"message": "Opportunity not found"}), 404
@@ -369,7 +378,7 @@ class OpportunityController:
         except TransitionInvalid as err:
             return jsonify({"message": str(err)}), 400
         except Exception:
-            return jsonify({"message": "Failed to resolve Closed Won request"}), 500
+            return jsonify({"message": "Failed to resolve closure request"}), 500
 
     @staticmethod
     def set_operational_status(opportunity_id, target_status):

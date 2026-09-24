@@ -15,11 +15,11 @@ class OEMRepository:
 
     @staticmethod
     def get_by_id(oem_id):
-        return OEMPartner.query.get(oem_id)
+        return db.session.get(OEMPartner, oem_id)
 
     @staticmethod
     def get_account(account_id):
-        return Account.query.get(account_id)
+        return db.session.get(Account, account_id)
 
     @staticmethod
     def create_from_data(data):

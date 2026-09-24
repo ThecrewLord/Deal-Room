@@ -24,7 +24,6 @@ from app.api.phase2_routes import phase2_bp
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
 from app.models.auth.user_system_permission import UserSystemPermission
-from app.models.poc.poc import Poc
 from app.models.opportunity.solution_design import SolutionDesign
 from app.models.account.account import Account
 from app.models.account.contact import Contact
@@ -54,6 +53,7 @@ def create_app(test_config=None):
     init_migrations(app, db)
 
     app.register_blueprint(auth_bp)
+    # Compatibility routes delegate to the canonical Phase2 POC service.
     app.register_blueprint(poc_bp)
     app.register_blueprint(stakeholder_bp)
     app.register_blueprint(oem_bp)
@@ -86,7 +86,6 @@ __all__ = [
     "User",
     "UserRole",
     "UserSystemPermission",
-    "Poc",
     "Account",
     "Contact",
     "StageMaster",

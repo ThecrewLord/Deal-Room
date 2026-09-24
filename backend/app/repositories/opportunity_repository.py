@@ -87,6 +87,9 @@ class OpportunityRepository:
             OpportunityTeam.role == SOLUTION_ENGINEER,
         ).exists()
         return Opportunity.query.filter(
+            Opportunity.lifecycle_stage == "Qualified",
+            Opportunity.outcome == "Open",
+            Opportunity.operational_status == "Active",
             Opportunity.review_status == "Approved",
             Opportunity.sales_owner_id.isnot(None),
             Opportunity.is_active.is_(True),

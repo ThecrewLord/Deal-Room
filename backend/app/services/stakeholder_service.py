@@ -28,15 +28,15 @@ class StakeholderService:
             db.session.rollback(); raise ValueError("Only one Decision Maker may exist per Opportunity.")
     @staticmethod
     def get_by_id(stakeholder_id,user,active_role):
-        st=Stakeholder.query.get(stakeholder_id); return st if st and AuthorizationService.can_view_stakeholder(user,active_role,st) else None
+        st=db.session.get(Stakeholder, stakeholder_id); return st if st and AuthorizationService.can_view_stakeholder(user,active_role,st) else None
     @staticmethod
     def get_by_opportunity(opportunity_id,user,active_role):
         from app.models.opportunity.opportunity import Opportunity
-        opp=Opportunity.query.get(opportunity_id)
+        opp=db.session.get(Opportunity, opportunity_id)
         return Stakeholder.query.filter_by(opportunity_id=opportunity_id).all() if opp and AuthorizationService.can_view_opportunity(user,active_role,opp) else []
     @staticmethod
     def update_stakeholder(stakeholder_id,data,user,active_role):
-        st=Stakeholder.query.get(stakeholder_id)
+        st=db.session.get(Stakeholder, stakeholder_id)
         if not st: return None
         if not AuthorizationService.can_mutate_related(user,active_role,st.opportunity,"stakeholder","update"): raise AuthorizationDenied("You are not authorized to update this stakeholder.")
         if st.opportunity.operational_status=="Closed": raise AuthorizationDenied("Closed opportunities are locked.")
@@ -48,7 +48,7 @@ class StakeholderService:
         db.session.commit(); return st
     @staticmethod
     def delete_stakeholder(stakeholder_id,user,active_role):
-        st=Stakeholder.query.get(stakeholder_id)
+        st=db.session.get(Stakeholder, stakeholder_id)
         if not st: return False
         if not AuthorizationService.can_mutate_related(user,active_role,st.opportunity,"stakeholder","delete"): raise AuthorizationDenied("You are not authorized to delete this stakeholder.")
         db.session.delete(st); db.session.commit(); return True

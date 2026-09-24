@@ -17,6 +17,7 @@ class RFXContext(db.Model):
     rfx_context_id = db.Column(db.Integer, primary_key=True)
     opportunity_id = db.Column(db.Integer, db.ForeignKey("opportunities.opportunity_id", ondelete="RESTRICT"), nullable=False, unique=True)
     drive_link = db.Column(db.Text, nullable=True)
+    row_version = db.Column(db.Integer, nullable=False, default=1, server_default="1", index=True)
     created_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
     updated_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -41,6 +42,12 @@ class NegotiationContext(db.Model):
 
 class POCTeamMember(db.Model):
     __tablename__ = "poc_team_members"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "poc_id", "user_id",
+            name="uq_poc_team_member_user",
+        ),
+    )
     poc_team_member_id = db.Column(db.Integer, primary_key=True)
     poc_id = db.Column(db.Integer, db.ForeignKey("poc_tracker.poc_id", ondelete="RESTRICT"), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -68,10 +75,17 @@ class DeliveryProject(db.Model):
 
 class DeliveryProjectMember(db.Model):
     __tablename__ = "delivery_project_members"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "delivery_project_id", "user_id",
+            name="uq_delivery_project_member_user",
+        ),
+    )
     delivery_project_member_id = db.Column(db.Integer, primary_key=True)
     delivery_project_id = db.Column(db.Integer, db.ForeignKey("delivery_projects.delivery_project_id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False, index=True)
     is_done = db.Column(db.Boolean, nullable=False, default=False)
+    is_suggested = db.Column(db.Boolean, nullable=False, default=False, server_default="false")
     assigned_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=False)
     assigned_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     completed_at = db.Column(db.DateTime)

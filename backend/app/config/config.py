@@ -10,7 +10,7 @@ class Config:
     """Environment-driven configuration for local and deployed environments."""
 
     SECRET_KEY = os.getenv("SECRET_KEY", "deal-room-local-secret-change-me")
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "deal-room-local-jwt-change-me")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "deal-room-local-jwt-secret-change-me-please-rotate")
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=20)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)
     JWT_TOKEN_LOCATION = ["headers"]

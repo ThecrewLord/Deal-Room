@@ -4,6 +4,20 @@ from app.models.base import BaseModel
 
 class POCTracker(BaseModel):
     __tablename__ = "poc_tracker"
+    __table_args__ = (
+        db.CheckConstraint(
+            "status IN ('Draft','In Progress','Submitted','Completed')",
+            name="ck_poc_tracker_status",
+        ),
+        db.CheckConstraint(
+            "outcome IS NULL OR outcome IN ('Success','Failure','Ongoing','Abandoned')",
+            name="ck_poc_tracker_outcome",
+        ),
+        db.CheckConstraint(
+            "row_version >= 1",
+            name="ck_poc_tracker_row_version_positive",
+        ),
+    )
 
     poc_id = db.Column(
         db.Integer,
@@ -37,38 +51,29 @@ class POCTracker(BaseModel):
         index=True,
     )
 
+    row_version = db.Column(
+        db.Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+        index=True,
+    )
+
     remarks = db.Column(
         db.Text,
     )
 
-    # Mandatory exit-criteria fields
-    objective = db.Column(
-        db.Text,
-        nullable=False,
-    )
-
-    success_metric = db.Column(
-        db.Text,
-        nullable=False,
-    )
-
+    # POC workflow metadata. Requirement/document content belongs in the external RFX Drive workspace.
     target_date = db.Column(
         db.Date,
         nullable=False,
     )
-
-    failure_condition = db.Column(
-        db.Text,
-        nullable=False,
-    )
-
 
     outcome = db.Column(
         db.String(20),
         nullable=True,
     )
 
-    input_drive_link = db.Column(db.Text, nullable=True)
     result_view_link = db.Column(db.Text, nullable=True)
     submission_metadata = db.Column(db.JSON, nullable=True)
     outcome_notes = db.Column(
@@ -78,7 +83,6 @@ class POCTracker(BaseModel):
 
 
     # POC creator and execution audit fields. No manager approval workflow.
-    exit_criteria = db.Column(db.Text, nullable=True)
     requested_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)
 
     submitted_by = db.Column(db.Integer, db.ForeignKey("users.user_id"), nullable=True, index=True)

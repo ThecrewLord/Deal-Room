@@ -21,6 +21,8 @@ import LoadingState from "../../components/ui/LoadingState";
 import ErrorState from "../../components/ui/ErrorState";
 import EmptyState from "../../components/ui/EmptyState";
 
+import FollowUpIntelligence from "../../components/FollowUpIntelligence";
+
 const money = (value) => {
     const n = Number(value || 0);
     if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
@@ -230,13 +232,7 @@ function BusinessDashboard({ user, role }) {
             )}
 
             <Card>
-                <div className="dashboard-card-header"><div><h2>Follow-up Intelligence</h2><p>Operational work derived from the existing FollowUp domain.</p></div></div>
-                <div className="dashboard-admin-role-list">
-                    <div className="dashboard-admin-role-row"><span>Due today</span><strong>{data?.follow_ups?.due_today ?? 0}</strong></div>
-                    <div className="dashboard-admin-role-row"><span>Overdue</span><strong>{data?.follow_ups?.overdue ?? 0}</strong></div>
-                    <div className="dashboard-admin-role-row"><span>Upcoming</span><strong>{data?.follow_ups?.upcoming ?? 0}</strong></div>
-                    <div className="dashboard-admin-role-row"><span>Completed</span><strong>{data?.follow_ups?.completed ?? 0}</strong></div>
-                </div>
+                <FollowUpIntelligence followUps={data?.follow_ups} />
             </Card>
 
             {role === ROLES.SOLUTION_ENGINEER && (

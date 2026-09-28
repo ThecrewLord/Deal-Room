@@ -3,8 +3,10 @@ from urllib.parse import urlparse
 from sqlalchemy import update
 from app.database import db
 from app.auth.authorization import AuthorizationService, AuthorizationDenied
-from app.constants.roles import SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST
+from app.constants.roles import SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST, LEADERSHIP
+from app.repositories.opportunity_repository import OpportunityRepository
 from app.constants.poc_outcome import POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED
+from app.constants.activity_types import FOLLOW_UP_COMPLETED
 from app.models.opportunity.opportunity import Opportunity
 from app.models.opportunity.poc_tracker import POCTracker
 from app.models.opportunity.opportunity_team import OpportunityTeam
@@ -24,6 +26,52 @@ class Phase2Service:
     @staticmethod
     def _poc(poc_id):
         return db.session.get(POCTracker, poc_id)
+
+    @staticmethod
+    def get_poc_team_candidates(user, role):
+        if not (
+            user
+            and user.active
+            and user.status == "APPROVED"
+            and role in {DELIVERY_MANAGER, LEADERSHIP}
+        ):
+            raise AuthorizationDenied(
+                "Only Delivery Manager or Leadership can view POC team candidates."
+            )
+
+        users_by_id = {}
+
+        for candidate_role in (DEVOPS_ENGINEER, DATA_ANALYST):
+            for candidate in OpportunityRepository.get_eligible_users(candidate_role):
+                users_by_id[candidate.user_id] = candidate
+
+        return sorted(
+            users_by_id.values(),
+            key=lambda candidate: (candidate.full_name or "").lower(),
+        )
+
+    @staticmethod
+    def get_delivery_team_candidates(user, role):
+        if not (
+            user
+            and user.active
+            and user.status == "APPROVED"
+            and role in {DELIVERY_MANAGER, LEADERSHIP}
+        ):
+            raise AuthorizationDenied(
+                "Only Delivery Manager or Leadership can view Delivery team candidates."
+            )
+
+        users_by_id = {}
+
+        for candidate_role in (DEVOPS_ENGINEER, DATA_ANALYST):
+            for candidate in OpportunityRepository.get_eligible_users(candidate_role):
+                users_by_id[candidate.user_id] = candidate
+
+        return sorted(
+            users_by_id.values(),
+            key=lambda candidate: (candidate.full_name or "").lower(),
+        )
 
     @staticmethod
     def oem_associations(oid,user,role):
@@ -339,12 +387,17 @@ class Phase2Service:
         for uid in ids:
             u=users[uid]
             if not (u.has_role(DEVOPS_ENGINEER) or u.has_role(DATA_ANALYST)): raise ValueError("POC team members may only be DevOps Engineer or Data Analyst.")
+        existing_team_count = POCTeamMember.query.filter_by(poc_id=poc_id).count()
         p.row_version += 1
         POCTeamMember.query.filter_by(poc_id=poc_id).delete(synchronize_session=False)
         for uid in ids:
             u=users[uid]; member_role=DEVOPS_ENGINEER if u.has_role(DEVOPS_ENGINEER) and not u.has_role(DATA_ANALYST) else DATA_ANALYST
             db.session.add(POCTeamMember(poc_id=poc_id,user_id=uid,role=member_role,assigned_by=user.user_id))
         ActivityService.log("POC",poc_id,"POC_ASSIGNED",f"POC team assigned: {ids}.",user.user_id,commit=False,active_role=role)
+        if p.status == "Draft" and existing_team_count == 0:
+            POCHistoryService.record_poc_history(
+                p.opportunity_id, user, "POC_STARTED"
+            )
         db.session.commit(); return POCTeamMember.query.filter_by(poc_id=poc_id).all()
 
     @staticmethod
@@ -449,35 +502,170 @@ class Phase2Service:
         return p
 
     @staticmethod
-    def complete_poc(poc_id,user,role):
-        p=Phase2Service._poc(poc_id)
+    def complete_poc(poc_id, data, user, role):
+        p = Phase2Service._poc(poc_id)
         if not p:
             return None
-        if not AuthorizationService.can_complete_poc(user,role,p):
-            raise AuthorizationDenied("Only the assigned Solution Engineer can complete a submitted POC.")
-        p.status=POC_STATUS_COMPLETED
+
+        if not AuthorizationService.can_complete_poc(user, role, p):
+            raise AuthorizationDenied(
+                "Only the assigned Solution Engineer can complete a submitted POC."
+            )
+
+        if p.status != POC_STATUS_SUBMITTED:
+            raise ValueError("Only a submitted POC can be completed.")
+
+        outcome = (data.get("outcome") or "").strip()
+
+        if outcome not in ("Success", "Failure"):
+            raise ValueError("POC outcome must be Success or Failure.")
+
+        p.outcome = outcome
+        p.status = POC_STATUS_COMPLETED
         p.row_version += 1
+
         ActivityService.log(
-            "POC", p.poc_id, "POC_COMPLETED",
-            f"POC '{p.poc_name}' marked completed after Solution Engineer review.",
-            user.user_id, commit=False, active_role=role,
+            "POC",
+            p.poc_id,
+            "POC_COMPLETED",
+            f"POC '{p.poc_name}' marked completed with outcome '{outcome}'.",
+            user.user_id,
+            commit=False,
+            active_role=role,
         )
+
         db.session.commit()
         return p
 
     @staticmethod
-    def update_negotiation(oid,data,user,role):
-        o=Phase2Service._opp(oid)
-        if not o: return None
-        if not AuthorizationService.can_manage_negotiation(user,role,o): raise AuthorizationDenied("You are not authorized to manage Negotiations.")
-        if o.lifecycle_stage!="Negotiations": raise ValueError("Negotiation context is only available at Negotiations stage.")
-        n=o.negotiation_context
-        if not n: n=NegotiationContext(opportunity_id=oid,created_by=user.user_id); db.session.add(n)
-        for k in ("nda_suggested","nda_link","msa_link","sow_link","notes"):
-            if k in data: setattr(n,k,data[k])
-        n.row_version+=1; n.updated_by=user.user_id
-        ActivityService.log("Opportunity",oid,"NEGOTIATION_CONTEXT_UPDATED","Negotiation context updated.",user.user_id,commit=False,active_role=role)
-        db.session.commit(); return n
+    def update_negotiation(oid, data, user, role):
+        # Lock the opportunity so create-vs-update remains one authoritative
+        # Negotiation context even under concurrent requests.
+        o = Opportunity.query.filter_by(opportunity_id=oid).with_for_update().first()
+        if not o:
+            return None
+
+        if not AuthorizationService.can_manage_negotiation(user, role, o):
+            raise AuthorizationDenied(
+                "You are not authorized to manage Negotiations."
+            )
+
+        if o.lifecycle_stage != "Negotiations":
+            raise ValueError(
+                "Negotiation context is only available at Negotiations stage."
+            )
+
+        allowed = {
+            "nda_suggested",
+            "nda_link",
+            "msa_link",
+            "sow_link",
+            "notes",
+            "row_version",
+        }
+        unexpected = set(data or {}) - allowed
+        if unexpected:
+            raise TransitionInvalid(
+                "Only Negotiation-owned fields may be updated."
+            )
+
+        n = NegotiationContext.query.filter_by(
+            opportunity_id=oid
+        ).with_for_update().first()
+
+        expected = data.get("row_version")
+
+        if n is None:
+            # Creation is the first version of the Negotiation aggregate.
+            # There is no previous row to compare against.
+            if expected not in (None, 0, 1):
+                raise TransitionConflict(
+                    "Negotiation context version is stale. Refresh before retrying."
+                )
+
+            n = NegotiationContext(
+                opportunity_id=oid,
+                row_version=1,
+                created_by=user.user_id,
+                updated_by=user.user_id,
+            )
+
+            for key in (
+                "nda_suggested",
+                "nda_link",
+                "msa_link",
+                "sow_link",
+                "notes",
+            ):
+                if key in data:
+                    setattr(n, key, data[key])
+
+            db.session.add(n)
+            db.session.flush()
+
+            action = "NEGOTIATION_CONTEXT_CREATED"
+
+        else:
+            try:
+                expected_version = int(expected)
+            except (TypeError, ValueError):
+                raise TransitionInvalid(
+                    "row_version is required and must be an integer for Negotiation updates."
+                )
+
+            if expected_version != n.row_version:
+                raise TransitionConflict(
+                    "Negotiation context version is stale. Refresh before retrying."
+                )
+
+            values = {
+                "updated_by": user.user_id,
+                "updated_at": datetime.utcnow(),
+                "row_version": NegotiationContext.row_version + 1,
+            }
+
+            for key in (
+                "nda_suggested",
+                "nda_link",
+                "msa_link",
+                "sow_link",
+                "notes",
+            ):
+                if key in data:
+                    values[key] = data[key]
+
+            result = db.session.execute(
+                update(NegotiationContext)
+                .where(
+                    NegotiationContext.negotiation_context_id
+                    == n.negotiation_context_id,
+                    NegotiationContext.row_version == expected_version,
+                )
+                .values(**values)
+            )
+
+            if result.rowcount != 1:
+                raise TransitionConflict(
+                    "Negotiation context version is stale. Refresh before retrying."
+                )
+
+            db.session.expire(n)
+            db.session.refresh(n)
+
+            action = "NEGOTIATION_CONTEXT_UPDATED"
+
+        ActivityService.log(
+            "Opportunity",
+            oid,
+            action,
+            "Negotiation context updated.",
+            user.user_id,
+            commit=False,
+            active_role=role,
+        )
+
+        db.session.commit()
+        return n
 
     @staticmethod
     def get_delivery(oid,user,role):
@@ -502,35 +690,144 @@ class Phase2Service:
         return p
 
     @staticmethod
-    def assign_delivery_members(project_id,member_ids,user,role):
+    def assign_delivery_members(project_id,member_ids,user,role,expected_version):
         p=db.session.get(DeliveryProject, project_id)
         if not p: return None
         if not AuthorizationService.can_manage_delivery_project(user,role,p): raise AuthorizationDenied("Only Delivery Manager or Leadership can manage project membership.")
+
+        try:
+            expected_version = int(expected_version)
+        except (TypeError, ValueError):
+            raise ValueError("expected_version is required and must be an integer.")
+
+        if expected_version != p.row_version:
+            raise TransitionConflict("Delivery Project version is stale. Refresh before retrying.")
+
         ids=list(dict.fromkeys(int(x) for x in (member_ids or [])))
         users={u.user_id:u for u in User.query.filter(User.user_id.in_(ids)).all()}
         if len(users)!=len(ids): raise ValueError("One or more members do not exist.")
         for uid in ids:
-            if not (users[uid].has_role(DEVOPS_ENGINEER) or users[uid].has_role(DATA_ANALYST)): raise ValueError("Only valid delivery team roles may be assigned.")
+            if not (users[uid].has_role(DEVOPS_ENGINEER) or users[uid].has_role(DATA_ANALYST)):
+                raise ValueError("Only valid delivery team roles may be assigned.")
+
         p.members.clear()
-        for uid in ids: db.session.add(DeliveryProjectMember(delivery_project_id=p.delivery_project_id,user_id=uid,assigned_by=user.user_id,is_suggested=False))
-        p.row_version+=1
-        ActivityService.log("DeliveryProject",p.delivery_project_id,"DELIVERY_PROJECT_MEMBERS_CHANGED","Delivery Project membership changed.",user.user_id,commit=False,active_role=role)
-        db.session.commit(); return p
+        for uid in ids:
+            db.session.add(
+                DeliveryProjectMember(
+                    delivery_project_id=p.delivery_project_id,
+                    user_id=uid,
+                    assigned_by=user.user_id,
+                    is_suggested=False,
+                )
+            )
+
+        result = db.session.execute(
+            update(DeliveryProject)
+            .where(
+                DeliveryProject.delivery_project_id == project_id,
+                DeliveryProject.row_version == expected_version,
+            )
+            .values(row_version=expected_version + 1)
+        )
+
+        if result.rowcount != 1:
+            db.session.rollback()
+            raise TransitionConflict(
+                "Delivery Project version is stale. Refresh before retrying."
+            )
+
+        db.session.expire(p)
+        db.session.refresh(p)
+
+        ActivityService.log(
+            "DeliveryProject",
+            p.delivery_project_id,
+            "DELIVERY_PROJECT_MEMBERS_CHANGED",
+            "Delivery Project membership changed.",
+            user.user_id,
+            commit=False,
+            active_role=role,
+        )
+
+        db.session.commit()
+        return p
 
     @staticmethod
-    def complete_project(project_id,user,role):
+    def complete_project(project_id,user,role,expected_version):
         p=db.session.get(DeliveryProject, project_id)
         if not p: return None
-        if not AuthorizationService.can_manage_delivery_project(user,role,p): raise AuthorizationDenied("Only Delivery Manager or Leadership can complete the project.")
-        p.status="Done"; p.completed_at=datetime.utcnow(); p.row_version+=1
-        db.session.commit(); return p
+        if not AuthorizationService.can_manage_delivery_project(user,role,p):
+            raise AuthorizationDenied("Only Delivery Manager or Leadership can complete the project.")
+
+        try:
+            expected_version = int(expected_version)
+        except (TypeError, ValueError):
+            raise ValueError("expected_version is required and must be an integer.")
+
+        if expected_version != p.row_version:
+            raise TransitionConflict("Delivery Project version is stale. Refresh before retrying.")
+
+        result = db.session.execute(
+            update(DeliveryProject)
+            .where(
+                DeliveryProject.delivery_project_id == project_id,
+                DeliveryProject.row_version == expected_version,
+                DeliveryProject.status == "Active",
+            )
+            .values(
+                status="Done",
+                completed_at=datetime.utcnow(),
+                row_version=expected_version + 1,
+            )
+        )
+
+        if result.rowcount != 1:
+            db.session.rollback()
+            raise TransitionConflict(
+                "Delivery Project version is stale or the project is already completed."
+            )
+
+        db.session.expire(p)
+        db.session.refresh(p)
+
+        ActivityService.log(
+            "DeliveryProject",
+            p.delivery_project_id,
+            "DELIVERY_PROJECT_COMPLETED",
+            "Delivery Project completed.",
+            user.user_id,
+            commit=False,
+            active_role=role,
+        )
+
+        db.session.commit()
+        return p
 
     @staticmethod
     def complete_member(member_id,user,role):
         m=db.session.get(DeliveryProjectMember, member_id)
         if not m: return None
-        if not AuthorizationService.can_update_project_member_done(user,role,m): raise AuthorizationDenied("You can only mark your own project participation as Done.")
-        m.is_done=True; m.completed_at=datetime.utcnow(); db.session.commit(); return m
+        if not AuthorizationService.can_update_project_member_done(user,role,m):
+            raise AuthorizationDenied("You can only mark your own project participation as Done.")
+
+        if m.is_done:
+            return m
+
+        m.is_done = True
+        m.completed_at = datetime.utcnow()
+
+        ActivityService.log(
+            "DeliveryProjectMember",
+            m.delivery_project_member_id,
+            "DELIVERY_PROJECT_MEMBER_COMPLETED",
+            "Delivery team member marked their participation as Done.",
+            user.user_id,
+            commit=False,
+            active_role=role,
+        )
+
+        db.session.commit()
+        return m
 
     @staticmethod
     def activities(oid,user,role):
@@ -568,8 +865,28 @@ class Phase2Service:
         db.session.add(f); db.session.flush(); ActivityService.log("FollowUp",f.follow_up_id,"FOLLOW_UP_CREATED","Follow-up created.",user.user_id,commit=False,active_role=role); db.session.commit(); return f
 
     @staticmethod
-    def complete_followup(fid,user,role):
-        f=db.session.get(FollowUp, fid)
-        if not f: return None
-        if not AuthorizationService.can_manage_followup(user,role,f): raise AuthorizationDenied("You are not authorized to complete this follow-up.")
-        f.status="Completed"; f.completed_at=datetime.utcnow(); db.session.commit(); return f
+    def complete_followup(fid, user, role):
+        f = db.session.get(FollowUp, fid)
+        if not f:
+            return None
+
+        if not AuthorizationService.can_manage_followup(user, role, f):
+            raise AuthorizationDenied(
+                "You are not authorized to complete this follow-up."
+            )
+
+        f.status = "Completed"
+        f.completed_at = datetime.utcnow()
+
+        ActivityService.log(
+            "FollowUp",
+            f.follow_up_id,
+            FOLLOW_UP_COMPLETED,
+            "Follow-up completed.",
+            user.user_id,
+            commit=False,
+            active_role=role,
+        )
+
+        db.session.commit()
+        return f

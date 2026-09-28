@@ -7,6 +7,7 @@ export const updateRfx=async(id,payload)=> (await api.put(`/v2/opportunity/${id}
 export const getNegotiations=async(id)=> (await api.get(`/v2/opportunity/${id}/negotiations`)).data;
 export const updateNegotiations=async(id,payload)=> (await api.put(`/v2/opportunity/${id}/negotiations`,payload)).data;
 export const getDeliveryProject=async(id)=> (await api.get(`/v2/opportunity/${id}/delivery-project`)).data;
+export const getDeliveryTeamCandidates=async()=> (await api.get("/v2/delivery-team-candidates")).data;
 export const setDeliveryMembers=async(id,member_ids)=> (await api.put(`/v2/delivery-project/${id}/members`,{member_ids})).data;
 export const completeDeliveryProject=async(id)=> (await api.post(`/v2/delivery-project/${id}/complete`)).data;
 export const completeDeliveryMember=async(id)=> (await api.post(`/v2/delivery-project-members/${id}/done`)).data;
@@ -17,3 +18,8 @@ export const addFollowUp=async(id,payload)=> (await api.post(`/v2/opportunity/${
 export const completeFollowUp=async(id)=> (await api.post(`/v2/follow-ups/${id}/complete`)).data;
 export const assignPocTeam=async(id,member_ids)=> (await api.post(`/v2/pocs/${id}/team`,{member_ids})).data;
 export const submitPocV2=async(id,payload)=> (await api.post(`/v2/pocs/${id}/submit`,payload)).data;
+export const completePocV2=async(id,payload)=> (await api.post(`/v2/pocs/${id}/complete`,payload)).data;
+export const getPocsV2ByOpportunity=async(id)=> (await api.get(`/v2/opportunity/${id}/pocs`)).data;
+export const getPocHistoryV2=async(id)=> (await api.get(`/v2/opportunity/${id}/poc-history`)).data;
+export const getPocTeamCandidates=async()=> (await api.get("/v2/poc-team-candidates")).data;
+export const requestNewPocV2=async(id,payload)=> (await api.post(`/v2/opportunity/${id}/pocs/request-new`,payload)).data;

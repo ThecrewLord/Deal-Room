@@ -158,6 +158,27 @@ class LifecycleTransitionService:
         return opportunity
 
     @staticmethod
+    def _require_successful_poc(opportunity):
+        from app.models.opportunity.poc_tracker import POCTracker
+
+        latest_poc = (
+            POCTracker.query
+            .filter_by(opportunity_id=opportunity.opportunity_id)
+            .order_by(POCTracker.created_at.desc())
+            .first()
+        )
+
+        if not latest_poc:
+            raise TransitionInvalid(
+                "A completed successful POC is required before Negotiations."
+            )
+
+        if latest_poc.status != "Completed" or latest_poc.outcome != "Success":
+            raise TransitionInvalid(
+                "Negotiations require the latest POC to be completed successfully."
+            )
+
+    @staticmethod
     def transition(opportunity_id, target_stage, expected_version, user, active_role, *, remarks=None, precondition=None):
         if target_stage not in LIFECYCLE_STAGES:
             raise TransitionInvalid("Invalid lifecycle stage.")
@@ -186,14 +207,19 @@ class LifecycleTransitionService:
                 opportunity, lifecycle_stage=target_stage, outcome="Open", operational_status="Active", sync_legacy=True
             )
         elif current == "POC" and target_stage == "Negotiations":
-            # Negotiations is an explicit technical decision by the assigned
-            # Solution Engineer. POC submission/completion/result artifacts
-            # must not implicitly drive the lifecycle transition.
+            # Negotiations requires an explicitly completed successful POC.
+            LifecycleTransitionService._require_successful_poc(opportunity)
+
             validator = precondition or LifecycleTransitionService._PRECONDITIONS.get((current, target_stage))
             if validator:
                 validator(opportunity)
+
             LifecycleTransitionService._touch_state(
-                opportunity, lifecycle_stage=target_stage, outcome="Open", operational_status="Active", sync_legacy=True
+                opportunity,
+                lifecycle_stage=target_stage,
+                outcome="Open",
+                operational_status="Active",
+                sync_legacy=True,
             )
         else:
             validator = precondition or LifecycleTransitionService._PRECONDITIONS.get((current, target_stage))
@@ -610,7 +636,14 @@ class LifecycleTransitionService:
             raise AuthorizationDenied("This active role cannot change operational status.")
         LifecycleTransitionService._check_expected_version(opportunity, expected_version)
         LifecycleTransitionService._touch_state(opportunity, operational_status=target_status, sync_legacy=True)
-        ActivityService.log("Opportunity", opportunity.opportunity_id, "OPPORTUNITY_STATUS_CHANGED",
-                            f"Operational status changed to '{target_status}'.", user.user_id, commit=False)
+        ActivityService.log(
+            "Opportunity",
+            opportunity.opportunity_id,
+            "OPPORTUNITY_STATUS_CHANGED",
+            f"Operational status changed to '{target_status}'.",
+            user.user_id,
+            commit=False,
+            active_role=active_role,
+        )
         db.session.commit()
         return opportunity

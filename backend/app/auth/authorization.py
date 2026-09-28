@@ -203,7 +203,11 @@ class AuthorizationService:
         )
 
         if active_role in AuthorizationService.IC_ROLES:
-            return query.filter(or_(participation, own_lead))
+            assigned_to_user = (
+                (Opportunity.sales_owner_id == user.user_id)
+                & (active_role == SALES_EXECUTIVE)
+            )
+            return query.filter(or_(participation, own_lead, assigned_to_user))
 
         if active_role == SALES_MANAGER:
             # Sales scope is the pre-handoff portion of the pipeline plus any
@@ -239,10 +243,35 @@ class AuthorizationService:
             )
             return query.filter(or_(technical_team, pre_sales_stage, awaiting_assignment, own_lead))
 
-        # Delivery Manager / DevOps / Data Analyst see opportunities they
-        # participate in, plus their own draft Lead.
-        if active_role in {DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST}:
-            return query.filter(or_(participation, own_lead))
+        # Delivery Manager needs visibility before a POC team exists so they
+        # can perform the first POC team assignment. Delivery Managers therefore
+        # see the technical/delivery portion of the lifecycle, while DevOps and
+        # Data Analysts remain limited to opportunities they participate in.
+        if active_role == DELIVERY_MANAGER:
+            delivery_scope = Opportunity.lifecycle_stage.in_(
+                ["POC", "Negotiations", "Delivery"]
+            )
+            return query.filter(or_(participation, delivery_scope, own_lead))
+
+        if active_role in {DEVOPS_ENGINEER, DATA_ANALYST}:
+            poc_team_participation = exists().where(
+                (POCTeamMember.poc_id == POCTracker.poc_id)
+                & (POCTeamMember.user_id == user.user_id)
+                & (POCTracker.opportunity_id == Opportunity.opportunity_id)
+            )
+            delivery_team_participation = exists().where(
+                (DeliveryProjectMember.delivery_project_id == DeliveryProject.delivery_project_id)
+                & (DeliveryProjectMember.user_id == user.user_id)
+                & (DeliveryProject.opportunity_id == Opportunity.opportunity_id)
+            )
+            return query.filter(
+                or_(
+                    participation,
+                    poc_team_participation,
+                    delivery_team_participation,
+                    own_lead,
+                )
+            )
 
         return query.filter(false())
 
@@ -292,17 +321,29 @@ class AuthorizationService:
 
     @staticmethod
     def can_manage_rfx(user, active_role, opportunity):
-        # RFX is technical ownership. A Solution Engineer must both hold the
-        # active SE role and be assigned to this specific opportunity.
+        # RFX can be managed by the Sales Executive who owns the opportunity
+        # or by the assigned Solution Engineer. Other roles remain read-only.
+        is_sales_owner = (
+            active_role == SALES_EXECUTIVE
+            and opportunity.sales_owner_id == user.user_id
+        )
+        is_assigned_se = (
+            active_role == SOLUTION_ENGINEER
+            and AuthorizationService.is_assigned_role(
+                user, opportunity, SOLUTION_ENGINEER
+            )
+        )
+
         return bool(
             user
             and opportunity
             and opportunity.operational_status != "Closed"
             and opportunity.outcome == "Open"
             and opportunity.lifecycle_stage == "RFX"
-            and active_role == SOLUTION_ENGINEER
-            and AuthorizationService.is_assigned_role(user, opportunity, SOLUTION_ENGINEER)
-            and AuthorizationService.can_view_opportunity(user, active_role, opportunity)
+            and (is_sales_owner or is_assigned_se)
+            and AuthorizationService.can_view_opportunity(
+                user, active_role, opportunity
+            )
         )
 
     @staticmethod
@@ -354,9 +395,18 @@ class AuthorizationService:
 
     @staticmethod
     def can_update_project_member_done(user, active_role, member):
-        return bool(member and member.user_id == user.user_id and
-                    member.project and member.project.status == "Active" and
-                    AuthorizationService.can_view_opportunity(user, active_role, member.project.opportunity))
+        return bool(
+            member
+            and active_role in {DEVOPS_ENGINEER, DATA_ANALYST}
+            and member.user_id == user.user_id
+            and member.project
+            and member.project.status == "Active"
+            and AuthorizationService.can_view_opportunity(
+                user,
+                active_role,
+                member.project.opportunity,
+            )
+        )
 
     @staticmethod
     def can_create_activity(user, active_role, opportunity):
@@ -403,21 +453,72 @@ class AuthorizationService:
         if active_role == ADMIN:
             return entity_type.lower() in {"admin", "user", "access"}
 
-        if entity_type.lower() == "opportunity":
+        entity_type = entity_type.lower()
+
+        if entity_type == "opportunity":
             opportunity = db.session.get(Opportunity, entity_id)
             return AuthorizationService.can_view_opportunity(user, active_role, opportunity)
 
-        if entity_type.lower() == "account":
+        if entity_type == "account":
             account = db.session.get(Account, entity_id)
             return AuthorizationService.can_view_account(user, active_role, account)
 
-        if entity_type.lower() == "stakeholder":
+        if entity_type == "stakeholder":
             stakeholder = db.session.get(Stakeholder, entity_id)
             return AuthorizationService.can_view_stakeholder(user, active_role, stakeholder)
 
-        if entity_type.lower() in {"poc", "poctracker"}:
+        if entity_type in {"poc", "poctracker"}:
             poc = db.session.get(POCTracker, entity_id)
             return AuthorizationService.can_view_poc(user, active_role, poc)
+
+        if entity_type == "activity":
+            activity = db.session.get(Activity, entity_id)
+            return bool(
+                activity
+                and AuthorizationService.can_view_opportunity(
+                    user,
+                    active_role,
+                    activity.opportunity,
+                )
+            )
+
+        if entity_type == "followup":
+            followup = db.session.get(FollowUp, entity_id)
+            return bool(
+                followup
+                and AuthorizationService.can_view_opportunity(
+                    user,
+                    active_role,
+                    followup.opportunity,
+                )
+            )
+
+        if entity_type == "oem":
+            oem = db.session.get(OEMPartner, entity_id)
+            return AuthorizationService.can_view_oem(user, active_role, oem)
+
+        if entity_type == "deliveryproject":
+            project = db.session.get(DeliveryProject, entity_id)
+            return bool(
+                project
+                and AuthorizationService.can_view_opportunity(
+                    user,
+                    active_role,
+                    project.opportunity,
+                )
+            )
+
+        if entity_type == "deliveryprojectmember":
+            member = db.session.get(DeliveryProjectMember, entity_id)
+            return bool(
+                member
+                and member.project
+                and AuthorizationService.can_view_opportunity(
+                    user,
+                    active_role,
+                    member.project.opportunity,
+                )
+            )
 
         return False
 

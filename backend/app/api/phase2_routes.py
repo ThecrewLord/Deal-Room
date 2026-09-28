@@ -4,6 +4,7 @@ from app.auth.authorization import phase2_auth_required, AuthorizationService
 from app.services.phase2_service import Phase2Service
 from app.services.lifecycle_transition_service import TransitionConflict, TransitionInvalid
 from app.services.poc_report_service import POCReportService
+from app.services.poc_history_service import POCHistoryService
 from app.models.system.tag import Tag
 
 phase2_bp = Blueprint("phase2", __name__, url_prefix="/api/v2")
@@ -33,11 +34,18 @@ def _poc(p):
         "outcome": p.outcome,
         "outcome_notes": p.outcome_notes,
         "requested_by": p.requested_by,
-        "submitted_by": p.submitted_by,
+        "submitted_by": p.submitter.full_name if p.submitter else p.submitted_by,
         "submitted_at": p.submitted_at.isoformat() if p.submitted_at else None,
         "row_version": p.row_version,
         "permission_disclaimer": "Ensure the assigned team has the required Google Drive access. The application does not verify Drive permissions.",
-        "team": [{"user_id": m.user_id, "role": m.role} for m in p.team_members],
+        "team": [
+            {
+                "user_id": m.user_id,
+                "full_name": m.user.full_name if m.user else None,
+                "role": m.role,
+            }
+            for m in p.team_members
+        ],
     }
 
 
@@ -59,6 +67,8 @@ def _project(p):
         "opportunity_id": p.opportunity_id,
         "account_id": p.account_id,
         "manager_id": p.manager_id,
+        "manager_name": p.manager.full_name if p.manager else None,
+        "manager_email": p.manager.email if p.manager else None,
         "status": p.status,
         "completed_at": p.completed_at.isoformat() if p.completed_at else None,
         "row_version": p.row_version,
@@ -66,6 +76,9 @@ def _project(p):
             {
                 "delivery_project_member_id": m.delivery_project_member_id,
                 "user_id": m.user_id,
+                "full_name": m.user.full_name if m.user else None,
+                "email": m.user.email if m.user else None,
+                "roles": m.user.role_names() if m.user else [],
                 "is_done": m.is_done,
                 "is_suggested": m.is_suggested,
                 "completed_at": m.completed_at.isoformat() if m.completed_at else None,
@@ -191,6 +204,48 @@ def download_poc(poc_id):
         return jsonify({"message": str(exc)}), 403
 
 
+@phase2_bp.get("/poc-team-candidates")
+@phase2_auth_required
+def get_poc_team_candidates():
+    def action():
+        users = Phase2Service.get_poc_team_candidates(
+            g.auth_user,
+            g.active_role,
+        )
+        return jsonify([
+            {
+                "user_id": user.user_id,
+                "full_name": user.full_name,
+                "email": user.email,
+                "roles": user.role_names(),
+            }
+            for user in users
+        ])
+
+    return err(action)
+
+
+@phase2_bp.get("/delivery-team-candidates")
+@phase2_auth_required
+def get_delivery_team_candidates():
+    def action():
+        users = Phase2Service.get_delivery_team_candidates(
+            g.auth_user,
+            g.active_role,
+        )
+        return jsonify([
+            {
+                "user_id": user.user_id,
+                "full_name": user.full_name,
+                "email": user.email,
+                "roles": user.role_names(),
+            }
+            for user in users
+        ])
+
+    return err(action)
+
+
 @phase2_bp.post("/pocs/<int:poc_id>/team")
 @phase2_auth_required
 def assign_poc_team(poc_id):
@@ -217,11 +272,42 @@ def submit_poc(poc_id):
 @phase2_auth_required
 def complete_poc(poc_id):
     def action():
-        p = Phase2Service.complete_poc(poc_id, g.auth_user, g.active_role)
+        p = Phase2Service.complete_poc(
+            poc_id,
+            request.get_json() or {},
+            g.auth_user,
+            g.active_role,
+        )
         if not p:
             return jsonify({"message": "POC not found"}), 404
         return jsonify(_poc(p))
     return err(action)
+
+
+@phase2_bp.get("/opportunity/<int:oid>/poc-history")
+@phase2_auth_required
+def get_poc_history(oid):
+    opportunity = Phase2Service._opp(oid)
+    if not opportunity or not AuthorizationService.can_view_opportunity(
+        g.auth_user, g.active_role, opportunity
+    ):
+        return jsonify({"message": "Opportunity not found"}), 404
+
+    history = POCHistoryService.get_for_opportunity(oid)
+    return jsonify([
+        {
+            "history_id": entry.history_id,
+            "opportunity_id": entry.opportunity_id,
+            "event_type": entry.event_type,
+            "reason": entry.reason,
+            "created_at": entry.created_at.isoformat() if entry.created_at else None,
+            "actor_id": entry.actor_id,
+            "actor": {
+                "full_name": entry.actor.full_name if entry.actor else None,
+            },
+        }
+        for entry in history
+    ])
 
 
 @phase2_bp.get("/opportunity/<int:oid>/negotiations")
@@ -252,13 +338,34 @@ def get_delivery(oid):
 @phase2_bp.put("/delivery-project/<int:pid>/members")
 @phase2_auth_required
 def set_members(pid):
-    return err(lambda: jsonify(_project(Phase2Service.assign_delivery_members(pid, (request.get_json() or {}).get("member_ids", []), g.auth_user, g.active_role))))
+    def action():
+        data = request.get_json() or {}
+        project = Phase2Service.assign_delivery_members(
+            pid,
+            data.get("member_ids", []),
+            g.auth_user,
+            g.active_role,
+            data.get("expected_version"),
+        )
+        return jsonify(_project(project))
+
+    return err(action)
 
 
 @phase2_bp.post("/delivery-project/<int:pid>/complete")
 @phase2_auth_required
 def complete_project(pid):
-    return err(lambda: jsonify(_project(Phase2Service.complete_project(pid, g.auth_user, g.active_role))))
+    def action():
+        data = request.get_json() or {}
+        project = Phase2Service.complete_project(
+            pid,
+            g.auth_user,
+            g.active_role,
+            data.get("expected_version"),
+        )
+        return jsonify(_project(project))
+
+    return err(action)
 
 
 @phase2_bp.post("/delivery-project-members/<int:mid>/done")

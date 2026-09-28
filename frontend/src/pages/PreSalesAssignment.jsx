@@ -46,7 +46,18 @@ export default function PreSalesAssignment() {
     const load = async () => { try { setError(""); const [pending, engineers] = await Promise.all([getPendingPreSalesAssignments(), getEligibleSolutionEngineers()]); setQueue(pending || []); setSolutionEngineers(engineers || []); } catch (err) { setError(err?.response?.data?.message || "Unable to load technical assignments."); } };
     useEffect(() => { if (activeRole === ROLES.PRE_SALES_MANAGER) load(); }, [activeRole]);
     const update = (id, field, values) => setSelection(p => ({ ...p, [id]: { ...(p[id] || {}), [field]: values } }));
-    const finalize = async o => { const current = selection[o.opportunity_id] || {}; const solution_engineer_ids = (current.solution_engineer_ids || []).map(Number); if (!solution_engineer_ids.length) { setError("Select at least one Solution Engineer before finalizing."); return; } try { setBusy(o.opportunity_id); setError(""); await finalizePreSalesAssignment(o.opportunity_id, { solution_engineer_ids, delivery_ids: [], updated_at: o.updated_at }); await load(); setSelection(p => { const n = { ...p }; delete n[o.opportunity_id]; return n; }); } catch (err) { setError(err?.response?.data?.message || "Unable to finalize technical assignment."); } finally { setBusy(null); } };
+    const finalize = async o => { const current = selection[o.opportunity_id] || {}; const solution_engineer_ids = (current.solution_engineer_ids || []).map(Number);
+if (solution_engineer_ids.length !== 1) {
+    setError("Select exactly one Solution Engineer before finalizing.");
+    return;
+}
+try {
+    setBusy(o.opportunity_id);
+    setError("");
+    await finalizePreSalesAssignment(o.opportunity_id, {
+        solution_engineer_id: solution_engineer_ids[0],
+        row_version: o.row_version,
+    }); await load(); setSelection(p => { const n = { ...p }; delete n[o.opportunity_id]; return n; }); } catch (err) { setError(err?.response?.data?.message || "Unable to finalize technical assignment."); } finally { setBusy(null); } };
     const filtered = useMemo(() => { const q = search.trim().toLowerCase(); return queue.filter(o => !q || `${o.opportunity_name} ${o.account_name || ""} ${o.sales_owner?.full_name || ""}`.toLowerCase().includes(q)); }, [queue, search]);
     const assignedCount = Object.values(selection).filter(x => (x.solution_engineer_ids || []).length && (x.delivery_ids || []).length).length;
     const totalValue = queue.reduce((sum, x) => sum + Number(x.estimated_value || 0), 0);
@@ -60,12 +71,12 @@ export default function PreSalesAssignment() {
             <KpiCard icon={CheckCircle2} label="Ready to finalize" value={assignedCount} description="Complete technical teams selected" tone="success" className="psm-kpi-success" />
         </div>
         <Card padding={false} className="psm-assignment-shell">
-            <div className="psm-assignment-toolbar"><div><div className="psm-eyebrow">WORK QUEUE</div><h2>Approved opportunities awaiting technical ownership</h2><p>Assign one or more technical resources, then finalize the handoff.</p></div><label className="ui-search"><Search size={14}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search opportunity, account or sales owner…" /></label></div>
+            <div className="psm-assignment-toolbar"><div><div className="psm-eyebrow">WORK QUEUE</div><h2>Approved opportunities awaiting technical ownership</h2><p>Assign a Solution Engineer, then finalize the handoff.</p></div><label className="ui-search"><Search size={14}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search opportunity, account or sales owner…" /></label></div>
             <div className="psm-assignment-list">
                 {filtered.map(o => { const current = selection[o.opportunity_id] || {}; const selectedTotal = (current.solution_engineer_ids || []).length; const ready = selectedTotal > 0; return <article key={o.opportunity_id} className={`psm-assignment-card-v2 ${ready ? "ready" : ""}`}>
                     <div className="psm-assignment-topline"><div><button className="record-link-title" onClick={() => navigate(`/opportunity/${o.opportunity_id}`)}>{o.opportunity_name}</button><p>{o.account_name || `Account #${o.account_id}`} <span>•</span> Sales owner: {o.sales_owner?.full_name || "Unassigned"}</p></div><StageBadge stage={o.current_stage?.stage_name}/></div>
                     <div className="psm-deal-summary"><div><span>Deal value</span><strong>{money(o.estimated_value)}</strong></div><div><span>Probability</span><strong>{o.probability ?? 0}%</strong></div><div><span>Expected close</span><strong>{o.expected_close_date || "—"}</strong></div><div><span>Team selected</span><strong>{selectedTotal}</strong></div></div>
-                    <div className="psm-resource-grid"><ResourcePicker label="Solution Engineer(s)" users={solutionEngineers} selected={current.solution_engineer_ids || []} onChange={v => update(o.opportunity_id, "solution_engineer_ids", v)} /></div>
+                    <div className="psm-resource-grid"><ResourcePicker label="Solution Engineer" users={solutionEngineers} selected={current.solution_engineer_ids || []} onChange={v => update(o.opportunity_id, "solution_engineer_ids", v)} /></div>
                     <div className="psm-assignment-footer"><span className={ready ? "ready-text" : ""}>{ready ? <><CheckCircle2 size={14}/> Technical team complete</> : <><Users size={14}/> Select at least one Solution Engineer</>}</span><Button disabled={busy === o.opportunity_id || !ready} onClick={() => finalize(o)}><CheckCircle2 size={14}/>{busy === o.opportunity_id ? "Finalizing…" : "Finalize Assignment"}</Button></div>
                 </article>; })}
                 {!filtered.length && <EmptyState message={queue.length ? "No assignments match your search." : "No opportunities are awaiting technical assignment."}/>} 

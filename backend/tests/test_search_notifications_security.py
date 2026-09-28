@@ -105,7 +105,8 @@ def test_activity_endpoint_rejects_unknown_entities():
     ).read()
 
     assert "return False" in source
-    assert 'entity_type.lower() == "opportunity"' in source
+    assert "entity_type = entity_type.lower()" in source
+    assert 'if entity_type == "opportunity"' in source
 
 
 def test_frontend_search_calls_backend():

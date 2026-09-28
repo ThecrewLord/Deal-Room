@@ -248,14 +248,104 @@ class DashboardRepository:
     @staticmethod
     def get_follow_up_summary(user, active_role):
         from app.models.phase2 import FollowUp
+
         today = datetime.utcnow().date()
         ids = DashboardRepository._opportunity_ids(user, active_role)
-        q = FollowUp.query.filter(FollowUp.opportunity_id.in_(ids))
+
+        q = FollowUp.query.filter(
+            FollowUp.opportunity_id.in_(ids)
+        )
+
+        due_today = q.filter(
+            FollowUp.due_date == today,
+            FollowUp.status != "Completed",
+        ).count()
+
+        overdue = q.filter(
+            FollowUp.due_date < today,
+            FollowUp.status != "Completed",
+        ).count()
+
+        upcoming = q.filter(
+            FollowUp.due_date > today,
+            FollowUp.due_date <= today + timedelta(days=7),
+            FollowUp.status != "Completed",
+        ).count()
+
+        completed = q.filter(
+            FollowUp.status == "Completed"
+        ).count()
+
+        follow_ups = (
+            q.order_by(
+                FollowUp.due_date.asc(),
+                FollowUp.created_at.desc(),
+            )
+            .limit(10)
+            .all()
+        )
+
+        items = []
+
+        for follow_up in follow_ups:
+            if follow_up.status == "Completed":
+                status = "completed"
+                due_label = "Completed"
+            elif follow_up.due_date < today:
+                status = "overdue"
+                days_overdue = (today - follow_up.due_date).days
+                due_label = (
+                    "1 day overdue"
+                    if days_overdue == 1
+                    else f"{days_overdue} days overdue"
+                )
+            elif follow_up.due_date == today:
+                status = "today"
+                due_label = "Today"
+            else:
+                status = "upcoming"
+                days_until = (follow_up.due_date - today).days
+                due_label = (
+                    "Tomorrow"
+                    if days_until == 1
+                    else f"In {days_until} days"
+                )
+
+            opportunity = follow_up.opportunity
+
+            items.append({
+                "id": follow_up.follow_up_id,
+                "opportunity": (
+                    opportunity.opportunity_name
+                    if opportunity
+                    else f"Opportunity #{follow_up.opportunity_id}"
+                ),
+                "account": (
+                    getattr(opportunity.account, "account_name", None)
+                    if opportunity and opportunity.account
+                    else ""
+                ),
+                "action": follow_up.description,
+                "action_detail": "",
+                "stakeholder": "",
+                "stakeholder_role": "",
+                "stage": (
+                    opportunity.lifecycle_stage
+                    if opportunity
+                    else "-"
+                ),
+                "due_date": follow_up.due_date.isoformat(),
+                "due_label": due_label,
+                "status": status,
+                "priority": "Medium",
+            })
+
         return {
-            "due_today": q.filter(FollowUp.due_date == today, FollowUp.status != "Completed").count(),
-            "overdue": q.filter(FollowUp.due_date < today, FollowUp.status != "Completed").count(),
-            "upcoming": q.filter(FollowUp.due_date > today, FollowUp.status != "Completed").count(),
-            "completed": q.filter(FollowUp.status == "Completed").count(),
+            "due_today": due_today,
+            "overdue": overdue,
+            "upcoming": upcoming,
+            "completed": completed,
+            "items": items,
         }
 
     @staticmethod
@@ -277,7 +367,7 @@ class DashboardRepository:
             projects = DeliveryProject.query.filter(DeliveryProject.manager_id == user.user_id)
             summary.update({
                 "active_delivery_projects": projects.filter(DeliveryProject.status == "Active").count(),
-                "completed_delivery_projects": projects.filter(DeliveryProject.status == "Completed").count(),
+                "completed_delivery_projects": projects.filter(DeliveryProject.status == "Done").count(),
             })
         else:
             ids = DashboardRepository._opportunity_ids(user, active_role)

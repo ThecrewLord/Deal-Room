@@ -62,7 +62,6 @@ export default function Opportunities() {
         job_title: "",
         email: "",
         phone: "",
-        company: "",
         tags: [],
     });
 
@@ -121,6 +120,16 @@ export default function Opportunities() {
                 return;
             }
 
+            if (
+                stakeholder.phone &&
+                !/^\d{10}$/.test(stakeholder.phone)
+            ) {
+                setError("Phone number must contain exactly 10 digits.");
+                setCreating(false);
+                setCreateStep(2);
+                return;
+            }
+
             const created = await createOpportunity({
                 ...form,
                 account_id: Number(accountId),
@@ -150,7 +159,6 @@ export default function Opportunities() {
                 job_title: "",
                 email: "",
                 phone: "",
-                company: "",
                 tags: [],
             });
 
@@ -642,30 +650,22 @@ export default function Opportunities() {
                                         Phone
 
                                         <input
+                                            type="tel"
+                                            inputMode="numeric"
+                                            maxLength={10}
+                                            placeholder="10-digit phone number"
                                             value={stakeholder.phone}
                                             onChange={(e) =>
                                                 setStakeholder({
                                                     ...stakeholder,
-                                                    phone: e.target.value,
+                                                    phone: e.target.value
+                                                        .replace(/\D/g, "")
+                                                        .slice(0, 10),
                                                 })
                                             }
                                         />
                                     </label>
 
-                                    <label className="field-label">
-                                        Company
-
-                                        <input
-                                            value={stakeholder.company}
-                                            onChange={(e) =>
-                                                setStakeholder({
-                                                    ...stakeholder,
-                                                    company:
-                                                        e.target.value,
-                                                })
-                                            }
-                                        />
-                                    </label>
 
                                 </div>
 
@@ -806,10 +806,7 @@ export default function Opportunities() {
                                         {stakeholder.email || "—"}
                                     </p>
 
-                                    <p>
-                                        <strong>Company:</strong>{" "}
-                                        {stakeholder.company || "—"}
-                                    </p>
+                                    
 
                                     <p>
                                         <strong>Tags:</strong>{" "}

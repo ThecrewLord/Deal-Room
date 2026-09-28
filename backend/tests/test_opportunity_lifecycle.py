@@ -25,12 +25,28 @@ from app.models.opportunity.opportunity import Opportunity
 from app.models.opportunity.opportunity_team import OpportunityTeam
 from app.models.opportunity.poc_tracker import POCTracker
 from app.models.opportunity.stage_master import StageMaster
-from app.models.phase2 import RFXContext
+from app.models.phase2 import (
+    RFXContext,
+    DeliveryProject,
+    DeliveryProjectMember,
+    Activity,
+    FollowUp,
+)
+from app.models.system.audit_log import AuditLog
+from app.repositories.dashboard_repository import DashboardRepository
+from app.services.activity_service import ActivityService
 from app.models.opportunity.stakeholder import Stakeholder
 from app.schemas.opportunity_schema import OpportunityCreateSchema, OpportunityReviewSchema
 from app.services.lifecycle_transition_service import LifecycleTransitionService, TransitionConflict, TransitionInvalid
 from app.services.opportunity_service import OpportunityService
+from app.services.phase2_service import Phase2Service
 from app.services.opportunity_value_service import OpportunityValueService
+from app.constants.activity_types import (
+    OEM_CREATED,
+    OEM_UPDATED,
+    OEM_DELETED,
+)
+from app.services.oem_service import OEMService
 
 
 @pytest.fixture()
@@ -82,6 +98,219 @@ def make_lead(app, role=SALES_EXECUTIVE, name=None):
         db.session.add(Stakeholder(opportunity_id=opp.opportunity_id, stakeholder_name="Decision Maker"))
         db.session.commit()
         return opp.opportunity_id
+
+
+def test_phase12_activity_creation_is_audited_with_active_role(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase12 Activity Audit")
+
+    with app.app_context():
+        actor = user(app, SALES_EXECUTIVE)
+
+        activity = Phase2Service.add_activity(
+            oid,
+            {
+                "activity_type": "call",
+                "summary": "Customer discovery call completed.",
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        business_activity = db.session.get(Activity, activity.activity_id)
+        assert business_activity is not None
+
+        audit = AuditLog.query.filter_by(
+            entity_type="Activity",
+            entity_id=activity.activity_id,
+            action="ACTIVITY_CREATED",
+        ).one()
+
+        assert audit.performed_by == actor.user_id
+        assert audit.actor_active_role == SALES_EXECUTIVE
+        assert audit.description == "Business activity recorded."
+
+
+def test_phase12_followup_creation_and_completion_are_audited(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase12 FollowUp Audit")
+
+    with app.app_context():
+        actor = user(app, SALES_EXECUTIVE)
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": actor.user_id,
+                "description": "Follow up with customer.",
+                "due_date": date.today(),
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        created_audit = AuditLog.query.filter_by(
+            entity_type="FollowUp",
+            entity_id=followup.follow_up_id,
+            action="FOLLOW_UP_CREATED",
+        ).one()
+
+        assert created_audit.performed_by == actor.user_id
+        assert created_audit.actor_active_role == SALES_EXECUTIVE
+
+        completed = Phase2Service.complete_followup(
+            followup.follow_up_id,
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        assert completed.status == "Completed"
+        assert completed.completed_at is not None
+
+        completed_audit = AuditLog.query.filter_by(
+            entity_type="FollowUp",
+            entity_id=followup.follow_up_id,
+            action="FOLLOW_UP_COMPLETED",
+        ).one()
+
+        assert completed_audit.performed_by == actor.user_id
+        assert completed_audit.actor_active_role == SALES_EXECUTIVE
+
+
+def test_phase12_activity_and_followup_history_follow_opportunity_visibility(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase12 Entity Visibility")
+
+    with app.app_context():
+        actor = user(app, SALES_EXECUTIVE)
+
+        activity = Phase2Service.add_activity(
+            oid,
+            {
+                "activity_type": "note",
+                "summary": "Visibility test activity.",
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": actor.user_id,
+                "description": "Visibility test follow-up.",
+                "due_date": date.today(),
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        assert AuthorizationService.can_view_activity(
+            actor,
+            SALES_EXECUTIVE,
+            "Activity",
+            activity.activity_id,
+        )
+
+        assert AuthorizationService.can_view_activity(
+            actor,
+            SALES_EXECUTIVE,
+            "FollowUp",
+            followup.follow_up_id,
+        )
+
+        assert AuthorizationService.can_view_activity(
+            actor,
+            SALES_EXECUTIVE,
+            "Activity",
+            999999,
+        ) is False
+
+        assert AuthorizationService.can_view_activity(
+            actor,
+            SALES_EXECUTIVE,
+            "FollowUp",
+            999999,
+        ) is False
+
+
+def test_phase12_oem_create_update_delete_are_audited_with_active_role(app):
+    with app.app_context():
+        actor = user(app, LEADERSHIP)
+
+        # Use the real OEM service for create/update/delete audit behavior.
+
+        created = OEMService.create(
+            {
+                "account_id": app.config["P1_ACCOUNT"],
+                "partner_name": "Phase12 OEM",
+                "product_name": "Phase12 Product",
+            },
+            actor,
+            LEADERSHIP,
+        )
+
+        OEMService.update(
+            created.oem_partner_id,
+            {
+                "partner_name": "Phase12 OEM Updated",
+            },
+            actor,
+            LEADERSHIP,
+        )
+
+        OEMService.delete(
+            created.oem_partner_id,
+            actor,
+            LEADERSHIP,
+        )
+
+        events = AuditLog.query.filter(
+            AuditLog.entity_type == "OEM",
+            AuditLog.entity_id == created.oem_partner_id,
+            AuditLog.action.in_(
+                [OEM_CREATED, OEM_UPDATED, OEM_DELETED]
+            ),
+        ).order_by(AuditLog.audit_log_id.asc()).all()
+
+        assert [event.action for event in events] == [
+            OEM_CREATED,
+            OEM_UPDATED,
+            OEM_DELETED,
+        ]
+
+        assert all(
+            event.performed_by == actor.user_id
+            for event in events
+        )
+
+        assert all(
+            event.actor_active_role == LEADERSHIP
+            for event in events
+        )
+
+
+def test_phase12_activity_history_rejects_unknown_entity(app):
+    with app.app_context():
+        actor = user(app, SALES_EXECUTIVE)
+
+        assert ActivityService.get_history(
+            "Activity",
+            999999,
+            actor,
+            SALES_EXECUTIVE,
+        ) is None
+
+        assert ActivityService.get_history(
+            "FollowUp",
+            999999,
+            actor,
+            SALES_EXECUTIVE,
+        ) is None
+
+        assert ActivityService.get_history(
+            "SomeUnsupportedEntity",
+            999999,
+            actor,
+            SALES_EXECUTIVE,
+        ) is None
 
 
 def submit(app, opportunity_id, role=SALES_EXECUTIVE):
@@ -447,6 +676,19 @@ def test_group1_poc_to_negotiations_is_explicit_and_assigned_se_only(app):
         LifecycleTransitionService.transition(oid, "POC", opp.row_version, se, SOLUTION_ENGINEER)
         opp = Opportunity.query.get(oid)
 
+        db.session.add(POCTracker(
+            opportunity_id=oid,
+            poc_name="Certification POC",
+            target_date=date.today(),
+            status="Completed",
+            outcome="Success",
+            result_view_link="https://drive.google.com/poc-result",
+            requested_by=se.user_id,
+            submitted_by=se.user_id,
+        ))
+        db.session.commit()
+        opp = Opportunity.query.get(oid)
+
         # A POC artifact does not automatically move the lifecycle. The
         # explicit SE action is the only thing that enters Negotiations.
         with pytest.raises(AuthorizationDenied):
@@ -511,7 +753,8 @@ def test_group1_stage_skipping_rejected(app, current, target):
             )
             opp = Opportunity.query.get(oid)
 
-        with pytest.raises(TransitionInvalid):
+        expected_error = AuthorizationDenied if target == "Delivery" else TransitionInvalid
+        with pytest.raises(expected_error):
             LifecycleTransitionService.transition(
                 oid, target, opp.row_version, se, SOLUTION_ENGINEER
             )
@@ -878,3 +1121,432 @@ def test_group2_direct_api_rejects_unauthenticated_and_role_spoofing(app):
         assert OpportunityTeam.query.filter_by(
             opportunity_id=oid, role=SOLUTION_ENGINEER
         ).count() == 0
+
+
+def _make_delivery_project_for_test(app, name="Phase11 Delivery"):
+    """Create a Closed Won Negotiations opportunity and its Delivery Project."""
+    oid = make_lead(app, SALES_EXECUTIVE, name)
+    submit(app, oid)
+    approve(app, oid)
+
+    with app.app_context():
+        psm = user(app, PRE_SALES_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+        opp = Opportunity.query.get(oid)
+
+        db.session.add(OpportunityTeam(
+            opportunity_id=oid,
+            user_id=se.user_id,
+            role=SOLUTION_ENGINEER,
+        ))
+        db.session.commit()
+
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.transition(
+            oid, "RFX", opp.row_version, se, SOLUTION_ENGINEER
+        )
+
+        opp = Opportunity.query.get(oid)
+        db.session.add(RFXContext(
+            opportunity_id=oid,
+            drive_link="https://drive.google.com/test-rfx-context",
+            created_by=psm.user_id,
+        ))
+        db.session.commit()
+
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.transition(
+            oid, "POC", opp.row_version, se, SOLUTION_ENGINEER
+        )
+
+        db.session.add(POCTracker(
+            opportunity_id=oid,
+            poc_name="Phase11 Certification POC",
+            target_date=date.today(),
+            status="Completed",
+            outcome="Success",
+            result_view_link="https://drive.google.com/poc-result",
+            requested_by=psm.user_id,
+            submitted_by=psm.user_id,
+        ))
+        db.session.commit()
+
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.transition(
+            oid, "Negotiations", opp.row_version, se, SOLUTION_ENGINEER
+        )
+
+        opp = Opportunity.query.get(oid)
+        LifecycleTransitionService.close_won(
+            oid, opp.row_version, psm, PRE_SALES_MANAGER
+        )
+
+        project = DeliveryProject.query.filter_by(
+            opportunity_id=oid
+        ).first()
+
+        assert project is not None
+        assert Opportunity.query.get(oid).lifecycle_stage == "Delivery"
+        assert Opportunity.query.get(oid).outcome == "Closed Won"
+
+        return oid, project.delivery_project_id
+
+
+def test_phase11_closed_won_creates_delivery_project(app):
+    oid, pid = _make_delivery_project_for_test(app)
+
+    with app.app_context():
+        project = db.session.get(DeliveryProject, pid)
+        opp = db.session.get(Opportunity, oid)
+
+        assert project.opportunity_id == oid
+        assert project.account_id == opp.account_id
+        assert project.status == "Active"
+        assert project.row_version == 1
+        assert project.manager_id == user(app, DELIVERY_MANAGER).user_id
+
+
+def test_phase11_delivery_manager_can_assign_valid_members(app):
+    oid, pid = _make_delivery_project_for_test(app)
+
+    with app.app_context():
+        manager = user(app, DELIVERY_MANAGER)
+        devops = user(app, DEVOPS_ENGINEER)
+        analyst = user(app, DATA_ANALYST)
+        project = db.session.get(DeliveryProject, pid)
+
+        result = Phase2Service.assign_delivery_members(
+            pid,
+            [devops.user_id, analyst.user_id],
+            manager,
+            DELIVERY_MANAGER,
+            project.row_version,
+        )
+
+        assert result.row_version == 2
+
+        members = DeliveryProjectMember.query.filter_by(
+            delivery_project_id=pid
+        ).all()
+
+        assert {m.user_id for m in members} == {
+            devops.user_id,
+            analyst.user_id,
+        }
+        assert all(m.is_suggested is False for m in members)
+
+
+def test_phase11_sales_and_delivery_member_cannot_manage_members(app):
+    oid, pid = _make_delivery_project_for_test(app)
+
+    with app.app_context():
+        sales_exec = user(app, SALES_EXECUTIVE)
+        devops = user(app, DEVOPS_ENGINEER)
+        project = db.session.get(DeliveryProject, pid)
+
+        with pytest.raises(AuthorizationDenied):
+            Phase2Service.assign_delivery_members(
+                pid,
+                [devops.user_id],
+                sales_exec,
+                SALES_EXECUTIVE,
+                project.row_version,
+            )
+
+
+def test_phase11_delivery_project_stale_version_is_rejected(app):
+    oid, pid = _make_delivery_project_for_test(app)
+
+    with app.app_context():
+        manager = user(app, DELIVERY_MANAGER)
+        devops = user(app, DEVOPS_ENGINEER)
+
+        project = db.session.get(DeliveryProject, pid)
+        stale_version = project.row_version
+
+        Phase2Service.assign_delivery_members(
+            pid,
+            [devops.user_id],
+            manager,
+            DELIVERY_MANAGER,
+            stale_version,
+        )
+
+        with pytest.raises(TransitionConflict):
+            Phase2Service.assign_delivery_members(
+                pid,
+                [],
+                manager,
+                DELIVERY_MANAGER,
+                stale_version,
+            )
+
+
+def test_phase11_member_can_complete_only_own_membership(app):
+    oid, pid = _make_delivery_project_for_test(app)
+
+    with app.app_context():
+        manager = user(app, DELIVERY_MANAGER)
+        devops = user(app, DEVOPS_ENGINEER)
+        analyst = user(app, DATA_ANALYST)
+
+        project = db.session.get(DeliveryProject, pid)
+
+        Phase2Service.assign_delivery_members(
+            pid,
+            [devops.user_id, analyst.user_id],
+            manager,
+            DELIVERY_MANAGER,
+            project.row_version,
+        )
+
+        members = {
+            m.user_id: m
+            for m in DeliveryProjectMember.query.filter_by(
+                delivery_project_id=pid
+            ).all()
+        }
+
+        with pytest.raises(AuthorizationDenied):
+            Phase2Service.complete_member(
+                members[analyst.user_id].delivery_project_member_id,
+                devops,
+                DEVOPS_ENGINEER,
+            )
+
+        completed = Phase2Service.complete_member(
+            members[devops.user_id].delivery_project_member_id,
+            devops,
+            DEVOPS_ENGINEER,
+        )
+
+        assert completed.is_done is True
+        assert completed.completed_at is not None
+
+
+def test_phase11_delivery_manager_can_complete_project(app):
+    oid, pid = _make_delivery_project_for_test(app)
+
+    with app.app_context():
+        manager = user(app, DELIVERY_MANAGER)
+        project = db.session.get(DeliveryProject, pid)
+
+        completed = Phase2Service.complete_project(
+            pid,
+            manager,
+            DELIVERY_MANAGER,
+            project.row_version,
+        )
+
+        assert completed.status == "Done"
+        assert completed.completed_at is not None
+        assert completed.row_version == 2
+
+        fresh = db.session.get(DeliveryProject, pid)
+        assert fresh.status == "Done"
+
+
+def test_phase11_completed_project_cannot_be_completed_again(app):
+    oid, pid = _make_delivery_project_for_test(app)
+
+    with app.app_context():
+        manager = user(app, DELIVERY_MANAGER)
+        project = db.session.get(DeliveryProject, pid)
+
+        Phase2Service.complete_project(
+            pid,
+            manager,
+            DELIVERY_MANAGER,
+            project.row_version,
+        )
+
+        fresh = db.session.get(DeliveryProject, pid)
+
+        with pytest.raises(TransitionConflict):
+            Phase2Service.complete_project(
+                pid,
+                manager,
+                DELIVERY_MANAGER,
+                fresh.row_version,
+            )
+
+
+def test_phase11_delivery_completion_and_member_completion_are_logged(app):
+    oid, pid = _make_delivery_project_for_test(app)
+
+    with app.app_context():
+        from app.models.system.audit_log import AuditLog
+
+        manager = user(app, DELIVERY_MANAGER)
+        devops = user(app, DEVOPS_ENGINEER)
+
+        project = db.session.get(DeliveryProject, pid)
+
+        Phase2Service.assign_delivery_members(
+            pid,
+            [devops.user_id],
+            manager,
+            DELIVERY_MANAGER,
+            project.row_version,
+        )
+
+        member = DeliveryProjectMember.query.filter_by(
+            delivery_project_id=pid,
+            user_id=devops.user_id,
+        ).first()
+
+        Phase2Service.complete_member(
+            member.delivery_project_member_id,
+            devops,
+            DEVOPS_ENGINEER,
+        )
+
+        project = db.session.get(DeliveryProject, pid)
+
+        Phase2Service.complete_project(
+            pid,
+            manager,
+            DELIVERY_MANAGER,
+            project.row_version,
+        )
+
+        events = AuditLog.query.filter(
+            AuditLog.entity_type.in_(
+                ["DeliveryProject", "DeliveryProjectMember"]
+            ),
+            AuditLog.action.in_(
+                [
+                    "DELIVERY_PROJECT_MEMBERS_CHANGED",
+                    "DELIVERY_PROJECT_MEMBER_COMPLETED",
+                    "DELIVERY_PROJECT_COMPLETED",
+                ]
+            ),
+        ).all()
+
+        event_types = {event.action for event in events}
+
+        assert "DELIVERY_PROJECT_MEMBERS_CHANGED" in event_types
+        assert "DELIVERY_PROJECT_MEMBER_COMPLETED" in event_types
+        assert "DELIVERY_PROJECT_COMPLETED" in event_types
+
+
+def test_phase11_delivery_history_is_viewable_by_authorized_user(app):
+    oid, pid = _make_delivery_project_for_test(
+        app,
+        "Phase11 Delivery History",
+    )
+
+    with app.app_context():
+        dm = user(app, DELIVERY_MANAGER)
+        se = user(app, SOLUTION_ENGINEER)
+
+        history = ActivityService.get_history(
+            "DeliveryProject",
+            pid,
+            dm,
+            DELIVERY_MANAGER,
+        )
+
+        assert history is not None
+        assert any(
+            log.action == "DELIVERY_PROJECT_CREATED"
+            for log in history
+        )
+
+        se_history = ActivityService.get_history(
+            "DeliveryProject",
+            pid,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        assert se_history is not None
+
+
+def test_phase11_delivery_handover_preserves_opportunity_account_and_manager(app):
+    oid, pid = _make_delivery_project_for_test(
+        app,
+        "Phase11 Handover Integrity",
+    )
+
+    with app.app_context():
+        opp = db.session.get(Opportunity, oid)
+        project = db.session.get(DeliveryProject, pid)
+        manager = db.session.get(User, project.manager_id)
+
+        assert project.opportunity_id == opp.opportunity_id
+        assert project.account_id == opp.account_id
+        assert opp.lifecycle_stage == "Delivery"
+        assert opp.outcome == "Closed Won"
+
+        assert manager is not None
+        assert manager.active is True
+        assert manager.status == "APPROVED"
+        assert manager.has_role(DELIVERY_MANAGER)
+
+
+def test_phase11_sales_side_can_view_delivery_opportunity(app):
+    oid, pid = _make_delivery_project_for_test(
+        app,
+        "Phase11 Sales Visibility",
+    )
+
+    with app.app_context():
+        opp = db.session.get(Opportunity, oid)
+        sales_exec = user(app, SALES_EXECUTIVE)
+
+        # Keep the Sales Executive explicitly assigned as Sales Owner so
+        # the opportunity remains in Sales scope after handover.
+        opp.sales_owner_id = sales_exec.user_id
+        db.session.commit()
+
+        opp = db.session.get(Opportunity, oid)
+        assert AuthorizationService.can_view_opportunity(
+            sales_exec,
+            SALES_EXECUTIVE,
+            opp,
+        )
+
+        project = db.session.get(DeliveryProject, pid)
+
+        assert AuthorizationService.can_view_activity(
+            sales_exec,
+            SALES_EXECUTIVE,
+            "DeliveryProject",
+            project.delivery_project_id,
+        )
+
+
+def test_phase11_delivery_dashboard_counts(app):
+    oid, pid = _make_delivery_project_for_test(
+        app,
+        "Phase11 Delivery Dashboard",
+    )
+
+    with app.app_context():
+        dm = user(app, DELIVERY_MANAGER)
+
+        summary = DashboardRepository.get_role_operational_summary(
+            dm,
+            DELIVERY_MANAGER,
+        )
+
+        assert summary["active_delivery_projects"] == 1
+        assert summary["completed_delivery_projects"] == 0
+
+        project = db.session.get(DeliveryProject, pid)
+
+        Phase2Service.complete_project(
+            pid,
+            dm,
+            DELIVERY_MANAGER,
+            project.row_version,
+        )
+
+        summary = DashboardRepository.get_role_operational_summary(
+            dm,
+            DELIVERY_MANAGER,
+        )
+
+        assert summary["active_delivery_projects"] == 0
+        assert summary["completed_delivery_projects"] == 1

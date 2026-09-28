@@ -5,23 +5,13 @@ import "./PocForm.css";
 
 const REQUIRED_FIELDS = [
     "poc_name",
-    "objective",
-    "success_metric",
-    "exit_criteria",
     "target_date",
-    "failure_condition",
-    "input_drive_link",
 ];
 
 const INITIAL_FORM = {
     opportunity_id: "",
     poc_name: "",
-    objective: "",
-    success_metric: "",
-    exit_criteria: "",
     target_date: "",
-    failure_condition: "",
-    input_drive_link: "",
     remarks: "",
 };
 
@@ -269,31 +259,7 @@ export default function PocForm({ onSubmit, submitting = false, onCancel, fixedO
                         <input id="target_date" type="date" name="target_date" value={form.target_date} onChange={handleChange} required disabled={submitting} />
                     </div>
 
-                    <div className="poc-field poc-field-full">
-                        <label htmlFor="objective">Objective</label>
-                        <textarea id="objective" name="objective" value={form.objective} onChange={handleChange} placeholder="What is being tested?" required disabled={submitting} />
-                        <span className="hint">e.g. System sustains target throughput for 72 continuous hours</span>
-                    </div>
-
-                    <div className="poc-field poc-field-full">
-                        <label htmlFor="success_metric">Success Metric</label>
-                        <input id="success_metric" type="text" name="success_metric" value={form.success_metric} onChange={handleChange} placeholder="Must be measurable" required disabled={submitting} />
-                        <span className="hint">e.g. Throughput ≥ 1200 units/hr sustained</span>
-                    </div>
-
-                    <div className="poc-field poc-field-full">
-                        <label htmlFor="exit_criteria">Exit Criteria</label>
-                        <textarea id="exit_criteria" name="exit_criteria" value={form.exit_criteria} onChange={handleChange} placeholder="What must be true for the POC to be considered successful?" required disabled={submitting} />
-                        <span className="hint">Define the measurable conditions required to close the POC.</span>
-                    </div>
-
-                    <div className="poc-field poc-field-full">
-                        <label htmlFor="failure_condition">Failure / Fallback Condition</label>
-                        <textarea id="failure_condition" name="failure_condition" value={form.failure_condition} onChange={handleChange} placeholder="What happens if the success metric isn't met?" required disabled={submitting} />
-                        <span className="hint">e.g. Deal moves to Closed Lost</span>
-                    </div>
-
-                    <div className="poc-field poc-field-full"><label htmlFor="input_drive_link">Input Google Drive link</label><input id="input_drive_link" name="input_drive_link" type="url" value={form.input_drive_link} onChange={handleChange} placeholder="https://drive.google.com/..." required /><small>Ensure the assigned team has the required Google Drive access. The application does not verify Drive permissions.</small></div><div className="poc-field poc-field-full">
+<div className="poc-field poc-field-full">
                         <label htmlFor="remarks">Remarks <span className="optional-tag">Optional</span></label>
                         <textarea id="remarks" name="remarks" value={form.remarks} onChange={handleChange} placeholder="Add any additional context..." disabled={submitting} />
                     </div>

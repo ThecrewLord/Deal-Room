@@ -9,8 +9,17 @@ import { useNavigate, useParams } from "react-router-dom";
 import StakeholderForm from "../components/StakeholderForm";
 import PocForm from "../components/PocForm";
 import {
-    getPocsByOpportunity, getPoc, requestPoc, startPocExecution, submitPocResult, completePoc, downloadPoc
+    requestPoc
 } from "../api/pocApi";
+import {
+    getPocsV2ByOpportunity,
+    getPocHistoryV2,
+    getPocTeamCandidates,
+    assignPocTeam,
+    submitPocV2,
+    completePocV2,
+    requestNewPocV2
+} from "../api/phase2Api";
 import { getStakeholdersByOpportunity } from "../api/stakeholderApi";
 import {
     getOpportunity, getOpportunityStageHistory, getOpportunityValueHistory, changeOpportunityValue, updateOpportunity,
@@ -69,12 +78,14 @@ export default function OpportunityDetail() {
     const [opportunity, setOpportunity] = useState(null);
     const [history, setHistory] = useState([]);
     const [valueHistory, setValueHistory] = useState([]);
+    const [pocHistory, setPocHistory] = useState([]);
     const [pocs, setPocs] = useState([]);
     const [stakeholders, setStakeholders] = useState([]);
     const [error, setError] = useState("");
     const [sectionErrors, setSectionErrors] = useState({
         history: null,
         valueHistory: null,
+        pocHistory: null,
         stakeholders: null,
         pocs: null,
     });
@@ -85,9 +96,24 @@ export default function OpportunityDetail() {
     const [editingValue, setEditingValue] = useState(false);
     const [valueEdit, setValueEdit] = useState({ new_value: "", reason: "" });
     const [resultForms, setResultForms] = useState({});
+    const [pocCandidates, setPocCandidates] = useState([]);
+    const [pocTeamSelections, setPocTeamSelections] = useState({});
+    const [pocResultLinks, setPocResultLinks] = useState({});
+    const [pocOutcomes, setPocOutcomes] = useState({});
+    const [pocRepeatReasons, setPocRepeatReasons] = useState({});
+    const [pocRepeatSaving, setPocRepeatSaving] = useState({});
 
-    const technicalRole = activeRole === ROLES.SOLUTION_ENGINEER || activeRole === ROLES.PRE_SALES_MANAGER;
-    const canLoadPocData = activeRole === ROLES.SOLUTION_ENGINEER || activeRole === ROLES.PRE_SALES_MANAGER;
+    const pocRoles = [
+        ROLES.SOLUTION_ENGINEER,
+        ROLES.PRE_SALES_MANAGER,
+        ROLES.DELIVERY_MANAGER,
+        ROLES.LEADERSHIP,
+        ROLES.DEVOPS_ENGINEER,
+        ROLES.DATA_ANALYST,
+    ];
+    const technicalRole = pocRoles.includes(activeRole);
+    const canLoadPocData = pocRoles.includes(activeRole);
+    const canAssignPocTeam = [ROLES.DELIVERY_MANAGER, ROLES.LEADERSHIP].includes(activeRole);
 
     const describeSectionError = (err, fallback) => {
         const statusCode = err?.response?.status;
@@ -125,8 +151,10 @@ export default function OpportunityDetail() {
         const requests = {
             history: getOpportunityStageHistory(opportunityId),
             valueHistory: getOpportunityValueHistory(opportunityId),
+            pocHistory: getPocHistoryV2(opportunityId),
             stakeholders: getStakeholdersByOpportunity(opportunityId),
-            ...(canLoadPocData ? { pocs: getPocsByOpportunity(opportunityId) } : {}),
+            ...(canLoadPocData ? { pocs: getPocsV2ByOpportunity(opportunityId) } : {}),
+            ...(canAssignPocTeam ? { pocCandidates: getPocTeamCandidates() } : {}),
         };
 
         const entries = Object.entries(requests);
@@ -142,10 +170,14 @@ export default function OpportunityDetail() {
                     setHistory(Array.isArray(result.value) ? result.value : []);
                 } else if (section === "valueHistory") {
                     setValueHistory(Array.isArray(result.value) ? result.value : []);
+                } else if (section === "pocHistory") {
+                    setPocHistory(Array.isArray(result.value) ? result.value : []);
                 } else if (section === "stakeholders") {
                     setStakeholders(Array.isArray(result.value) ? result.value : []);
                 } else if (section === "pocs") {
                     setPocs(Array.isArray(result.value) ? result.value : []);
+                } else if (section === "pocCandidates") {
+                    setPocCandidates(Array.isArray(result.value) ? result.value : []);
                 }
                 return;
             }
@@ -162,7 +194,7 @@ export default function OpportunityDetail() {
 
             setSectionError(section, describeSectionError(
                 err,
-                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : section === "valueHistory" ? "value history" : "stage history"}.`
+                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : section === "valueHistory" ? "value history" : section === "pocHistory" ? "POC history" : "stage history"}.`
             ));
         });
     };
@@ -180,6 +212,7 @@ export default function OpportunityDetail() {
             setSectionErrors({
                 history: null,
                 valueHistory: null,
+                pocHistory: null,
                 stakeholders: null,
                 pocs: null,
                     });
@@ -209,8 +242,9 @@ export default function OpportunityDetail() {
         const requests = {
             history: getOpportunityStageHistory(opportunityId),
             valueHistory: getOpportunityValueHistory(opportunityId),
+            pocHistory: getPocHistoryV2(opportunityId),
             stakeholders: getStakeholdersByOpportunity(opportunityId),
-            pocs: getPocsByOpportunity(opportunityId),
+            pocs: getPocsV2ByOpportunity(opportunityId),
         };
 
         if (section === "pocs" && !canLoadPocData) return;
@@ -220,6 +254,7 @@ export default function OpportunityDetail() {
             const value = await requests[section];
             if (section === "history") setHistory(Array.isArray(value) ? value : []);
             if (section === "valueHistory") setValueHistory(Array.isArray(value) ? value : []);
+            if (section === "pocHistory") setPocHistory(Array.isArray(value) ? value : []);
             if (section === "stakeholders") setStakeholders(Array.isArray(value) ? value : []);
             if (section === "pocs") setPocs(Array.isArray(value) ? value : []);
         } catch (err) {
@@ -229,7 +264,7 @@ export default function OpportunityDetail() {
             }
             setSectionError(section, describeSectionError(
                 err,
-                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : section === "valueHistory" ? "value history" : "stage history"}.`
+                `Unable to load ${section === "pocs" ? "POCs" : section === "stakeholders" ? "stakeholders" : section === "valueHistory" ? "value history" : section === "pocHistory" ? "POC history" : "stage history"}.`
             ));
         }
     };
@@ -283,6 +318,53 @@ export default function OpportunityDetail() {
             }
         } finally {
             setSaving(false);
+        }
+    };
+
+    const requestNewPoc = async (poc) => {
+        const reason = (pocRepeatReasons[poc.poc_id] || "").trim();
+
+        if (!reason) {
+            setError("A reason is required to request a new POC.");
+            return;
+        }
+
+        try {
+            setPocRepeatSaving((current) => ({
+                ...current,
+                [poc.poc_id]: true,
+            }));
+            setError("");
+
+            await requestNewPocV2(opportunityId, {
+                reason,
+                row_version: poc.row_version,
+            });
+
+            setPocRepeatReasons((current) => ({
+                ...current,
+                [poc.poc_id]: "",
+            }));
+
+            await retrySection("pocs");
+        } catch (err) {
+            if (err?.response?.status === 409) {
+                setError(
+                    "This POC changed before your request completed. Refreshing the latest POC state…"
+                );
+                await retrySection("pocs");
+            } else {
+                setError(
+                    err?.response?.data?.message ||
+                    err?.message ||
+                    "Unable to request a new POC. Please try again."
+                );
+            }
+        } finally {
+            setPocRepeatSaving((current) => ({
+                ...current,
+                [poc.poc_id]: false,
+            }));
         }
     };
 
@@ -497,6 +579,38 @@ export default function OpportunityDetail() {
                 </SectionCard>
             </div>
 
+            <SectionCard title="POC History" description="Timeline of POC starts, result submissions, and repeat requests." icon={History}>
+                {sectionErrors.pocHistory ? (
+                    <ErrorState
+                        title="Unable to load POC history"
+                        message={sectionErrors.pocHistory.message}
+                        onRetry={() => retrySection("pocHistory")}
+                    />
+                ) : pocHistory.length ? (
+                    <div className="opportunity-history">
+                        {pocHistory.map((entry) => (
+                            <div className="opportunity-history-row" key={entry.history_id}>
+                                <span className="opportunity-history-dot" />
+                                <div>
+                                    <strong>
+                                        {{
+                                            POC_STARTED: "POC started",
+                                            POC_SUBMITTED: "POC result submitted",
+                                            NEW_POC_REQUESTED: "New POC requested",
+                                        }[entry.event_type] || (entry.event_type || "POC event").replaceAll("_", " ")}
+                                    </strong>
+                                    {entry.reason && <p>{entry.reason}</p>}
+                                    <small>
+                                        {entry.actor?.full_name || `User #${entry.actor_id}`}
+                                        {" · "}{dateLabel(entry.created_at)}
+                                    </small>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : <EmptyState message="No POC history is recorded for this opportunity." />}
+            </SectionCard>
+
             <SectionCard title="Opportunity Value History" description="Immutable record of every recorded Opportunity Value change." icon={History}>
                 {sectionErrors.valueHistory ? (
                     <ErrorState title="Unable to load value history" message={sectionErrors.valueHistory.message} onRetry={() => retrySection("valueHistory")} />
@@ -574,7 +688,29 @@ export default function OpportunityDetail() {
                     <div className="opportunity-action-row">
                         {stageName === "Qualified" && <Button disabled={saving} onClick={() => run(() => advanceToRfx(opportunityId, opportunity.row_version))}><ArrowRight size={14} /> Advance to RFX</Button>}
                         {stageName === "RFX" && <Button disabled={saving} onClick={() => run(() => advanceToPoc(opportunityId, opportunity.row_version))}><ArrowRight size={14} /> Advance to POC</Button>}
-                        {stageName === "POC" && <Button disabled={saving} onClick={() => run(() => advanceToNegotiations(opportunityId, opportunity.row_version))}><ArrowRight size={14} /> Advance to Negotiations</Button>}
+                        {stageName === "POC" && (
+                            <Button
+                                disabled={
+                                    saving ||
+                                    !pocs.some(
+                                        (poc) =>
+                                            poc.status === "Completed" &&
+                                            poc.outcome === "Success"
+                                    )
+                                }
+                                onClick={() =>
+                                    run(() =>
+                                        advanceToNegotiations(
+                                            opportunityId,
+                                            opportunity.row_version
+                                        )
+                                    )
+                                }
+                            >
+                                <ArrowRight size={14} />
+                                Advance to Negotiations
+                            </Button>
+                        )}
                         {stageName !== "Lead" && (activeRole === ROLES.PRE_SALES_MANAGER || activeRole === ROLES.LEADERSHIP) && <Button disabled={saving} onClick={() => close(true)}><CheckCircle2 size={14} /> {stageName === "Negotiations" ? "Final Closed Won Approval" : "Close Won"}</Button>}
                         {stageName !== "Lead" && (activeRole === ROLES.PRE_SALES_MANAGER || activeRole === ROLES.LEADERSHIP || (activeRole === ROLES.SOLUTION_ENGINEER && assignedSE)) && <Button variant="secondary" disabled={saving} onClick={() => close(false)}><CheckCircle2 size={14} /> Close Lost</Button>}
                         {stageName !== "Lead" && activeRole === ROLES.SOLUTION_ENGINEER && opportunity?.closed_won_request?.status !== "Pending" && <Button variant="secondary" disabled={saving} onClick={requestWon}><CheckCircle2 size={14} /> Request Closed Won</Button>}
@@ -600,98 +736,449 @@ export default function OpportunityDetail() {
             )}
 
             {technicalRole && (
-                    <SectionCard title="POC Execution" description="POCs associated with this opportunity. Manager approval is not part of the lifecycle." icon={FlaskConical}>
-                        {sectionErrors.pocs ? (
-                            <ErrorState
-                                title={sectionErrors.pocs.status === 403 ? "POC data is read-only" : "Unable to load POCs"}
-                                message={sectionErrors.pocs.message}
-                                onRetry={sectionErrors.pocs.status === 403 ? undefined : () => retrySection("pocs")}
-                            />
-                        ) : pocs.length ? (
-                            <div className="opportunity-poc-list">
-                                {pocs.map((poc) => {
-                                    const form = resultForms[poc.poc_id] || {
-                                        
-                                        outcome: poc.outcome || "Success",
-                                        outcome_notes: poc.outcome_notes || "",
-                                        remarks: poc.remarks || ""
-                                    };
-                                    return (
-                                        <article className="opportunity-poc-card" key={poc.poc_id}>
-                                            <div className="opportunity-poc-heading">
-                                                <div><strong>{poc.poc_name}</strong><span>{poc.objective || "No objective provided."}</span></div>
-                                                <StatusBadge status={poc.status} />
-                                            </div>
-                                            <div className="opportunity-poc-meta">
-                                                <span><Target size={12} />{poc.success_metric || "No success criteria"}</span>
-                                                <span><CalendarDays size={12} />{dateLabel(poc.target_date)}</span>
-                                                <span><Clock3 size={12} />{poc.outcome || "Not completed"}</span>
-                                            </div>
-                                            <div className="opportunity-detail-text-grid">
-                                                <div><span>Exit criteria</span><p>{poc.exit_criteria || "—"}</p></div>
-                                                <div><span>Failure condition</span><p>{poc.failure_condition || "—"}</p></div>
-                                                <div><span>Outcome notes</span><p>{poc.outcome_notes || "—"}</p></div>
-                                            </div>
-                                            
-                                          {activeRole === ROLES.SOLUTION_ENGINEER &&
-    assignedSE &&
-    poc.status === "Draft" && (
-        <Button
-            size="sm"
-            disabled={saving}
-            onClick={() =>
-                run(() =>
-                    startPocExecution(
-                        poc.poc_id,
-                        { updated_at: poc.updated_at }
-                    )
-                )
-            }
-        >
-            <Zap size={13} /> Start POC
-        </Button>
-    )}
+                <SectionCard
+                    title="POC Execution"
+                    description="POC execution, team assignment, and result submission."
+                    icon={FlaskConical}
+                >
+                    {sectionErrors.pocs ? (
+                        <ErrorState
+                            title={sectionErrors.pocs.status === 403 ? "POC data is read-only" : "Unable to load POCs"}
+                            message={sectionErrors.pocs.message}
+                            onRetry={sectionErrors.pocs.status === 403 ? undefined : () => retrySection("pocs")}
+                        />
+                    ) : pocs.length ? (
+                        <div className="opportunity-poc-list">
+                            {pocs.map((poc) => {
+                                const team = Array.isArray(poc.team) ? poc.team : [];
 
-{activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && (
-    <Button
-        size="sm"
-        disabled={saving}
-        onClick={() => run(() => downloadPoc(poc.poc_id))}
-    >
-        <Download size={13} /> Download POC
-    </Button>
-)}
-                                            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "In Progress" && (
-                                                <div className="opportunity-poc-result">
-                                                    
-                                                    <select value={form.outcome} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, outcome: e.target.value } })}>
-                                                        {["Success", "Failure", "Ongoing", "Abandoned"].map((value) => <option key={value}>{value}</option>)}
-                                                    </select>
-                                                    <textarea placeholder="Outcome notes" value={form.outcome_notes} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, outcome_notes: e.target.value } })} />
-                                                    <textarea placeholder="Execution remarks" value={form.remarks} onChange={(e) => setResultForms({ ...resultForms, [poc.poc_id]: { ...form, remarks: e.target.value } })} />
-                                                    <Button disabled={saving} onClick={() => run(async () => {
-    const latest = await getPoc(poc.poc_id);
-    await submitPocResult(poc.poc_id, {
-        outcome: form.outcome,
-        outcome_notes: form.outcome_notes,
-        remarks: form.remarks,
-        execution_status: "Submitted",
-        updated_at: latest.updated_at,
-    });
-})}><MessageSquare size={13} /> Submit result</Button>
+                                const isAssignedPocMember = team.some(
+                                    (member) =>
+                                        Number(member.user_id) === Number(currentUserId) &&
+                                        member.role === activeRole
+                                );
+
+                                const selectedMembers = pocTeamSelections[poc.poc_id] || [];
+
+                                const resultLink = pocResultLinks[poc.poc_id] || "";
+
+                                const canSubmitResult =
+                                    [ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST].includes(activeRole) &&
+                                    isAssignedPocMember &&
+                                    ["Draft", "In Progress"].includes(poc.status);
+
+                                const canCompletePoc =
+                                    activeRole === ROLES.SOLUTION_ENGINEER &&
+                                    assignedSE &&
+                                    opportunity?.is_active &&
+                                    opportunity?.operational_status === "Active" &&
+                                    opportunity?.outcome === "Open" &&
+                                    stageName === "POC" &&
+                                    poc.status === "Submitted";
+
+                                const toggleTeamMember = (userId) => {
+                                    setPocTeamSelections((current) => {
+                                        const existing = current[poc.poc_id] || [];
+                                        const exists = existing.includes(userId);
+
+                                        if (exists) {
+                                            return {
+                                                ...current,
+                                                [poc.poc_id]: existing.filter((id) => id !== userId),
+                                            };
+                                        }
+
+                                        if (existing.length >= 2) {
+                                            return current;
+                                        }
+
+                                        return {
+                                            ...current,
+                                            [poc.poc_id]: [...existing, userId],
+                                        };
+                                    });
+                                };
+
+                                return (
+                                    <article className="opportunity-poc-card" key={poc.poc_id}>
+                                        <div className="opportunity-poc-heading">
+                                            <div>
+                                                <strong>{poc.poc_name}</strong>
+                                                <span>POC #{poc.poc_id}</span>
+                                            </div>
+                                            <StatusBadge status={poc.status} />
+                                        </div>
+
+                                        <div className="opportunity-poc-meta">
+                                            <span>
+                                                <CalendarDays size={12} />
+                                                Target date: {dateLabel(poc.target_date)}
+                                            </span>
+                                            <span>
+                                                <Clock3 size={12} />
+                                                Status: {poc.status || "—"}
+                                            </span>
+                                        </div>
+
+                                        <div className="opportunity-detail-text-grid">
+                                            <div>
+                                                <span>Result / View Link</span>
+                                                <p>
+                                                    {poc.result_view_link ? (
+                                                        <a
+                                                            href={poc.result_view_link}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                        >
+                                                            {poc.result_view_link}
+                                                        </a>
+                                                    ) : (
+                                                        "Not submitted"
+                                                    )}
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <span>Submitted by</span>
+                                                <p>{poc.submitted_by || "—"}</p>
+                                            </div>
+
+                                            <div>
+                                                <span>Submitted at</span>
+                                                <p>
+                                                    {poc.submitted_at
+                                                        ? new Date(poc.submitted_at).toLocaleString()
+                                                        : "—"}
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <span>Requested by</span>
+                                                <p>{poc.requested_by || "—"}</p>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ marginTop: "12px" }}>
+                                            <strong style={{ display: "block", marginBottom: "8px" }}>
+                                                POC Team
+                                            </strong>
+
+                                            {team.length ? (
+                                                <div style={{ display: "grid", gap: "6px" }}>
+                                                    {team.map((member) => (
+                                                        <div
+                                                            key={`${poc.poc_id}-${member.user_id}`}
+                                                            style={{
+                                                                display: "flex",
+                                                                justifyContent: "space-between",
+                                                                alignItems: "center",
+                                                                padding: "8px 10px",
+                                                                border: "1px solid var(--border-color, #ddd)",
+                                                                borderRadius: "6px",
+                                                            }}
+                                                        >
+                                                            <span>
+    {member.full_name ||
+        pocCandidates.find(
+            (candidate) => Number(candidate.user_id) === Number(member.user_id)
+        )?.full_name ||
+        `User #${member.user_id}`}
+</span>
+                                                            <StatusBadge status={member.role} />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p>No POC team assigned yet.</p>
+                                            )}
+                                        </div>
+
+                                        {poc.permission_disclaimer && (
+                                            <div
+                                                style={{
+                                                    marginTop: "12px",
+                                                    padding: "10px 12px",
+                                                    borderRadius: "6px",
+                                                    background: "var(--surface-muted, #f5f5f5)",
+                                                    fontSize: "12px",
+                                                }}
+                                            >
+                                                <ShieldCheck size={13} style={{ verticalAlign: "middle", marginRight: "6px" }} />
+                                                {poc.permission_disclaimer}
+                                            </div>
+                                        )}
+
+                                        {canAssignPocTeam && poc.status !== "Submitted" && (
+                                            <div style={{ marginTop: "16px" }}>
+                                                <strong style={{ display: "block", marginBottom: "8px" }}>
+                                                    Assign POC Team
+                                                </strong>
+
+                                                {pocCandidates.length ? (
+                                                    <div style={{ display: "grid", gap: "8px" }}>
+                                                        {pocCandidates.map((candidate) => {
+                                                            const selected = selectedMembers.includes(candidate.user_id);
+
+                                                            return (
+                                                                <label
+                                                                    key={candidate.user_id}
+                                                                    style={{
+                                                                        display: "flex",
+                                                                        alignItems: "center",
+                                                                        gap: "8px",
+                                                                        padding: "8px 10px",
+                                                                        border: "1px solid var(--border-color, #ddd)",
+                                                                        borderRadius: "6px",
+                                                                        cursor: "pointer",
+                                                                    }}
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={selected}
+                                                                        onChange={() => toggleTeamMember(candidate.user_id)}
+                                                                    />
+
+                                                                    <span>
+                                                                        <strong>{candidate.full_name}</strong>
+                                                                        {candidate.email && (
+                                                                            <small style={{ display: "block" }}>
+                                                                                {candidate.email}
+                                                                            </small>
+                                                                        )}
+                                                                    </span>
+
+                                                                    <span style={{ marginLeft: "auto", fontSize: "12px" }}>
+                                                                        {(candidate.roles || []).join(", ")}
+                                                                    </span>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <p>No eligible DevOps Engineer or Data Analyst users found.</p>
+                                                )}
+
+                                                <div style={{ marginTop: "10px" }}>
+                                                    <Button
+                                                        size="sm"
+                                                        disabled={saving || selectedMembers.length === 0}
+                                                        onClick={() =>
+                                                            run(async () => {
+                                                                await assignPocTeam(
+                                                                    poc.poc_id,
+                                                                    selectedMembers
+                                                                );
+                                                                setPocTeamSelections((current) => ({
+                                                                    ...current,
+                                                                    [poc.poc_id]: [],
+                                                                }));
+                                                                await retrySection("pocs");
+                                                                await retrySection("pocHistory");
+                                                            })
+                                                        }
+                                                    >
+                                                        <Users size={13} />
+                                                        Assign team ({selectedMembers.length}/2)
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {canSubmitResult && (
+                                            <div
+                                                className="opportunity-poc-result"
+                                                style={{ marginTop: "16px" }}
+                                            >
+                                                <strong>Submit POC Result</strong>
+
+                                                <input
+                                                    type="url"
+                                                    placeholder="https://drive.google.com/..."
+                                                    value={resultLink}
+                                                    onChange={(e) =>
+                                                        setPocResultLinks((current) => ({
+                                                            ...current,
+                                                            [poc.poc_id]: e.target.value,
+                                                        }))
+                                                    }
+                                                />
+
+                                                <Button
+                                                    disabled={saving || !resultLink.trim()}
+                                                    onClick={() =>
+                                                        run(async () => {
+                                                            await submitPocV2(poc.poc_id, {
+                                                                result_view_link: resultLink.trim(),
+                                                                row_version: poc.row_version,
+                                                            });
+
+                                                            setPocResultLinks((current) => ({
+                                                                ...current,
+                                                                [poc.poc_id]: "",
+                                                            }));
+
+                                                            await retrySection("pocs");
+
+                                                            await retrySection("pocHistory");
+                                                        })
+                                                    }
+                                                >
+                                                    <MessageSquare size={13} />
+                                                    Submit result
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        {poc.status === "Submitted" && (
+                                            <div style={{ marginTop: "14px" }}>
+                                                <StatusBadge status="Submitted" />
+                                                <span style={{ marginLeft: "8px", fontSize: "12px" }}>
+                                                    Result is submitted and immutable.
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {poc.status === "Completed" && poc.outcome && (
+                                            <div
+                                                style={{
+                                                    marginTop: "10px",
+                                                    fontSize: "12px",
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                Outcome: {poc.outcome}
+                                            </div>
+                                        )}
+
+                                        {canCompletePoc && (
+                                            <div
+                                                style={{
+                                                    marginTop: "16px",
+                                                    paddingTop: "14px",
+                                                    borderTop: "1px solid var(--border-color, #ddd)",
+                                                }}
+                                            >
+                                                <strong style={{ display: "block", marginBottom: "8px" }}>
+                                                    Complete POC
+                                                </strong>
+
+                                                <select
+                                                    value={pocOutcomes[poc.poc_id] || ""}
+                                                    onChange={(e) =>
+                                                        setPocOutcomes((current) => ({
+                                                            ...current,
+                                                            [poc.poc_id]: e.target.value,
+                                                        }))
+                                                    }
+                                                    disabled={saving}
+                                                    style={{
+                                                        width: "100%",
+                                                        padding: "8px",
+                                                        marginBottom: "8px",
+                                                    }}
+                                                >
+                                                    <option value="">Select POC outcome</option>
+                                                    <option value="Success">Success</option>
+                                                    <option value="Failure">Failure</option>
+                                                </select>
+
+                                                <Button
+                                                    disabled={saving || !pocOutcomes[poc.poc_id]}
+                                                    onClick={() =>
+                                                        run(async () => {
+                                                            await completePocV2(poc.poc_id, {
+                                                                outcome: pocOutcomes[poc.poc_id],
+                                                            });
+
+                                                            setPocOutcomes((current) => ({
+                                                                ...current,
+                                                                [poc.poc_id]: "",
+                                                            }));
+
+                                                            await retrySection("pocs");
+                                                            await retrySection("pocHistory");
+                                                            await retrySection("opportunity");
+                                                        })
+                                                    }
+                                                >
+                                                    <CheckCircle2 size={13} />
+                                                    Complete POC
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        {activeRole === ROLES.SOLUTION_ENGINEER &&
+                                            assignedSE &&
+                                            opportunity?.is_active &&
+                                            opportunity?.operational_status === "Active" &&
+                                            opportunity?.outcome === "Open" &&
+                                            stageName === "POC" &&
+                                            poc.status === "Submitted" && (
+                                                <div
+                                                    style={{
+                                                        marginTop: "16px",
+                                                        paddingTop: "14px",
+                                                        borderTop: "1px solid var(--border-color, #ddd)",
+                                                    }}
+                                                >
+                                                    <strong style={{ display: "block", marginBottom: "6px" }}>
+                                                        Request New POC
+                                                    </strong>
+
+                                                    <p
+                                                        style={{
+                                                            margin: "0 0 10px",
+                                                            fontSize: "12px",
+                                                            color: "var(--text-muted, #666)",
+                                                        }}
+                                                    >
+                                                        Request another POC cycle using the existing POC team.
+                                                        The submitted POC remains unchanged.
+                                                    </p>
+
+                                                    <textarea
+                                                        rows={3}
+                                                        placeholder="Enter the reason for requesting another POC..."
+                                                        value={pocRepeatReasons[poc.poc_id] || ""}
+                                                        onChange={(e) =>
+                                                            setPocRepeatReasons((current) => ({
+                                                                ...current,
+                                                                [poc.poc_id]: e.target.value,
+                                                            }))
+                                                        }
+                                                        disabled={Boolean(pocRepeatSaving[poc.poc_id])}
+                                                        style={{
+                                                            width: "100%",
+                                                            boxSizing: "border-box",
+                                                            resize: "vertical",
+                                                            marginBottom: "10px",
+                                                        }}
+                                                    />
+
+                                                    <Button
+                                                        variant="secondary"
+                                                        disabled={
+                                                            Boolean(pocRepeatSaving[poc.poc_id]) ||
+                                                            !(pocRepeatReasons[poc.poc_id] || "").trim()
+                                                        }
+                                                        onClick={() => requestNewPoc(poc)}
+                                                    >
+                                                        <RefreshCw size={13} />
+                                                        {pocRepeatSaving[poc.poc_id]
+                                                            ? "Requesting..."
+                                                            : "Request new POC"}
+                                                    </Button>
                                                 </div>
                                             )}
-                                            {activeRole === ROLES.SOLUTION_ENGINEER && assignedSE && poc.status === "Submitted" && (
-                                                <Button size="sm" disabled={saving} onClick={() => run(() => completePoc(poc.poc_id, { updated_at: poc.updated_at }))}><CheckCircle2 size={13} /> Complete POC</Button>
-                                            )}
-                                        </article>
-                                    );
-                                })}
-                            </div>
-                        ) : <EmptyState message="No POCs have been created for this opportunity." />}
-                    </SectionCard>
+                                    </article>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <EmptyState message="No POCs have been created for this opportunity." />
+                    )}
+                </SectionCard>
             )}
-
 
             <Phase2OpportunityPanel opportunity={opportunity} activeRole={activeRole} onRefresh={() => retrySection("stakeholders")} />
 

@@ -1,71 +1,22 @@
 from marshmallow import Schema, fields, validate
-
-
+TAGS=["Economic Buyer","Technical Champion","End User","Blocker","Decision Maker"]
 class StakeholderCreateSchema(Schema):
-
-    opportunity_id = fields.Int(required=True)
-
-    stakeholder_name = fields.Str(
-        required=True,
-        validate=validate.Length(min=2, max=150),
-    )
-
-    designation = fields.Str()
-
-    email = fields.Email()
-
-    phone = fields.Str()
-
-    influence_level = fields.Str(
-        validate=validate.OneOf(
-            ["Decision Maker", "Influencer", "User", "Blocker"]
-        ),
-    )
-
-    notes = fields.Str()
-
-
+    opportunity_id=fields.Int(required=True)
+    name=fields.Str(required=True,validate=validate.Length(min=1,max=150))
+    job_title=fields.Str(allow_none=True)
+    email=fields.Email(allow_none=True)
+    phone=fields.Str(allow_none=True)
+    company=fields.Str(allow_none=True)
+    tags=fields.List(fields.Str(validate=validate.OneOf(TAGS)), load_default=list)
+    notes=fields.Str(allow_none=True)
 class StakeholderUpdateSchema(Schema):
-
-    stakeholder_name = fields.Str(
-        validate=validate.Length(min=2, max=150),
-    )
-
-    designation = fields.Str()
-
-    email = fields.Email()
-
-    phone = fields.Str()
-
-    influence_level = fields.Str(
-        validate=validate.OneOf(
-            ["Decision Maker", "Influencer", "User", "Blocker"]
-        ),
-    )
-
-    notes = fields.Str()
-
-    updated_at = fields.DateTime(required=True)
-
-
+    name=fields.Str(validate=validate.Length(min=1,max=150))
+    job_title=fields.Str(allow_none=True); email=fields.Email(allow_none=True); phone=fields.Str(allow_none=True); company=fields.Str(allow_none=True)
+    tags=fields.List(fields.Str(validate=validate.OneOf(TAGS)))
+    notes=fields.Str(allow_none=True)
+    updated_at=fields.DateTime(allow_none=True)
 class StakeholderResponseSchema(Schema):
-
-    stakeholder_id = fields.Int()
-
-    opportunity_id = fields.Int()
-
-    stakeholder_name = fields.Str()
-
-    designation = fields.Str()
-
-    email = fields.Str()
-
-    phone = fields.Str()
-
-    influence_level = fields.Str()
-
-    notes = fields.Str()
-
-    created_at = fields.DateTime()
-
-    updated_at = fields.DateTime()
+    stakeholder_id=fields.Int(); opportunity_id=fields.Int(); name=fields.Str(); job_title=fields.Str(allow_none=True)
+    email=fields.Str(allow_none=True); phone=fields.Str(allow_none=True); company=fields.Str(allow_none=True)
+    is_decision_maker=fields.Bool(); tags=fields.Method("get_tags"); created_at=fields.DateTime(); updated_at=fields.DateTime()
+    def get_tags(self,obj): return [t.name for t in obj.tags]

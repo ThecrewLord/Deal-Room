@@ -2,7 +2,7 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt, get_jwt_identity, jwt_required
 
 from app.middleware.admin_required import admin_required
-from app.auth.authorization import phase2_auth_required
+from app.auth.authorization import phase2_auth_required, system_admin_required, AuthorizationService
 from app.services.auth_service import AuthService
 
 
@@ -79,17 +79,17 @@ def logout():
 
 
 @auth_bp.get("/admin/pending")
-@jwt_required()
 @admin_required
 def pending_users():
-    return jsonify(AuthService.list_pending())
+    _, active_role = AuthorizationService.current_context()
+    return jsonify(AuthService.list_pending(int(get_jwt_identity()), active_role))
 
 
 @auth_bp.get("/admin/users")
-@jwt_required()
 @admin_required
 def users():
-    return jsonify(AuthService.list_users())
+    _, active_role = AuthorizationService.current_context()
+    return jsonify(AuthService.list_users(int(get_jwt_identity()), active_role))
 
 
 @auth_bp.get("/admin/users/<int:user_id>/manager-candidates")
@@ -113,7 +113,9 @@ def approve(user_id):
         return jsonify(AuthService.approve(user_id, data.get("roles"), int(get_jwt_identity()), data.get("manager_id")))
     except RuntimeError as e:
         return jsonify({"message": str(e)}), 409
-    except (ValueError, PermissionError) as e:
+    except PermissionError as e:
+        return jsonify({"message": str(e)}), 403
+    except ValueError as e:
         return jsonify({"message": str(e)}), 400
 
 
@@ -154,6 +156,23 @@ def update_manager(user_id):
         return jsonify(result), 200
     except RuntimeError as e:
         return jsonify({"message": str(e)}), 409
+    except PermissionError as e:
+        return jsonify({"message": str(e)}), 403
+    except ValueError as e:
+        return jsonify({"message": str(e)}), 400
+
+
+@auth_bp.post("/admin/users/<int:user_id>/admin-delegation")
+@system_admin_required
+def admin_delegation(user_id):
+    data = request.get_json() or {}
+    enabled = data.get("enabled")
+    if not isinstance(enabled, bool):
+        return jsonify({"message": "enabled must be a boolean."}), 400
+    try:
+        return jsonify(AuthService.set_admin_delegation(
+            int(get_jwt_identity()), user_id, enabled
+        )), 200
     except PermissionError as e:
         return jsonify({"message": str(e)}), 403
     except ValueError as e:

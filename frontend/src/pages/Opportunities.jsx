@@ -432,7 +432,8 @@ export default function Opportunities() {
                                             {accounts
                                                 .filter(
                                                     (a) =>
-                                                        a.is_active !== false
+                                                        a.status === "Active" &&
+                                                        a.is_active === true
                                                 )
                                                 .map((a) => (
                                                     <option

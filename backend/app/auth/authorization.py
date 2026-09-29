@@ -321,12 +321,8 @@ class AuthorizationService:
 
     @staticmethod
     def can_manage_rfx(user, active_role, opportunity):
-        # RFX can be managed by the Sales Executive who owns the opportunity
-        # or by the assigned Solution Engineer. Other roles remain read-only.
-        is_sales_owner = (
-            active_role == SALES_EXECUTIVE
-            and opportunity.sales_owner_id == user.user_id
-        )
+        # RFX can be managed only by the Solution Engineer
+        # assigned to the opportunity.
         is_assigned_se = (
             active_role == SOLUTION_ENGINEER
             and AuthorizationService.is_assigned_role(
@@ -340,7 +336,7 @@ class AuthorizationService:
             and opportunity.operational_status != "Closed"
             and opportunity.outcome == "Open"
             and opportunity.lifecycle_stage == "RFX"
-            and (is_sales_owner or is_assigned_se)
+            and is_assigned_se
             and AuthorizationService.can_view_opportunity(
                 user, active_role, opportunity
             )
@@ -410,19 +406,50 @@ class AuthorizationService:
 
     @staticmethod
     def can_create_activity(user, active_role, opportunity):
-        return bool(opportunity and opportunity.operational_status != "Closed" and
-                    AuthorizationService.can_view_opportunity(user, active_role, opportunity))
+        if active_role in {DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST}:
+            return False
+
+        return bool(
+            opportunity
+            and opportunity.operational_status != "Closed"
+            and AuthorizationService.can_view_opportunity(
+                user,
+                active_role,
+                opportunity,
+            )
+        )
 
     @staticmethod
     def can_manage_followup(user, active_role, followup, opportunity=None):
         opportunity = opportunity or (followup.opportunity if followup else None)
+
         if not opportunity or opportunity.operational_status == "Closed":
             return False
-        if not AuthorizationService.can_view_opportunity(user, active_role, opportunity):
+
+        if not AuthorizationService.can_view_opportunity(
+            user,
+            active_role,
+            opportunity,
+        ):
             return False
+
+        # Delivery Team can view follow-ups, but cannot create,
+        # complete, or otherwise manage them.
+        if active_role in {DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST}:
+            return False
+
         if followup is None:
             return True
-        return followup.owner_id == user.user_id or followup.created_by == user.user_id or active_role in {SALES_MANAGER, PRE_SALES_MANAGER, DELIVERY_MANAGER, LEADERSHIP}
+
+        return (
+            followup.owner_id == user.user_id
+            or followup.created_by == user.user_id
+            or active_role in {
+                SALES_MANAGER,
+                PRE_SALES_MANAGER,
+                LEADERSHIP,
+            }
+        )
 
     @staticmethod
     def can_view_account(user, active_role, account):

@@ -51,17 +51,20 @@ export default function Phase2OpportunityPanel({
   );
 
   const isDeliveryReached = normalizedStage === "delivery";
+  const isClosed = opportunity.operational_status === "Closed";
 
   const isDeliveryTeam =
     activeRole === ROLES.DELIVERY_MANAGER ||
     activeRole === ROLES.DEVOPS_ENGINEER ||
     activeRole === ROLES.DATA_ANALYST;
 
-  const rfxBlocked = !isRfxReached;
-  const negotiationsBlocked = !isNegotiationsReached || isDeliveryTeam;
+  const rfxBlocked = isClosed || !isRfxReached;
+  const negotiationsBlocked =
+    isClosed || !isNegotiationsReached || isDeliveryTeam;
   const collaborationBlocked = isDeliveryTeam;
 
   const [rfx, setRfx] = useState({ drive_link: "" });
+  const [rfxEditing, setRfxEditing] = useState(false);
   const [neg, setNeg] = useState({});
   const [negotiationEditing, setNegotiationEditing] = useState(false);
   const [acts, setActs] = useState([]);
@@ -91,7 +94,11 @@ export default function Phase2OpportunityPanel({
         : Promise.resolve(null),
     ]);
 
-    if (r !== null) setRfx(r || {});
+    if (r !== null) {
+      const rfxContext = r || {};
+      setRfx(rfxContext);
+      setRfxEditing(!rfxContext.rfx_context_id);
+    }
     if (n !== null) {
       const negotiation = n || {};
       setNeg(negotiation);
@@ -119,6 +126,7 @@ export default function Phase2OpportunityPanel({
       });
 
       await load();
+      setRfxEditing(false);
       onRefresh?.();
       setSuccess("RFX context saved successfully.");
 
@@ -260,9 +268,11 @@ export default function Phase2OpportunityPanel({
         <SectionCard
           title="RFX Context"
           description={
-            rfxBlocked
-              ? "RFX becomes available when the opportunity reaches the RFX stage."
-              : "Drive link is captured for POC documentation. Deal Room does not verify Drive permissions."
+            isClosed
+              ? "This opportunity is closed. RFX context is read-only."
+              : rfxBlocked
+                ? "RFX becomes available when the opportunity reaches the RFX stage."
+                : "Drive link is captured for POC documentation. Deal Room does not verify Drive permissions."
           }
           icon={FileText}
         >
@@ -271,7 +281,7 @@ export default function Phase2OpportunityPanel({
               style={{ flex: 1 }}
               value={rfx.drive_link || ""}
               placeholder="Google Drive link"
-              disabled={rfxBlocked}
+              disabled={rfxBlocked || !rfxEditing}
               onChange={(e) =>
                 setRfx({
                   ...rfx,
@@ -280,12 +290,24 @@ export default function Phase2OpportunityPanel({
               }
             />
 
-            <Button
-              onClick={saveRfx}
-              disabled={rfxBlocked}
-            >
-              {rfxBlocked ? "Locked" : "Save"}
-            </Button>
+            {!rfxEditing && !rfxBlocked ? (
+              <Button
+                onClick={() => {
+                  setError("");
+                  setSuccess("");
+                  setRfxEditing(true);
+                }}
+              >
+                Edit
+              </Button>
+            ) : (
+              <Button
+                onClick={saveRfx}
+                disabled={rfxBlocked}
+              >
+                {rfxBlocked ? "Locked" : "Save"}
+              </Button>
+            )}
           </div>
         </SectionCard>
       </div>
@@ -294,11 +316,13 @@ export default function Phase2OpportunityPanel({
         <SectionCard
           title="Negotiations"
           description={
-            negotiationsBlocked
-              ? isDeliveryTeam
-                ? "Negotiations are not available to the Delivery Team."
-                : "Negotiations becomes available when the opportunity reaches the Negotiations stage."
-              : "NDA/MSA/SOW are optional. NDA may be suggested."
+            isClosed
+              ? "This opportunity is closed. Negotiations context is read-only."
+              : negotiationsBlocked
+                ? isDeliveryTeam
+                  ? "Negotiations are not available to the Delivery Team."
+                  : "Negotiations becomes available when the opportunity reaches the Negotiations stage."
+                : "NDA/MSA/SOW are optional. NDA may be suggested."
           }
           icon={Handshake}
         >
@@ -470,102 +494,134 @@ export default function Phase2OpportunityPanel({
         </SectionCard>
       </div>
 
-      <div style={collaborationBlocked ? blockedStyle : undefined}>
-        <SectionCard
-          title="Follow-ups"
-          description={
-            collaborationBlocked
-              ? "Follow-ups are not available to the Delivery Team."
-              : "Open, completed and overdue follow-ups."
-          }
-          icon={CalendarCheck}
+      <SectionCard
+        title="Follow-ups"
+        description={
+          collaborationBlocked
+            ? "Follow-ups are view-only for the Delivery Team."
+            : "Open, completed and overdue follow-ups."
+        }
+        icon={CalendarCheck}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            opacity: collaborationBlocked ? 0.6 : 1,
+          }}
         >
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              style={{ flex: 1 }}
-              placeholder="Follow-up"
-              value={fu.description}
-              disabled={collaborationBlocked}
-              onChange={(e) =>
-                setFu({
-                  ...fu,
-                  description: e.target.value,
-                })
-              }
-            />
+          <input
+            style={{ flex: 1 }}
+            placeholder="Follow-up"
+            value={fu.description}
+            disabled={collaborationBlocked}
+            onChange={(e) =>
+              setFu({
+                ...fu,
+                description: e.target.value,
+              })
+            }
+          />
 
-            <input
-              type="date"
-              value={fu.due_date}
-              disabled={collaborationBlocked}
-              onChange={(e) =>
-                setFu({
-                  ...fu,
-                  due_date: e.target.value,
-                })
-              }
-            />
+          <input
+            type="date"
+            value={fu.due_date}
+            disabled={collaborationBlocked}
+            onChange={(e) =>
+              setFu({
+                ...fu,
+                due_date: e.target.value,
+              })
+            }
+          />
 
-            <Button
-              onClick={addF}
-              disabled={
-                collaborationBlocked ||
-                !fu.description ||
-                !fu.due_date
-              }
-            >
-              {collaborationBlocked ? "Locked" : "Add"}
-            </Button>
-          </div>
+          <Button
+            onClick={addF}
+            disabled={
+              collaborationBlocked ||
+              !fu.description.trim() ||
+              !fu.due_date
+            }
+          >
+            {collaborationBlocked ? "Locked" : "Add"}
+          </Button>
+        </div>
 
-          {fus.length ? (
-            fus.map((f) => {
-              const isCompleted =
-                String(f.status || "").toLowerCase() === "completed";
+        {collaborationBlocked && (
+          <small
+            style={{
+              display: "block",
+              marginTop: "8px",
+              color: "#6b7280",
+            }}
+          >
+            You can view follow-ups, but you cannot create or complete them.
+          </small>
+        )}
 
-              return (
-                <div
-                  key={f.follow_up_id}
-                  style={{
-                    padding: "12px",
-                    marginTop: "10px",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "8px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: "12px",
-                  }}
-                >
-                  <div style={{ display: "grid", gap: "4px" }}>
-                    <div>
-                      <strong>{f.status}</strong>
-                    </div>
+        {fus.length ? (
+          fus.map((f) => {
+            const isCompleted =
+              String(f.status || "").toLowerCase() === "completed";
 
-                    <div>{f.description}</div>
-
-                    <small style={{ color: "#6b7280" }}>
-                      Due: {f.due_date || "Date not available"}
-                    </small>
+            return (
+              <div
+                key={f.follow_up_id}
+                style={{
+                  padding: "12px",
+                  marginTop: "10px",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "8px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "12px",
+                }}
+              >
+                <div style={{ display: "grid", gap: "4px" }}>
+                  <div>
+                    <strong>{f.status || "Open"}</strong>
                   </div>
 
-                  {!isCompleted && (
-                    <Button
-                      onClick={() => completeF(f.follow_up_id)}
-                      disabled={collaborationBlocked}
-                    >
-                      {collaborationBlocked ? "Locked" : "Complete"}
-                    </Button>
+                  <div>{f.description}</div>
+
+                  <small style={{ color: "#6b7280" }}>
+                    Owner: {f.owner_name || `#${f.owner_id}`}
+                  </small>
+
+                  <small style={{ color: "#6b7280" }}>
+                    Created by: {f.creator_name || `#${f.created_by}`}
+                  </small>
+
+                  <small style={{ color: "#6b7280" }}>
+                    Due: {f.due_date || "Date not available"}
+                  </small>
+
+                  {isCompleted && (
+                    <small style={{ color: "#6b7280" }}>
+                      Completed:{" "}
+                      {f.completed_at
+                        ? new Date(f.completed_at).toLocaleString()
+                        : "Date not available"}
+                    </small>
                   )}
                 </div>
-              );
-            })
-          ) : (
-            <EmptyState message="No follow-ups yet." />
-          )}
-        </SectionCard>
-      </div>
 
+                {!isCompleted && (
+                  <Button
+                    onClick={() => completeF(f.follow_up_id)}
+                    disabled={collaborationBlocked}
+                  >
+                    {collaborationBlocked ? "Locked" : "Complete"}
+                  </Button>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <EmptyState message="No follow-ups yet." />
+        )}
+      </SectionCard>
       {delivery && (
         <SectionCard
           title="Delivery Project"

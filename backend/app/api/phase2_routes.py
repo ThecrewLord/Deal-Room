@@ -92,11 +92,13 @@ def _fu(f):
     return {
         "follow_up_id": f.follow_up_id,
         "owner_id": f.owner_id,
+        "owner_name": f.owner.full_name if f.owner else None,
         "description": f.description,
         "due_date": f.due_date.isoformat(),
         "status": f.status,
         "completed_at": f.completed_at.isoformat() if f.completed_at else None,
         "created_by": f.created_by,
+        "creator_name": f.creator.full_name if f.creator else None,
     }
 
 

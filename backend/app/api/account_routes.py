@@ -32,6 +32,16 @@ def archive_account(account_id):
 def ban_account(account_id):
     return AccountController.ban(account_id, g.auth_user, g.active_role)
 
+
+@account_bp.post("/<int:account_id>/unban")
+@business_access_required
+def unban_account(account_id):
+    return AccountController.unban(
+        account_id,
+        g.auth_user,
+        g.active_role,
+    )
+
 @account_bp.delete("/<int:account_id>/duplicate")
 @business_access_required
 def delete_duplicate_account(account_id):

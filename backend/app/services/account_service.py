@@ -43,24 +43,94 @@ class AccountService:
     @staticmethod
     def archive(account_id, user, active_role):
         account = db.session.get(Account, account_id)
-        if not AuthorizationService.can_govern_account(user, active_role, account):
+
+        if not AuthorizationService.can_govern_account(
+            user, active_role, account
+        ):
             raise AuthorizationDenied("Only Leadership can archive accounts.")
-        if account.status == "Archived":
-            raise ValueError("Account is already archived.")
-        account.status, account.is_active = "Archived", False
-        ActivityService.log("Account", account.account_id, "ACCOUNT_ARCHIVED", f"Account '{account.account_name}' archived.", user.user_id, commit=False, active_role=active_role)
-        db.session.commit(); return account
+
+        if account.status != "Active":
+            raise ValueError(
+                f"Only active accounts can be archived. Current status: {account.status}."
+            )
+
+        account.status = "Archived"
+        account.is_active = False
+
+        ActivityService.log(
+            "Account",
+            account.account_id,
+            "ACCOUNT_ARCHIVED",
+            f"Account '{account.account_name}' archived.",
+            user.user_id,
+            commit=False,
+            active_role=active_role,
+        )
+
+        db.session.commit()
+        return account
+
 
     @staticmethod
     def ban(account_id, user, active_role):
         account = db.session.get(Account, account_id)
-        if not AuthorizationService.can_govern_account(user, active_role, account):
+
+        if not AuthorizationService.can_govern_account(
+            user, active_role, account
+        ):
             raise AuthorizationDenied("Only Leadership can ban accounts.")
-        if account.status == "Banned":
-            raise ValueError("Account is already banned.")
-        account.status, account.is_active = "Banned", False
-        ActivityService.log("Account", account.account_id, "ACCOUNT_BANNED", f"Account '{account.account_name}' banned.", user.user_id, commit=False, active_role=active_role)
-        db.session.commit(); return account
+
+        if account.status != "Active":
+            raise ValueError(
+                f"Only active accounts can be banned. Current status: {account.status}."
+            )
+
+        account.status = "Banned"
+        account.is_active = False
+
+        ActivityService.log(
+            "Account",
+            account.account_id,
+            "ACCOUNT_BANNED",
+            f"Account '{account.account_name}' banned.",
+            user.user_id,
+            commit=False,
+            active_role=active_role,
+        )
+
+        db.session.commit()
+        return account
+
+    @staticmethod
+    def unban(account_id, user, active_role):
+        account = db.session.get(Account, account_id)
+
+        if not AuthorizationService.can_govern_account(
+            user, active_role, account
+        ):
+            raise AuthorizationDenied("Only Leadership can unban accounts.")
+
+        if account.status != "Banned":
+            raise ValueError(
+                f"Only banned accounts can be unbanned. Current status: {account.status}."
+            )
+
+        account.status = "Active"
+        account.is_active = True
+
+        ActivityService.log(
+            "Account",
+            account.account_id,
+            "ACCOUNT_UNBANNED",
+            f"Account '{account.account_name}' unbanned.",
+            user.user_id,
+            commit=False,
+            active_role=active_role,
+        )
+
+        db.session.commit()
+        return account
+
 
     @staticmethod
     def delete_duplicate(account_id, user, active_role):

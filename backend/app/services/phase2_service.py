@@ -804,17 +804,44 @@ class Phase2Service:
         return p
 
     @staticmethod
-    def complete_member(member_id,user,role):
-        m=db.session.get(DeliveryProjectMember, member_id)
-        if not m: return None
-        if not AuthorizationService.can_update_project_member_done(user,role,m):
-            raise AuthorizationDenied("You can only mark your own project participation as Done.")
+    def complete_member(member_id, user, role):
+        m = db.session.get(DeliveryProjectMember, member_id)
+        if not m:
+            return None
+
+        if not AuthorizationService.can_update_project_member_done(user, role, m):
+            raise AuthorizationDenied(
+                "You can only mark your own project participation as Done."
+            )
 
         if m.is_done:
-            return m
+            raise TransitionConflict(
+                "Delivery Project member is already marked Done."
+            )
 
-        m.is_done = True
-        m.completed_at = datetime.utcnow()
+        completed_at = datetime.utcnow()
+
+        result = db.session.execute(
+            update(DeliveryProjectMember)
+            .where(
+                DeliveryProjectMember.delivery_project_member_id == member_id,
+                DeliveryProjectMember.is_done.is_(False),
+            )
+            .values(
+                is_done=True,
+                completed_at=completed_at,
+            )
+        )
+
+        if result.rowcount != 1:
+            db.session.rollback()
+            raise TransitionConflict(
+                "Delivery Project member completion is stale or the member "
+                "is already marked Done. Refresh before retrying."
+            )
+
+        db.session.expire(m)
+        db.session.refresh(m)
 
         ActivityService.log(
             "DeliveryProjectMember",
@@ -855,14 +882,89 @@ class Phase2Service:
         return rows
 
     @staticmethod
-    def add_followup(oid,data,user,role):
-        o=Phase2Service._opp(oid)
-        if not AuthorizationService.can_manage_followup(user,role,None,o): raise AuthorizationDenied("You are not authorized to create follow-ups.")
-        owner=db.session.get(User, int(data.get("owner_id") or user.user_id))
-        if not owner: raise ValueError("Follow-up owner does not exist.")
-        f=FollowUp(opportunity_id=oid,owner_id=owner.user_id,description=str(data.get("description") or "").strip(),due_date=data.get("due_date"),created_by=user.user_id,status="Open")
-        if not f.description or not f.due_date: raise ValueError("Follow-up description and due date are required.")
-        db.session.add(f); db.session.flush(); ActivityService.log("FollowUp",f.follow_up_id,"FOLLOW_UP_CREATED","Follow-up created.",user.user_id,commit=False,active_role=role); db.session.commit(); return f
+    def add_followup(oid, data, user, role):
+        o = Phase2Service._opp(oid)
+
+        if not o:
+            raise ValueError("Opportunity does not exist.")
+
+        if not AuthorizationService.can_manage_followup(
+            user, role, None, o
+        ):
+            raise AuthorizationDenied(
+                "You are not authorized to create follow-ups."
+            )
+
+        raw_owner_id = data.get("owner_id") or user.user_id
+
+        try:
+            owner_id = int(raw_owner_id)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "Follow-up owner must be a valid user ID."
+            )
+
+        owner = db.session.get(User, owner_id)
+
+        if not owner:
+            raise ValueError("Follow-up owner does not exist.")
+
+        if not owner.active or owner.status != "APPROVED":
+            raise ValueError("Follow-up owner must be an active approved user.")
+
+        if owner.has_role("Admin"):
+            raise ValueError("Admin cannot be assigned as a follow-up owner.")
+
+        description = str(data.get("description") or "").strip()
+
+        if not description:
+            raise ValueError("Follow-up description is required.")
+
+        if len(description) < 3:
+            raise ValueError(
+                "Follow-up description must contain at least 3 characters."
+            )
+
+        raw_due_date = data.get("due_date")
+
+        if not raw_due_date:
+            raise ValueError("Follow-up due date is required.")
+
+        if isinstance(raw_due_date, date):
+            due_date = raw_due_date
+        else:
+            try:
+                due_date = date.fromisoformat(str(raw_due_date))
+            except (TypeError, ValueError):
+                raise ValueError(
+                    "Follow-up due date must be a valid ISO date (YYYY-MM-DD)."
+                )
+
+        f = FollowUp(
+            opportunity_id=oid,
+            owner_id=owner.user_id,
+            description=description,
+            due_date=due_date,
+            created_by=user.user_id,
+            status="Open",
+        )
+
+        db.session.add(f)
+        db.session.flush()
+
+        ActivityService.log(
+            "FollowUp",
+            f.follow_up_id,
+            "FOLLOW_UP_CREATED",
+            "Follow-up created.",
+            user.user_id,
+            commit=False,
+            active_role=role,
+        )
+
+        db.session.commit()
+
+        return f
 
     @staticmethod
     def complete_followup(fid, user, role):
@@ -875,8 +977,34 @@ class Phase2Service:
                 "You are not authorized to complete this follow-up."
             )
 
-        f.status = "Completed"
-        f.completed_at = datetime.utcnow()
+        if f.status == "Completed":
+            raise TransitionConflict(
+                "Follow-up is already completed."
+            )
+
+        completed_at = datetime.utcnow()
+
+        result = db.session.execute(
+            update(FollowUp)
+            .where(
+                FollowUp.follow_up_id == fid,
+                FollowUp.status.in_(["Open", "Overdue"]),
+            )
+            .values(
+                status="Completed",
+                completed_at=completed_at,
+            )
+        )
+
+        if result.rowcount != 1:
+            db.session.rollback()
+            raise TransitionConflict(
+                "Follow-up completion is stale or the follow-up "
+                "is already completed. Refresh before retrying."
+            )
+
+        db.session.expire(f)
+        db.session.refresh(f)
 
         ActivityService.log(
             "FollowUp",

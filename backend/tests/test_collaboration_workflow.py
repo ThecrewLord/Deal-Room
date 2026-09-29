@@ -166,21 +166,21 @@ def test_poc_history_is_created_for_submit_and_is_append_only(app):
         )
                 
         rows = POCHistory.query.filter_by(opportunity_id=oid).order_by(POCHistory.history_id).all()
-        assert [r.event_type for r in rows] == ["POC_SUBMITTED"]
-        assert rows[0].actor_id == submitter.user_id
+        assert [r.event_type for r in rows] == ["POC_STARTED", "POC_SUBMITTED"]
+        assert rows[1].actor_id == submitter.user_id
 
-        rows[0].reason = "attempted mutation"
+        rows[1].reason = "attempted mutation"
         with pytest.raises(ValueError, match="immutable"):
             db.session.flush()
         db.session.rollback()
 
-        assert POCHistory.query.filter_by(opportunity_id=oid).count() == 1
+        assert POCHistory.query.filter_by(opportunity_id=oid).count() == 2
 
-        db.session.delete(rows[0])
+        db.session.delete(rows[1])
         with pytest.raises(ValueError, match="immutable"):
             db.session.flush()
         db.session.rollback()
-        assert POCHistory.query.filter_by(opportunity_id=oid).count() == 1
+        assert POCHistory.query.filter_by(opportunity_id=oid).count() == 2
 
 
 def test_poc_history_requires_reason_for_new_poc_request(app):

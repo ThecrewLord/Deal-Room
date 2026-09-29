@@ -175,6 +175,553 @@ def test_phase12_followup_creation_and_completion_are_audited(app):
         assert completed_audit.actor_active_role == SALES_EXECUTIVE
 
 
+def test_phase13_followup_creation_validates_required_fields(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase13 FollowUp Validation")
+
+    with app.app_context():
+        actor = user(app, SALES_EXECUTIVE)
+
+        with pytest.raises(ValueError, match="description is required"):
+            Phase2Service.add_followup(
+                oid,
+                {
+                    "owner_id": actor.user_id,
+                    "description": "   ",
+                    "due_date": date.today(),
+                },
+                actor,
+                SALES_EXECUTIVE,
+            )
+
+        with pytest.raises(ValueError, match="at least 3 characters"):
+            Phase2Service.add_followup(
+                oid,
+                {
+                    "owner_id": actor.user_id,
+                    "description": "ab",
+                    "due_date": date.today(),
+                },
+                actor,
+                SALES_EXECUTIVE,
+            )
+
+        with pytest.raises(ValueError, match="due date is required"):
+            Phase2Service.add_followup(
+                oid,
+                {
+                    "owner_id": actor.user_id,
+                    "description": "Valid follow-up description",
+                },
+                actor,
+                SALES_EXECUTIVE,
+            )
+
+        with pytest.raises(ValueError, match="valid ISO date"):
+            Phase2Service.add_followup(
+                oid,
+                {
+                    "owner_id": actor.user_id,
+                    "description": "Valid follow-up description",
+                    "due_date": "not-a-date",
+                },
+                actor,
+                SALES_EXECUTIVE,
+            )
+
+        with pytest.raises(ValueError, match="owner does not exist"):
+            Phase2Service.add_followup(
+                oid,
+                {
+                    "owner_id": 999999,
+                    "description": "Valid follow-up description",
+                    "due_date": date.today(),
+                },
+                actor,
+                SALES_EXECUTIVE,
+            )
+
+        with pytest.raises(ValueError, match="Opportunity does not exist"):
+            Phase2Service.add_followup(
+                999999,
+                {
+                    "owner_id": actor.user_id,
+                    "description": "Valid follow-up description",
+                    "due_date": date.today(),
+                },
+                actor,
+                SALES_EXECUTIVE,
+            )
+
+
+def test_phase13_followup_creator_can_assign_different_owner(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase13 FollowUp Owner Assignment")
+
+    with app.app_context():
+        creator = user(app, SALES_EXECUTIVE)
+        owner = user(app, SOLUTION_ENGINEER)
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": owner.user_id,
+                "description": "Solution Engineer customer follow-up.",
+                "due_date": date.today(),
+            },
+            creator,
+            SALES_EXECUTIVE,
+        )
+
+        assert followup.created_by == creator.user_id
+        assert followup.owner_id == owner.user_id
+        assert followup.created_by != followup.owner_id
+        assert followup.status == "Open"
+        assert followup.completed_at is None
+
+
+def test_phase13_followup_becomes_overdue_after_due_date(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase13 FollowUp Overdue")
+
+    with app.app_context():
+        actor = user(app, SALES_EXECUTIVE)
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": actor.user_id,
+                "description": "Overdue follow-up test.",
+                "due_date": date(2026, 1, 1),
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        assert followup.status == "Open"
+        assert followup.completed_at is None
+
+        followups = Phase2Service.followups(
+            oid,
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        assert len(followups) == 1
+        assert followups[0].follow_up_id == followup.follow_up_id
+        assert followups[0].status == "Overdue"
+        assert followups[0].completed_at is None
+
+
+def test_phase13_completed_followup_stays_completed_after_due_date(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase13 Completed FollowUp")
+
+    with app.app_context():
+        actor = user(app, SALES_EXECUTIVE)
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": actor.user_id,
+                "description": "Completed follow-up test.",
+                "due_date": date(2026, 1, 1),
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        completed = Phase2Service.complete_followup(
+            followup.follow_up_id,
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        assert completed.status == "Completed"
+        assert completed.completed_at is not None
+
+        followups = Phase2Service.followups(
+            oid,
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        assert len(followups) == 1
+        assert followups[0].follow_up_id == followup.follow_up_id
+        assert followups[0].status == "Completed"
+        assert followups[0].completed_at is not None
+
+
+def test_phase13_followup_cannot_be_completed_twice(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase13 FollowUp Double Completion")
+
+    with app.app_context():
+        actor = user(app, SALES_EXECUTIVE)
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": actor.user_id,
+                "description": "Double completion test.",
+                "due_date": date.today(),
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        completed = Phase2Service.complete_followup(
+            followup.follow_up_id,
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        assert completed.status == "Completed"
+        first_completed_at = completed.completed_at
+        assert first_completed_at is not None
+
+        with pytest.raises(TransitionConflict, match="already completed"):
+            Phase2Service.complete_followup(
+                followup.follow_up_id,
+                actor,
+                SALES_EXECUTIVE,
+            )
+
+        db.session.refresh(followup)
+
+        assert followup.status == "Completed"
+        assert followup.completed_at == first_completed_at
+
+
+def test_phase13_unauthorized_user_cannot_complete_followup(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase13 FollowUp Authorization")
+
+    with app.app_context():
+        creator = user(app, SALES_EXECUTIVE)
+        unauthorized_actor = user(app, SOLUTION_ENGINEER)
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": creator.user_id,
+                "description": "Authorization follow-up test.",
+                "due_date": date.today(),
+            },
+            creator,
+            SALES_EXECUTIVE,
+        )
+
+        with pytest.raises(AuthorizationDenied):
+            Phase2Service.complete_followup(
+                followup.follow_up_id,
+                unauthorized_actor,
+                SOLUTION_ENGINEER,
+            )
+
+        db.session.refresh(followup)
+
+        assert followup.status == "Open"
+        assert followup.completed_at is None
+
+
+def test_phase13_closed_won_opportunity_blocks_followup_creation(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase13 Closed Won FollowUp")
+    submit(app, oid)
+
+    with app.app_context():
+        creator = user(app, SALES_EXECUTIVE)
+        manager = user(app, SALES_MANAGER)
+
+        opportunity = Opportunity.query.get(oid)
+
+        LifecycleTransitionService.close_won(
+            oid,
+            opportunity.row_version,
+            manager,
+            SALES_MANAGER,
+        )
+
+        closed = Opportunity.query.get(oid)
+
+        assert closed.outcome == "Closed Won"
+        assert closed.operational_status == "Closed"
+
+        with pytest.raises(AuthorizationDenied):
+            Phase2Service.add_followup(
+                oid,
+                {
+                    "owner_id": creator.user_id,
+                    "description": "Follow-up after closed won.",
+                    "due_date": date.today(),
+                },
+                creator,
+                SALES_EXECUTIVE,
+            )
+
+        assert FollowUp.query.filter_by(
+            opportunity_id=oid
+        ).count() == 0
+
+
+def test_phase13_closed_won_opportunity_blocks_existing_followup_completion(app):
+    oid = make_lead(app, SALES_EXECUTIVE, "Phase13 Existing FollowUp After Close")
+    submit(app, oid)
+
+    with app.app_context():
+        creator = user(app, SALES_EXECUTIVE)
+        manager = user(app, SALES_MANAGER)
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": creator.user_id,
+                "description": "Existing follow-up before closure.",
+                "due_date": date.today(),
+            },
+            creator,
+            SALES_EXECUTIVE,
+        )
+
+        opportunity = Opportunity.query.get(oid)
+
+        LifecycleTransitionService.close_won(
+            oid,
+            opportunity.row_version,
+            manager,
+            SALES_MANAGER,
+        )
+
+        closed = Opportunity.query.get(oid)
+
+        assert closed.outcome == "Closed Won"
+        assert closed.operational_status == "Closed"
+
+        with pytest.raises(AuthorizationDenied):
+            Phase2Service.complete_followup(
+                followup.follow_up_id,
+                creator,
+                SALES_EXECUTIVE,
+            )
+
+        db.session.refresh(followup)
+
+        assert followup.status == "Open"
+        assert followup.completed_at is None
+
+
+def test_phase13_delivery_manager_can_view_but_not_complete_followup(app):
+    oid = _qualify_and_assign_se(
+        app,
+        "Phase13 Delivery FollowUp Visibility",
+    )
+
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        delivery_manager = user(app, DELIVERY_MANAGER)
+
+        opp = Opportunity.query.get(oid)
+
+        # Qualified -> RFX
+        LifecycleTransitionService.transition(
+            oid,
+            "RFX",
+            opp.row_version,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        opp = Opportunity.query.get(oid)
+
+        # RFX -> POC requires RFX context.
+        db.session.add(
+            RFXContext(
+                opportunity_id=oid,
+                drive_link="https://drive.google.com/test-rfx-context",
+                created_by=se.user_id,
+            )
+        )
+        db.session.commit()
+
+        opp = Opportunity.query.get(oid)
+
+        LifecycleTransitionService.transition(
+            oid,
+            "POC",
+            opp.row_version,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        opp = Opportunity.query.get(oid)
+
+        # POC -> Negotiations requires a completed successful POC.
+        db.session.add(
+            POCTracker(
+                opportunity_id=oid,
+                poc_name="Certification POC",
+                target_date=date.today(),
+                status="Completed",
+                outcome="Success",
+                result_view_link="https://drive.google.com/poc-result",
+                requested_by=se.user_id,
+                submitted_by=se.user_id,
+            )
+        )
+        db.session.commit()
+
+        opp = Opportunity.query.get(oid)
+
+        LifecycleTransitionService.transition(
+            oid,
+            "Negotiations",
+            opp.row_version,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        opp = Opportunity.query.get(oid)
+
+        assert opp.lifecycle_stage == "Negotiations"
+        assert opp.outcome == "Open"
+        assert opp.operational_status == "Active"
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": se.user_id,
+                "description": "Follow-up visible to delivery.",
+                "due_date": date.today(),
+            },
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        visible_followups = Phase2Service.followups(
+            oid,
+            delivery_manager,
+            DELIVERY_MANAGER,
+        )
+
+        assert len(visible_followups) == 1
+        assert visible_followups[0].follow_up_id == followup.follow_up_id
+        assert visible_followups[0].description == "Follow-up visible to delivery."
+
+        with pytest.raises(AuthorizationDenied):
+            Phase2Service.complete_followup(
+                followup.follow_up_id,
+                delivery_manager,
+                DELIVERY_MANAGER,
+            )
+
+        db.session.refresh(followup)
+
+        assert followup.status == "Open"
+        assert followup.completed_at is None
+
+
+def test_phase13_delivery_team_roles_cannot_manage_followups(app):
+    oid = _qualify_and_assign_se(
+        app,
+        "Phase13 Delivery Team FollowUp Authorization",
+    )
+
+    with app.app_context():
+        se = user(app, SOLUTION_ENGINEER)
+        delivery_manager = user(app, DELIVERY_MANAGER)
+        devops = user(app, DEVOPS_ENGINEER)
+        data_analyst = user(app, DATA_ANALYST)
+        sales_manager = user(app, SALES_MANAGER)
+
+        opp = Opportunity.query.get(oid)
+
+        LifecycleTransitionService.transition(
+            oid,
+            "RFX",
+            opp.row_version,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        opp = Opportunity.query.get(oid)
+
+        db.session.add(
+            RFXContext(
+                opportunity_id=oid,
+                drive_link="https://drive.google.com/test-rfx-context",
+                created_by=se.user_id,
+            )
+        )
+        db.session.commit()
+
+        opp = Opportunity.query.get(oid)
+
+        LifecycleTransitionService.transition(
+            oid,
+            "POC",
+            opp.row_version,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        opp = Opportunity.query.get(oid)
+
+        db.session.add(
+            POCTracker(
+                opportunity_id=oid,
+                poc_name="Authorization POC",
+                target_date=date.today(),
+                status="Completed",
+                outcome="Success",
+                result_view_link="https://drive.google.com/poc-result",
+                requested_by=se.user_id,
+                submitted_by=se.user_id,
+            )
+        )
+        db.session.commit()
+
+        opp = Opportunity.query.get(oid)
+
+        LifecycleTransitionService.transition(
+            oid,
+            "Negotiations",
+            opp.row_version,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        followup = Phase2Service.add_followup(
+            oid,
+            {
+                "owner_id": se.user_id,
+                "description": "Delivery Team authorization test.",
+                "due_date": date.today(),
+            },
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        for delivery_user, role in (
+            (delivery_manager, DELIVERY_MANAGER),
+            (devops, DEVOPS_ENGINEER),
+            (data_analyst, DATA_ANALYST),
+        ):
+            with pytest.raises(AuthorizationDenied):
+                Phase2Service.complete_followup(
+                    followup.follow_up_id,
+                    delivery_user,
+                    role,
+                )
+
+        db.session.refresh(followup)
+
+        assert followup.status == "Open"
+        assert followup.completed_at is None
+
+        completed = Phase2Service.complete_followup(
+            followup.follow_up_id,
+            sales_manager,
+            SALES_MANAGER,
+        )
+
+        assert completed.status == "Completed"
+        assert completed.completed_at is not None
+
+
 def test_phase12_activity_and_followup_history_follow_opportunity_visibility(app):
     oid = make_lead(app, SALES_EXECUTIVE, "Phase12 Entity Visibility")
 
@@ -1550,3 +2097,478 @@ def test_phase11_delivery_dashboard_counts(app):
 
         assert summary["active_delivery_projects"] == 0
         assert summary["completed_delivery_projects"] == 1
+
+# ============================================================
+# Phase 16 — PostgreSQL concurrency verification
+# ============================================================
+
+@pytest.fixture()
+def phase16_postgres_app():
+    import os
+
+    postgres_url = os.getenv("TEST_POSTGRES_URL")
+    if not postgres_url:
+        pytest.skip("requires TEST_POSTGRES_URL")
+
+    application = create_app({
+        "TESTING": True,
+        "SQLALCHEMY_DATABASE_URI": postgres_url,
+        "JWT_SECRET_KEY": "phase16-postgres-test-secret-32-bytes-long",
+    })
+
+    with application.app_context():
+        db.drop_all()
+        db.create_all()
+
+        account = Account(
+            account_name="Phase 16 Concurrency Account",
+            is_active=True,
+        )
+        db.session.add(account)
+
+        roles = [
+            LEADERSHIP,
+            ADMIN,
+            SALES_MANAGER,
+            SALES_EXECUTIVE,
+            PRE_SALES_MANAGER,
+            SOLUTION_ENGINEER,
+            DELIVERY_MANAGER,
+            DEVOPS_ENGINEER,
+            DATA_ANALYST,
+        ]
+
+        for role in roles:
+            u = User(
+                full_name=f"Phase16 {role}",
+                email=f"{role.lower().replace(' ', '_').replace('-', '_')}@phase16.test",
+                password_hash=hash_password("Password123!"),
+                status="APPROVED",
+                active=True,
+            )
+            u.roles.append(UserRole(role=role))
+            db.session.add(u)
+
+        db.session.flush()
+
+        for order, name in enumerate(
+            ("Lead", "Qualified", "RFX", "POC", "Negotiations", "Delivery"),
+            1,
+        ):
+            db.session.add(
+                StageMaster(
+                    stage_name=name,
+                    display_order=order,
+                    requires_poc=(name == "POC"),
+                    is_closed=False,
+                    is_won=False,
+                )
+            )
+
+        db.session.commit()
+
+        application.config["P16_ACCOUNT"] = account.account_id
+        application.config["P16_USERS"] = {
+            u.role_names()[0]: u.user_id
+            for u in User.query.all()
+        }
+
+    yield application
+
+
+def _phase16_make_followup(application):
+    with application.app_context():
+        actor = User.query.get(
+            application.config["P16_USERS"][SALES_EXECUTIVE]
+        )
+
+        opp = OpportunityService.create_opportunity(
+            {
+                "account_id": application.config["P16_ACCOUNT"],
+                "opportunity_name": "Phase16 FollowUp Concurrency",
+                "description": "Concurrency test opportunity.",
+                "pain_points": "Concurrency test pain.",
+                "estimated_value": 100000,
+                "probability": 25,
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        db.session.commit()
+
+        followup = Phase2Service.add_followup(
+            opp.opportunity_id,
+            {
+                "owner_id": actor.user_id,
+                "description": "Concurrent follow-up completion test.",
+                "due_date": date.today(),
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        db.session.commit()
+
+        return followup.follow_up_id, actor.user_id
+
+
+def _phase16_make_delivery_project(application):
+    with application.app_context():
+        actor = User.query.get(
+            application.config["P16_USERS"][SALES_EXECUTIVE]
+        )
+        psm = User.query.get(
+            application.config["P16_USERS"][PRE_SALES_MANAGER]
+        )
+        sales_manager = User.query.get(
+            application.config["P16_USERS"][SALES_MANAGER]
+        )
+        se = User.query.get(
+            application.config["P16_USERS"][SOLUTION_ENGINEER]
+        )
+
+        opp = OpportunityService.create_opportunity(
+            {
+                "account_id": application.config["P16_ACCOUNT"],
+                "opportunity_name": "Phase16 Delivery Concurrency",
+                "description": "Concurrency test opportunity.",
+                "pain_points": "Concurrency test pain.",
+                "estimated_value": 100000,
+                "probability": 25,
+            },
+            actor,
+            SALES_EXECUTIVE,
+        )
+        db.session.add(
+            Stakeholder(
+                opportunity_id=opp.opportunity_id,
+                stakeholder_name="Phase16 Decision Maker",
+            )
+        )
+        db.session.commit()
+
+        # Complete the normal Lead -> review gate before allowing the
+        # Solution Engineer to advance the opportunity.
+        LifecycleTransitionService.submit_lead(
+            opp.opportunity_id,
+            opp.row_version,
+            actor,
+            SALES_EXECUTIVE,
+        )
+
+        opp = Opportunity.query.get(opp.opportunity_id)
+
+        LifecycleTransitionService.approve_lead(
+            opp.opportunity_id,
+            opp.row_version,
+            actor.user_id,
+            sales_manager,
+            SALES_MANAGER,
+        )
+
+        opp = Opportunity.query.get(opp.opportunity_id)
+
+        db.session.add(
+            OpportunityTeam(
+                opportunity_id=opp.opportunity_id,
+                user_id=se.user_id,
+                role=SOLUTION_ENGINEER,
+            )
+        )
+        db.session.commit()
+
+        LifecycleTransitionService.transition(
+            opp.opportunity_id,
+            "RFX",
+            opp.row_version,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        opp = Opportunity.query.get(opp.opportunity_id)
+
+        db.session.add(
+            RFXContext(
+                opportunity_id=opp.opportunity_id,
+                drive_link="https://drive.google.com/phase16-rfx",
+                created_by=psm.user_id,
+            )
+        )
+        db.session.commit()
+
+        LifecycleTransitionService.transition(
+            opp.opportunity_id,
+            "POC",
+            opp.row_version,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        opp = Opportunity.query.get(opp.opportunity_id)
+
+        db.session.add(
+            POCTracker(
+                opportunity_id=opp.opportunity_id,
+                poc_name="Phase16 Concurrency POC",
+                target_date=date.today(),
+                status="Completed",
+                outcome="Success",
+                result_view_link="https://drive.google.com/phase16-poc",
+                requested_by=psm.user_id,
+                submitted_by=psm.user_id,
+            )
+        )
+        db.session.commit()
+
+        LifecycleTransitionService.transition(
+            opp.opportunity_id,
+            "Negotiations",
+            opp.row_version,
+            se,
+            SOLUTION_ENGINEER,
+        )
+
+        opp = Opportunity.query.get(opp.opportunity_id)
+
+        LifecycleTransitionService.close_won(
+            opp.opportunity_id,
+            opp.row_version,
+            psm,
+            PRE_SALES_MANAGER,
+        )
+
+        project = DeliveryProject.query.filter_by(
+            opportunity_id=opp.opportunity_id
+        ).first()
+
+        return project.delivery_project_id
+
+
+@pytest.mark.skipif(
+    not __import__("os").getenv("TEST_POSTGRES_URL"),
+    reason="requires a PostgreSQL integration database",
+)
+def test_phase16_postgres_concurrent_followup_completion_is_atomic(
+    phase16_postgres_app,
+):
+    import threading
+
+    application = phase16_postgres_app
+    followup_id, actor_id = _phase16_make_followup(application)
+
+    barrier = threading.Barrier(2)
+    results = []
+
+    def worker():
+        with application.app_context():
+            actor = db.session.get(User, actor_id)
+
+            barrier.wait()
+
+            try:
+                Phase2Service.complete_followup(
+                    followup_id,
+                    actor,
+                    SALES_EXECUTIVE,
+                )
+                results.append("success")
+            except TransitionConflict:
+                results.append("conflict")
+            finally:
+                db.session.remove()
+
+    t1 = threading.Thread(target=worker)
+    t2 = threading.Thread(target=worker)
+
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert sorted(results) == ["conflict", "success"]
+
+    with application.app_context():
+        followup = db.session.get(FollowUp, followup_id)
+
+        assert followup.status == "Completed"
+        assert followup.completed_at is not None
+
+        events = AuditLog.query.filter_by(
+            entity_type="FollowUp",
+            entity_id=followup_id,
+            action="FOLLOW_UP_COMPLETED",
+        ).all()
+
+        assert len(events) == 1
+
+
+@pytest.mark.skipif(
+    not __import__("os").getenv("TEST_POSTGRES_URL"),
+    reason="requires a PostgreSQL integration database",
+)
+def test_phase16_postgres_concurrent_delivery_member_completion_is_atomic(
+    phase16_postgres_app,
+):
+    import threading
+
+    application = phase16_postgres_app
+    pid = _phase16_make_delivery_project(application)
+
+    with application.app_context():
+        manager = User.query.get(
+            application.config["P16_USERS"][DELIVERY_MANAGER]
+        )
+        devops = User.query.get(
+            application.config["P16_USERS"][DEVOPS_ENGINEER]
+        )
+
+        project = db.session.get(DeliveryProject, pid)
+
+        Phase2Service.assign_delivery_members(
+            pid,
+            [devops.user_id],
+            manager,
+            DELIVERY_MANAGER,
+            project.row_version,
+        )
+
+        member = DeliveryProjectMember.query.filter_by(
+            delivery_project_id=pid,
+            user_id=devops.user_id,
+        ).first()
+
+        member_id = member.delivery_project_member_id
+        devops_id = devops.user_id
+
+    barrier = threading.Barrier(2)
+    results = []
+
+    def worker():
+        with application.app_context():
+            actor = db.session.get(User, devops_id)
+
+            barrier.wait()
+
+            try:
+                Phase2Service.complete_member(
+                    member_id,
+                    actor,
+                    DEVOPS_ENGINEER,
+                )
+                results.append("success")
+            except TransitionConflict:
+                results.append("conflict")
+            finally:
+                db.session.remove()
+
+    t1 = threading.Thread(target=worker)
+    t2 = threading.Thread(target=worker)
+
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert sorted(results) == ["conflict", "success"]
+
+    with application.app_context():
+        member = db.session.get(
+            DeliveryProjectMember,
+            member_id,
+        )
+
+        assert member.is_done is True
+        assert member.completed_at is not None
+
+        events = AuditLog.query.filter_by(
+            entity_type="DeliveryProjectMember",
+            entity_id=member_id,
+            action="DELIVERY_PROJECT_MEMBER_COMPLETED",
+        ).all()
+
+        assert len(events) == 1
+
+
+@pytest.mark.skipif(
+    not __import__("os").getenv("TEST_POSTGRES_URL"),
+    reason="requires a PostgreSQL integration database",
+)
+def test_phase16_postgres_concurrent_delivery_member_assignment_is_atomic(
+    phase16_postgres_app,
+):
+    import threading
+
+    application = phase16_postgres_app
+    pid = _phase16_make_delivery_project(application)
+
+    with application.app_context():
+        manager = User.query.get(
+            application.config["P16_USERS"][DELIVERY_MANAGER]
+        )
+        devops = User.query.get(
+            application.config["P16_USERS"][DEVOPS_ENGINEER]
+        )
+        analyst = User.query.get(
+            application.config["P16_USERS"][DATA_ANALYST]
+        )
+
+        project = db.session.get(DeliveryProject, pid)
+        expected_version = project.row_version
+
+        manager_id = manager.user_id
+        devops_id = devops.user_id
+        analyst_id = analyst.user_id
+
+    barrier = threading.Barrier(2)
+    results = []
+
+    def worker(member_id):
+        with application.app_context():
+            actor = db.session.get(User, manager_id)
+
+            barrier.wait()
+
+            try:
+                Phase2Service.assign_delivery_members(
+                    pid,
+                    [member_id],
+                    actor,
+                    DELIVERY_MANAGER,
+                    expected_version,
+                )
+                results.append("success")
+            except TransitionConflict:
+                results.append("conflict")
+            finally:
+                db.session.remove()
+
+    t1 = threading.Thread(target=worker, args=(devops_id,))
+    t2 = threading.Thread(target=worker, args=(analyst_id,))
+
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert sorted(results) == ["conflict", "success"]
+
+    with application.app_context():
+        project = db.session.get(DeliveryProject, pid)
+
+        assert project.row_version == expected_version + 1
+
+        members = DeliveryProjectMember.query.filter_by(
+            delivery_project_id=pid
+        ).all()
+
+        assert len(members) == 1
+        assert members[0].user_id in {devops_id, analyst_id}
+
+        events = AuditLog.query.filter_by(
+            entity_type="DeliveryProject",
+            entity_id=pid,
+            action="DELIVERY_PROJECT_MEMBERS_CHANGED",
+        ).all()
+
+        assert len(events) == 1

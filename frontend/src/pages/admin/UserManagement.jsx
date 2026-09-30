@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Edit3, Filter, Mail, RefreshCw, Search, ShieldCheck, UserCog, Users, UserX, X } from "lucide-react";
+import { ChevronDown, Clock3, Edit3, Filter, Mail, RefreshCw, Search, ShieldCheck, UserCog, Users, UserX, X } from "lucide-react";
 import adminApi from "../../api/adminApi";
 import { AVAILABLE_ROLES, ROLES } from "../../auth/roles";
 import { useAuth } from "../../context/AuthContext";
@@ -7,10 +7,13 @@ import "../../styles/admin.css";
 import PageHeader from "../../components/ui/PageHeader";
 import Button from "../../components/ui/Button";
 import StatusBadge from "../../components/ui/StatusBadge";
+import ApprovalRequestCard from "../../components/admin/ApprovalRequestCard";
 
 export default function UserManagement() {
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, activeRole } = useAuth();
     const [users, setUsers] = useState([]);
+    const [pendingUsers, setPendingUsers] = useState([]);
+    const [busyApproval, setBusyApproval] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState("");
@@ -25,7 +28,9 @@ export default function UserManagement() {
         try {
             refresh ? setRefreshing(true) : setLoading(true);
             setError("");
-            setUsers(await adminApi.getUsers());
+            const [allUsers, pending] = await Promise.all([adminApi.getUsers(), adminApi.getPending()]);
+            setUsers(allUsers);
+            setPendingUsers(pending || []);
         } catch (err) {
             setError(err?.response?.data?.message || "Unable to load users.");
         } finally { setLoading(false); setRefreshing(false); }
@@ -62,15 +67,26 @@ export default function UserManagement() {
 
     return (
         <div className="standard-page admin-page">
-            <PageHeader title="User Management" description="Manage user accounts, roles and reporting relationships from a single workspace."
+            <PageHeader title="Administration" description="Approve access, manage roles, reporting relationships, and account access from one administration workspace."
                 actions={<Button variant="secondary" onClick={() => load({ refresh: true })} disabled={refreshing}><RefreshCw size={14} className={refreshing ? "admin-spin" : ""} /> Refresh</Button>} />
 
-            <div className="admin-stat-grid compact">
-                <MiniStat icon={Users} label="Total users" value={stats.total} />
-                <MiniStat icon={ShieldCheck} label="Active" value={stats.active} tone="success" />
-                <MiniStat icon={UserCog} label="Pending" value={stats.pending} tone="warning" />
-                <MiniStat icon={UserX} label="Revoked" value={stats.revoked} tone="danger" />
+            <div className="admin-summary-strip">
+                <MiniStat icon={Clock3} label="Pending approvals" value={pendingUsers.length} tone="warning" />
+                <MiniStat icon={ShieldCheck} label="Active access" value={stats.active} tone="success" />
+                <MiniStat icon={UserX} label="Revoked access" value={stats.revoked} tone="danger" />
+                <MiniStat icon={Users} label="Managed users" value={stats.total} />
             </div>
+
+            {pendingUsers.length > 0 && <div className="admin-section-block">
+                <div className="admin-section-heading"><div><h2>Pending approvals</h2><p>Review requests and assign only authorized roles and managers.</p></div><span className="admin-result-count">{pendingUsers.length} waiting</span></div>
+                <div className="admin-approval-stack">
+                    {pendingUsers.map((pendingUser) => <ApprovalRequestCard key={pendingUser.user_id} user={pendingUser} busy={busyApproval === pendingUser.user_id} onError={setError} onApprove={async (target, roles, managerId) => {
+                        try { setBusyApproval(target.user_id); setError(""); setSuccess(""); await adminApi.approve(target.user_id, roles, managerId); setSuccess(`${target.full_name} was approved successfully.`); await load(); }
+                        catch (err) { setError(err?.response?.data?.message || "Unable to approve user."); }
+                        finally { setBusyApproval(null); }
+                    }} />)}
+                </div>
+            </div>}
 
             {error && <div className="admin-alert admin-alert-error"><span>{error}</span></div>}
             {success && <div className="admin-alert admin-alert-success"><ShieldCheck size={16} /><span>{success}</span></div>}
@@ -104,20 +120,20 @@ export default function UserManagement() {
                 </div></div>
             )}
 
-            {editingRoles && <RoleEditorModal user={editingRoles} onClose={() => setEditingRoles(null)} onSaved={(message) => { setEditingRoles(null); setSuccess(message); load(); }} onError={setError} />}
+            {editingRoles && <RoleEditorModal activeRole={activeRole} user={editingRoles} onClose={() => setEditingRoles(null)} onSaved={(message) => { setEditingRoles(null); setSuccess(message); load(); }} onError={setError} />}
             {editingManager && <ManagerEditorModal user={editingManager} onClose={() => setEditingManager(null)} onSaved={(message) => { setEditingManager(null); setSuccess(message); load(); }} onError={setError} />}
         </div>
     );
 }
 
-function RoleEditorModal({ user, onClose, onSaved, onError }) {
+function RoleEditorModal({ activeRole, user, onClose, onSaved, onError }) {
     const [roles, setRoles] = useState(user.roles || []);
     const [managerId, setManagerId] = useState(user.manager_id ?? null);
     const [candidates, setCandidates] = useState([]);
     const [candidateLoading, setCandidateLoading] = useState(false);
     const [candidateError, setCandidateError] = useState("");
     const [saving, setSaving] = useState(false);
-    const managerRequired = roles.some((role) => [ROLES.SALES_EXECUTIVE, ROLES.SOLUTION_ENGINEER, ROLES.SOLUTION_ENGINEER].includes(role));
+    const managerRequired = roles.some((role) => [ROLES.SALES_EXECUTIVE, ROLES.SOLUTION_ENGINEER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST].includes(role));
 
     useEffect(() => {
         let mounted = true;
@@ -149,7 +165,7 @@ function RoleEditorModal({ user, onClose, onSaved, onError }) {
 
     return <Modal title="Manage roles" subtitle={user.full_name} onClose={onClose}>
         <div className="admin-modal-user"><div className="admin-avatar large">{getInitials(user.full_name)}</div><div><strong>{user.full_name}</strong><span>{user.email}</span></div></div>
-        <div className="admin-modal-section"><div className="admin-section-label"><span>Roles</span><small>{roles.length} selected</small></div><div className="admin-role-grid">{AVAILABLE_ROLES.map((role) => <label className={`admin-role-option ${roles.includes(role) ? "selected" : ""}`} key={role}><input type="checkbox" checked={roles.includes(role)} onChange={() => toggle(role)} /><span className="admin-role-check"><ShieldCheck size={14} /></span>{role}</label>)}</div></div>
+        <div className="admin-modal-section"><div className="admin-section-label"><span>Roles</span><small>{roles.length} selected</small></div><div className="admin-role-grid">{AVAILABLE_ROLES.filter((role) => activeRole === ROLES.LEADERSHIP ? true : role !== ROLES.LEADERSHIP).map((role) => <label className={`admin-role-option ${roles.includes(role) ? "selected" : ""}`} key={role}><input type="checkbox" checked={roles.includes(role)} onChange={() => toggle(role)} /><span className="admin-role-check"><ShieldCheck size={14} /></span>{role}</label>)}</div></div>
         <div className="admin-modal-section"><div className="admin-section-label"><span>Reporting manager</span><small>{managerRequired ? "Required" : "Not required"}</small></div><label className={`admin-select ${!managerRequired ? "disabled" : ""}`}><Users size={15} /><select value={managerId ?? ""} onChange={(e) => setManagerId(e.target.value ? Number(e.target.value) : null)} disabled={candidateLoading || !managerRequired}>{!managerRequired && <option value="">No Manager</option>}{managerRequired && <option value="">Select manager</option>}{candidates.map((candidate) => <option key={candidate.user_id} value={candidate.user_id}>{candidate.full_name} — {candidate.email}</option>)}</select><ChevronDown size={14} /></label>{candidateLoading && <div className="admin-inline-note">Finding eligible managers…</div>}{candidateError && <div className="admin-inline-error">{candidateError}</div>}</div>
         <div className="admin-modal-actions"><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving || candidateLoading}>{saving ? "Saving…" : "Save changes"}</Button></div>
     </Modal>;

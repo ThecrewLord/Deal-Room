@@ -6,7 +6,7 @@ import Button from "../../components/ui/Button";
 import PageHeader from "../../components/ui/PageHeader";
 import StatusBadge from "../../components/ui/StatusBadge";
 
-const MANAGED_ROLES = new Set([ROLES.SALES_EXECUTIVE, ROLES.SOLUTION_ENGINEER, ROLES.SOLUTION_ENGINEER]);
+const MANAGED_ROLES = new Set([ROLES.SALES_EXECUTIVE, ROLES.SOLUTION_ENGINEER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST]);
 
 export default function UserApproval() {
     const [users, setUsers] = useState([]);

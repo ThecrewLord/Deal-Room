@@ -14,4 +14,10 @@ def search():
         g.active_role,
         request.args.get("q", ""),
         request.args.get("type"),
+        stage=request.args.get("stage"),
+        status=request.args.get("status"),
+        account_id=request.args.get("account_id"),
+        owner_id=request.args.get("owner_id"),
+        page=request.args.get("page", 1),
+        page_size=request.args.get("page_size", 20),
     )

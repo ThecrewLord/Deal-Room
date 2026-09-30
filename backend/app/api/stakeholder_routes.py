@@ -6,6 +6,11 @@ from app.controllers.stakeholder_controller import StakeholderController
 stakeholder_bp = Blueprint("stakeholder", __name__, url_prefix="/api/stakeholder")
 
 
+@stakeholder_bp.get("")
+@business_access_required
+def get_all_stakeholders():
+    return StakeholderController.get_all()
+
 @stakeholder_bp.post("")
 @business_access_required
 def create_stakeholder():

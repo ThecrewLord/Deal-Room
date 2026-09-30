@@ -157,6 +157,10 @@ def _ensure_users():
     for role, full_name, email in ROLE_USERS:
         users[role] = _ensure_user(full_name, email, role)
 
+    # Phase 18 team hierarchy:
+    # Sales Manager owns the seeded Sales Executive.
+    users[SALES_EXECUTIVE].manager_id = users[SALES_MANAGER].user_id
+
     db.session.flush()
     return users
 

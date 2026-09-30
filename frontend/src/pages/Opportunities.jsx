@@ -961,8 +961,17 @@ export default function Opportunities() {
                     const ageDays = createdAt
                         ? Math.max(
                               0,
-                              Math.floor(
-                                  (Date.now() - createdAt.getTime()) /
+                              Math.round(
+                                  (new Date(
+                                      new Date().getFullYear(),
+                                      new Date().getMonth(),
+                                      new Date().getDate()
+                                  ) -
+                                      new Date(
+                                          createdAt.getFullYear(),
+                                          createdAt.getMonth(),
+                                          createdAt.getDate()
+                                      )) /
                                       (1000 * 60 * 60 * 24)
                               )
                           )

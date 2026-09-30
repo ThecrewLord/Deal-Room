@@ -122,7 +122,7 @@ class LifecycleTransitionService:
 
     @staticmethod
     def _touch_state(opportunity, *, lifecycle_stage=None, outcome=None, operational_status=None, review_status=None,
-                     lost_reason=None, lost_explanation=None, final_revenue=None, sync_legacy=True):
+                     lost_reason=None, lost_explanation=None, closure_reason=None, final_revenue=None, sync_legacy=True):
         values = {"row_version": Opportunity.row_version + 1}
         if lifecycle_stage is not None:
             values["lifecycle_stage"] = lifecycle_stage
@@ -143,6 +143,8 @@ class LifecycleTransitionService:
             values["lost_reason"] = lost_reason
         if lost_explanation is not None:
             values["lost_explanation"] = lost_explanation
+        if closure_reason is not None:
+            values["closure_reason"] = closure_reason
         if final_revenue is not None:
             values["final_revenue"] = final_revenue
         result = db.session.execute(
@@ -386,6 +388,7 @@ class LifecycleTransitionService:
         """Close a locked opportunity without committing; caller owns the transaction."""
         cls.assert_opportunity_open_for_mutation(opportunity)
         cls._authorize_close(user, active_role, opportunity, True)
+
         current = cls._normalize_lifecycle(opportunity)
         if current == "Lead" and opportunity.review_status != "Pending Sales Manager Review":
             raise TransitionInvalid("Initial Lead closure is only available during Sales Manager review.")
@@ -478,16 +481,12 @@ class LifecycleTransitionService:
 
             reason = str(reason).strip() if reason is not None else None
             explanation = str(explanation).strip() if explanation is not None else None
-            if requested_outcome == "Closed Lost":
-                if not reason:
-                    raise TransitionInvalid("A Closed Lost reason is required.")
-                if reason.lower() == "other" and not explanation:
-                    raise TransitionInvalid("Explanation is required when Closed Lost reason is Other.")
-            elif reason or explanation:
-                # Ignore neither accidental nor attacker-supplied closure metadata.
-                # Closed Won has no request reason contract.
-                reason = None
-                explanation = None
+
+            if not reason:
+                raise TransitionInvalid("A closure reason is required.")
+
+            if requested_outcome == "Closed Lost" and reason.lower() == "other" and not explanation:
+                raise TransitionInvalid("Explanation is required when Closed Lost reason is Other.")
 
             if LifecycleTransitionService._pending_closure_request(opportunity):
                 raise TransitionInvalid("A closure request is already pending.")
@@ -570,7 +569,11 @@ class LifecycleTransitionService:
 
             if request.requested_outcome == "Closed Won":
                 request.resolution_reason = str(reason).strip() if reason else None
-                result = LifecycleTransitionService._close_won_locked(opportunity, user, active_role)
+                result = LifecycleTransitionService._close_won_locked(
+                    opportunity,
+                    user,
+                    active_role,
+                )
                 ActivityService.log(
                     "Opportunity", opportunity.opportunity_id, "CLOSURE_APPROVAL_APPROVED",
                     "Closed Won request approved by Pre-Sales Manager.",

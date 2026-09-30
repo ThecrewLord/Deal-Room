@@ -12,7 +12,7 @@ import {
     Plus,
 } from "lucide-react";
 import { getOpportunities } from "../api/opportunityApi";
-import { getPocsByOpportunity } from "../api/pocApi";
+import { getPocsByOpportunity, getAssignedPocs } from "../api/pocApi";
 import { ROLES } from "../auth/roles";
 import { useAuth } from "../context/AuthContext";
 import PageHeader from "../components/ui/PageHeader";
@@ -38,31 +38,41 @@ export default function Pocs() {
     const [filter, setFilter] = useState("All");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [expandedPocs, setExpandedPocs] = useState(new Set());
 
     const [showAddPoc, setShowAddPoc] = useState(false);
     const [creating, setCreating] = useState(false);
-        const load = async () => {  
+        const load = async () => {
         try {
             setLoading(true);
             setError("");
-            const opportunities = await getOpportunities();
-            const groups = await Promise.all(
-                opportunities.map(async (opportunity) => {
-                    const pocs = await getPocsByOpportunity(opportunity.opportunity_id);
-                    return pocs.map((poc) => ({
-                        ...poc,
-                        opportunity_name: opportunity.opportunity_name,
-                        account_name: opportunity.account_name,
-                    }));
-                })
+
+            const pocs = await getAssignedPocs();
+
+            const opportunities = await getOpportunities().catch(() => []);
+            const opportunityMap = new Map(
+                opportunities.map((o) => [
+                    o.opportunity_id,
+                    {
+                        opportunity_name: o.opportunity_name,
+                        account_name: o.account_name,
+                    },
+                ])
             );
-            setItems(groups.flat());
+
+            setItems(
+                pocs.map((poc) => ({
+                    ...poc,
+                    ...(opportunityMap.get(poc.opportunity_id) || {}),
+                }))
+            );
         } catch (err) {
             setError(err?.response?.data?.message || "Unable to load POCs. Please try again.");
         } finally {
             setLoading(false);
         }
     };
+
     const handleCreatePoc = async (payload) => {
         try {
             setCreating(true);
@@ -87,6 +97,23 @@ export default function Pocs() {
         if ([ROLES.SOLUTION_ENGINEER,ROLES.DELIVERY_MANAGER,ROLES.DEVOPS_ENGINEER,ROLES.DATA_ANALYST].includes(activeRole)) load();
         else setLoading(false);
     }, [activeRole]);
+
+    const togglePoc = (pocId) => {
+        setExpandedPocs((current) => {
+            const next = new Set(current);
+
+            if (next.has(pocId)) {
+                next.delete(pocId);
+            } else {
+                next.add(pocId);
+            }
+
+            return next;
+        });
+    };
+
+    const isCompletedPoc = (poc) =>
+        poc.status === "Completed" && Boolean(poc.outcome);
 
     const statuses = useMemo(() => {
         const returned = [...new Set(items.map((item) => item.status).filter(Boolean))];
@@ -206,20 +233,133 @@ export default function Pocs() {
                             {
                                 key: "poc",
                                 label: "POC",
-                                render: (poc) => <div className="ui-primary-cell"><strong>{poc.poc_name || "Untitled POC"}</strong><span>{poc.objective || "No objective provided"}</span></div>
+                                render: (poc) => {
+                                    const completed = isCompletedPoc(poc);
+                                    const expanded = expandedPocs.has(poc.poc_id);
+
+                                    return (
+                                        <div
+                                            className={`poc-worklist-cell ${completed ? "poc-completed-cell" : ""}`}
+                                            onClick={() => completed && togglePoc(poc.poc_id)}
+                                            role={completed ? "button" : undefined}
+                                            tabIndex={completed ? 0 : undefined}
+                                            onKeyDown={(e) => {
+                                                if (completed && (e.key === "Enter" || e.key === " ")) {
+                                                    e.preventDefault();
+                                                    togglePoc(poc.poc_id);
+                                                }
+                                            }}
+                                        >
+                                            <div className="poc-worklist-title">
+                                                {completed && (
+                                                    <span className="poc-expand-icon">
+                                                        {expanded ? "▾" : "▸"}
+                                                    </span>
+                                                )}
+                                                <strong>{poc.poc_name || "Untitled POC"}</strong>
+                                            </div>
+
+                                            {(!completed || expanded) && (
+                                                <span>{poc.objective || "No objective provided"}</span>
+                                            )}
+                                        </div>
+                                    );
+                                }
                             },
                             {
                                 key: "opportunity",
                                 label: "Opportunity",
-                                render: (poc) => <div className="ui-wrap-cell"><strong>{poc.opportunity_name || "—"}</strong><span>{poc.account_name || "—"}</span></div>
+                                render: (poc) => {
+                                    const completed = isCompletedPoc(poc);
+                                    const expanded = expandedPocs.has(poc.poc_id);
+
+                                    return (
+                                        <div
+                                            className={`ui-wrap-cell ${completed ? "poc-completed-cell" : ""}`}
+                                            onClick={() => completed && togglePoc(poc.poc_id)}
+                                        >
+                                            <strong>{poc.opportunity_name || "—"}</strong>
+                                            {(!completed || expanded) && (
+                                                <span>{poc.account_name || "—"}</span>
+                                            )}
+                                        </div>
+                                    );
+                                }
                             },
-                            { key: "status", label: "Status", render: (poc) => <StatusBadge status={poc.status} /> },
-                            { key: "target_date", label: "Target Date", render: (poc) => <span className="ui-icon-text"><CalendarDays size={13} />{poc.target_date || "—"}</span> },
-                            { key: "outcome", label: "Outcome", render: (poc) => <span className="ui-wrap-cell">{poc.outcome || "Not completed"}</span> },
+                            {
+                                key: "status",
+                                label: "Status",
+                                render: (poc) => (
+                                    <div
+                                        className={isCompletedPoc(poc) ? "poc-completed-cell" : ""}
+                                        onClick={() => isCompletedPoc(poc) && togglePoc(poc.poc_id)}
+                                    >
+                                        <StatusBadge status={poc.status} />
+                                    </div>
+                                )
+                            },
+                            {
+                                key: "target_date",
+                                label: "Target Date",
+                                render: (poc) => {
+                                    const completed = isCompletedPoc(poc);
+                                    const expanded = expandedPocs.has(poc.poc_id);
+
+                                    return (
+                                        <div
+                                            className={completed ? "poc-completed-cell" : ""}
+                                            onClick={() => completed && togglePoc(poc.poc_id)}
+                                        >
+                                            {(!completed || expanded) && (
+                                                <span className="ui-icon-text">
+                                                    <CalendarDays size={13} />
+                                                    {poc.target_date || "—"}
+                                                </span>
+                                            )}
+                                            {completed && !expanded && (
+                                                <span className="poc-collapsed-label">
+                                                    Completed
+                                                </span>
+                                            )}
+                                        </div>
+                                    );
+                                }
+                            },
+                            {
+                                key: "outcome",
+                                label: "Outcome",
+                                render: (poc) => {
+                                    const completed = isCompletedPoc(poc);
+                                    const expanded = expandedPocs.has(poc.poc_id);
+
+                                    return (
+                                        <div
+                                            className={`ui-wrap-cell ${completed ? "poc-completed-cell" : ""}`}
+                                            onClick={() => completed && togglePoc(poc.poc_id)}
+                                        >
+                                            <strong>{poc.outcome || "Not completed"}</strong>
+
+                                            {completed && !expanded && (
+                                                <span className="poc-collapsed-hint">
+                                                    Click to expand
+                                                </span>
+                                            )}
+                                        </div>
+                                    );
+                                }
+                            },
                             {
                                 key: "actions",
                                 label: "Action",
-                                render: (poc) => <Button size="sm" variant="ghost" onClick={() => window.location.assign(`/opportunity/${poc.opportunity_id}`)}><ExternalLink size={13} /> Open</Button>
+                                render: (poc) => (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => window.location.assign(`/opportunity/${poc.opportunity_id}`)}
+                                    >
+                                        <ExternalLink size={13} /> Open
+                                    </Button>
+                                )
                             }
                         ]}
                         rows={visible}

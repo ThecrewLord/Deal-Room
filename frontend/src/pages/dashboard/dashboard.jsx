@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { ROLES } from "../../auth/roles";
 import { getDashboardSummary } from "../../api/dashboardApi";
 import { getTeamPerformance } from "../../api/managerPerformanceApi";
+import { getSalesManagerReviewQueue } from "../../api/opportunityApi";
 import { getPreSalesTeamPerformance } from "../../api/preSalesPerformanceApi";
 import { getPendingPreSalesAssignments } from "../../api/preSalesAssignmentApi";
 import adminApi from "../../api/adminApi";
@@ -30,7 +31,7 @@ const money = (value) => {
     return `$${n.toLocaleString()}`;
 };
 
-const buildBusinessKpis = (role, data, team, assignments) => {
+const buildBusinessKpis = (role, data, team, assignments, reviewQueue) => {
     const common = {
         opportunities: Number(data?.total_opportunities || 0),
         pipeline: Number(data?.total_pipeline_value || 0),
@@ -65,7 +66,7 @@ const buildBusinessKpis = (role, data, team, assignments) => {
 
     if (role === ROLES.SALES_MANAGER) {
         return [
-            { label: "Team Members", value: team?.team_size ?? "—", description: "Direct reports", icon: Users },
+            { label: "Review Queue", value: Array.isArray(reviewQueue) ? reviewQueue.length : "—", description: "Opportunities awaiting review", icon: Clock3 },
             { label: "Team Pipeline", value: money(common.pipeline), description: `${common.open} open opportunities`, icon: DollarSign },
             { label: "Weighted Forecast", value: money(common.forecast), description: "Probability-adjusted", icon: TrendingUp },
             { label: "Deals Won", value: common.won, description: `${common.opportunities} opportunities in scope`, icon: Target },
@@ -124,6 +125,7 @@ function BusinessDashboard({ user, role }) {
     const [assignments, setAssignments] = useState(null);
     const [assignmentError, setAssignmentError] = useState("");
     const [assignmentLoading, setAssignmentLoading] = useState(false);
+    const [reviewQueue, setReviewQueue] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState("");
@@ -152,6 +154,15 @@ function BusinessDashboard({ user, role }) {
             } finally {
                 setTeamLoading(false);
             }
+
+            try {
+                const queue = await getSalesManagerReviewQueue();
+                setReviewQueue(Array.isArray(queue) ? queue : []);
+            } catch (err) {
+                setReviewQueue(null);
+            }
+        } else {
+            setReviewQueue(null);
         }
 
         if (role === ROLES.PRE_SALES_MANAGER) {
@@ -182,7 +193,10 @@ function BusinessDashboard({ user, role }) {
         load();
     }, [role]);
 
-    const kpis = useMemo(() => buildBusinessKpis(role, data, team, assignments), [role, data, team, assignments]);
+    const kpis = useMemo(
+        () => buildBusinessKpis(role, data, team, assignments, reviewQueue),
+        [role, data, team, assignments, reviewQueue]
+    );
     const pipeline = data?.pipeline_by_stage || [];
     const recentOpportunities = data?.recent_opportunities || [];
     const recentPocs = data?.upcoming_pocs || [];

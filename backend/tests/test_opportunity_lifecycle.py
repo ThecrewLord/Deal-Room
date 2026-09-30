@@ -712,10 +712,18 @@ def test_phase13_delivery_team_roles_cannot_manage_followups(app):
         assert followup.status == "Open"
         assert followup.completed_at is None
 
+        # Only the follow-up creator can complete it.
+        with pytest.raises(AuthorizationDenied):
+            Phase2Service.complete_followup(
+                followup.follow_up_id,
+                sales_manager,
+                SALES_MANAGER,
+            )
+
         completed = Phase2Service.complete_followup(
             followup.follow_up_id,
-            sales_manager,
-            SALES_MANAGER,
+            se,
+            SOLUTION_ENGINEER,
         )
 
         assert completed.status == "Completed"
@@ -789,6 +797,7 @@ def test_phase12_oem_create_update_delete_are_audited_with_active_role(app):
                 "account_id": app.config["P1_ACCOUNT"],
                 "partner_name": "Phase12 OEM",
                 "product_name": "Phase12 Product",
+                "contact_person": "Phase Contact",
             },
             actor,
             LEADERSHIP,
@@ -1072,18 +1081,28 @@ def test_closed_lost_requires_reason_details(app):
         assert (lost.outcome, lost.operational_status, lost.lost_reason, lost.lost_explanation) == ("Closed Lost", "Closed", "Other", "Budget was cancelled")
 
 
-def test_value_changes_are_authorized_historic_and_concurrent(app):
+def test_value_cannot_be_changed_after_creation(app):
     oid = make_lead(app)
     with app.app_context():
-        psm = user(app, PRE_SALES_MANAGER); se = user(app, SALES_EXECUTIVE)
+        psm = user(app, PRE_SALES_MANAGER)
         opp = Opportunity.query.get(oid)
-        OpportunityValueService.change_value(oid, 125000, "Commercial revision", opp.row_version, psm, PRE_SALES_MANAGER)
-        opp = Opportunity.query.get(oid)
-        assert opp.estimated_value == Decimal("125000.00") and opp.row_version == 2
-        with pytest.raises(AuthorizationDenied):
-            OpportunityValueService.change_value(oid, 130000, "Unauthorized", opp.row_version, se, SALES_EXECUTIVE)
-        with pytest.raises(TransitionConflict):
-            OpportunityValueService.change_value(oid, 130000, "Stale", 1, psm, PRE_SALES_MANAGER)
+
+        original_value = opp.estimated_value
+        original_version = opp.row_version
+
+        with pytest.raises(ValueError, match="Opportunity Value cannot be changed"):
+            OpportunityValueService.change_value(
+                oid,
+                125000,
+                "Commercial revision",
+                original_version,
+                psm,
+                PRE_SALES_MANAGER,
+            )
+
+        unchanged = Opportunity.query.get(oid)
+        assert unchanged.estimated_value == original_value
+        assert unchanged.row_version == original_version
 
 
 def test_closed_opportunity_is_locked(app):
@@ -1092,8 +1111,15 @@ def test_closed_opportunity_is_locked(app):
         manager = user(app, SALES_MANAGER); opp = Opportunity.query.get(oid)
         LifecycleTransitionService.close_won(oid, opp.row_version, manager, SALES_MANAGER)
         closed = Opportunity.query.get(oid)
-        with pytest.raises(TransitionConflict):
-            OpportunityValueService.change_value(oid, 200000, "Too late", closed.row_version, manager, SALES_MANAGER)
+        with pytest.raises(ValueError, match="Opportunity Value cannot be changed"):
+            OpportunityValueService.change_value(
+                oid,
+                200000,
+                "Too late",
+                closed.row_version,
+                manager,
+                SALES_MANAGER,
+            )
         with pytest.raises(TransitionConflict):
             LifecycleTransitionService.close_lost(oid, closed.row_version, "Competitor", None, manager, SALES_MANAGER)
 

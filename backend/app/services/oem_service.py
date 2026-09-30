@@ -1,3 +1,4 @@
+import re
 from app.auth.authorization import AuthorizationDenied, AuthorizationService
 from app.constants.activity_types import OEM_CREATED, OEM_UPDATED, OEM_DELETED
 from app.database import db
@@ -5,6 +6,17 @@ from app.models.account.oem_partner import OEMPartner
 from app.models.account.account import Account
 from app.services.activity_service import ActivityService
 class OEMService:
+    @staticmethod
+    def _validate_contact_person_name(name):
+        if name is None:
+            raise ValueError("Contact Person Name is required.")
+        name = name.strip()
+        if not name:
+            raise ValueError("Contact Person Name is required.")
+        if not re.fullmatch(r"[A-Za-z][A-Za-z .'-]*", name):
+            raise ValueError("Contact Person Name must contain letters and may include spaces, periods, apostrophes, or hyphens.")
+        return name
+
     @staticmethod
     def get_all(user, active_role): return OEMPartner.query.order_by(OEMPartner.partner_name).all()
     @staticmethod
@@ -14,8 +26,9 @@ class OEMService:
     def create(data,user,active_role):
         if not AuthorizationService.can_mutate_oem_master(user,active_role): raise AuthorizationDenied("Only Leadership can manage OEM master data.")
         if not data.get("partner_name") or not data.get("product_name"): raise ValueError("OEM name and product are required.")
+        contact_person = OEMService._validate_contact_person_name(data.get("contact_person"))
         if data.get("account_id") and not db.session.get(Account, data["account_id"]): raise ValueError("Account does not exist.")
-        o=OEMPartner(account_id=data.get("account_id") or Account.query.first().account_id,partner_name=data["partner_name"].strip(),product_name=data["product_name"].strip(),contact_person=data.get("contact_person"),email=data.get("email"),phone=data.get("phone"),status=data.get("status","Active"),notes=data.get("notes"))
+        o=OEMPartner(account_id=data.get("account_id") or Account.query.first().account_id,partner_name=data["partner_name"].strip(),product_name=data["product_name"].strip(),contact_person=contact_person,email=data.get("email"),phone=data.get("phone"),status=data.get("status","Active"),notes=data.get("notes"))
         db.session.add(o); db.session.flush(); ActivityService.log("OEM",o.oem_partner_id,OEM_CREATED,f"OEM '{o.partner_name}' created.",user.user_id,commit=False,active_role=active_role); db.session.commit(); return o
     @staticmethod
     def update(oem_id,data,user,active_role):
@@ -23,7 +36,11 @@ class OEMService:
         o=db.session.get(OEMPartner, oem_id)
         if not o: return None
         for k in ("partner_name","product_name","contact_person","email","phone","status","notes","account_id"):
-            if k in data: setattr(o,k,data[k])
+            if k in data:
+                if k == "contact_person":
+                    setattr(o, k, OEMService._validate_contact_person_name(data[k]))
+                else:
+                    setattr(o, k, data[k])
         ActivityService.log("OEM",o.oem_partner_id,OEM_UPDATED,f"OEM '{o.partner_name}' updated.",user.user_id,commit=False,active_role=active_role); db.session.commit(); return o
     @staticmethod
     def delete(oem_id,user,active_role):

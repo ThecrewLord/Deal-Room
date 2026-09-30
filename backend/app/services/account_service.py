@@ -133,6 +133,36 @@ class AccountService:
 
 
     @staticmethod
+    def restore(account_id, user, active_role):
+        account = db.session.get(Account, account_id)
+
+        if not AuthorizationService.can_govern_account(
+            user, active_role, account
+        ):
+            raise AuthorizationDenied("Only Leadership can restore accounts.")
+
+        if account.status != "Archived":
+            raise ValueError(
+                f"Only archived accounts can be restored. Current status: {account.status}."
+            )
+
+        account.status = "Active"
+        account.is_active = True
+
+        ActivityService.log(
+            "Account",
+            account.account_id,
+            "ACCOUNT_RESTORED",
+            f"Account '{account.account_name}' restored.",
+            user.user_id,
+            commit=False,
+            active_role=active_role,
+        )
+
+        db.session.commit()
+        return account
+
+    @staticmethod
     def delete_duplicate(account_id, user, active_role):
         account = db.session.get(Account, account_id)
         if not AuthorizationService.can_govern_account(user, active_role, account):

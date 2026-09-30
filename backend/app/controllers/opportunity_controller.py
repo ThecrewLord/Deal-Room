@@ -306,7 +306,8 @@ class OpportunityController:
             data = OpportunityCloseSchema().load(request.get_json() or {})
             if won:
                 opportunity = LifecycleTransitionService.close_won(
-                    opportunity_id, data["expected_version"], g.auth_user, g.active_role
+                    opportunity_id, data["expected_version"], data["reason"],
+                    g.auth_user, g.active_role
                 )
             else:
                 opportunity = LifecycleTransitionService.close_lost(

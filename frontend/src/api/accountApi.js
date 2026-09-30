@@ -5,3 +5,5 @@ export const archiveAccount = async (id) => (await api.post(`/accounts/${id}/arc
 export const banAccount = async (id) => (await api.post(`/accounts/${id}/ban`)).data;
 
 export const unbanAccount = async (id) => (await api.post(`/accounts/${id}/unban`)).data;
+
+export const restoreAccount = async (id) => (await api.post(`/accounts/${id}/restore`)).data;

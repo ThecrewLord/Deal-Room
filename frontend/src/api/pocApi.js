@@ -36,3 +36,5 @@ export const downloadPoc = async (id) => {
 
     window.URL.revokeObjectURL(url);
 };
+
+export const getAssignedPocs = async () => (await api.get("/poc/assigned")).data;

@@ -158,6 +158,8 @@
 .opportunity-stakeholder > div { min-width: 0; display: grid; gap: 2px; }
 .opportunity-stakeholder strong { font-size: 11px; overflow-wrap: anywhere; }
 .opportunity-stakeholder small { color: var(--color-text-muted); font-size: 9px; overflow-wrap: anywhere; }
+.opportunity-stakeholder-tags { display: flex !important; flex-wrap: wrap; gap: 4px !important; margin-top: 3px; }
+.opportunity-stakeholder-tag { display: inline-flex !important; align-items: center; width: fit-content; padding: 2px 6px; border: 1px solid var(--color-border-light); border-radius: 999px; background: var(--color-surface-subtle); color: var(--color-text-secondary); font-size: 8px; line-height: 1.3; font-weight: 600; white-space: nowrap; }
 .opportunity-stakeholder-contact { display: flex !important; flex-wrap: wrap; justify-content: flex-end; gap: 6px !important; }
 .opportunity-stakeholder-contact span { min-width: 0; display: inline-flex; align-items: center; gap: 4px; color: var(--color-text-secondary); font-size: 9px; overflow-wrap: anywhere; word-break: break-word; }
 
@@ -222,3 +224,142 @@
     font-size: 11px;
     line-height: 1.4;
 }
+
+/* Completed POCs: collapsed and visually de-emphasized */
+.poc-completed-cell {
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+
+.poc-worklist-cell {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.poc-worklist-cell > span {
+    color: var(--color-text-muted);
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.poc-worklist-title {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+}
+
+.poc-worklist-title strong {
+    overflow-wrap: anywhere;
+}
+
+.poc-expand-icon {
+    flex: 0 0 auto;
+    color: var(--color-text-muted);
+    font-size: 12px;
+}
+
+.poc-collapsed-label {
+    display: inline-block;
+    margin-top: 2px;
+    color: var(--color-text-muted);
+    font-size: 9px;
+}
+
+.poc-collapsed-hint {
+    display: block;
+    margin-top: 3px;
+    color: var(--color-text-muted);
+    font-size: 8px;
+    opacity: 0.75;
+}
+
+.ui-data-table tbody tr:has(.poc-completed-cell) {
+    background: var(--color-surface-muted, rgba(0, 0, 0, 0.025));
+    opacity: 0.72;
+}
+
+.ui-data-table tbody tr:has(.poc-completed-cell):hover {
+    opacity: 0.9;
+}
+
+/* Completed POCs are collapsed and de-emphasized until expanded. */
+.opportunity-poc-completed {
+    background: var(--surface-muted, #f7f7f7);
+    opacity: 0.72;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.opportunity-poc-completed:hover {
+    opacity: 0.9;
+}
+
+.opportunity-poc-completed .opportunity-poc-heading {
+    cursor: pointer;
+}
+
+.opportunity-poc-completed .opportunity-poc-heading strong,
+.opportunity-poc-completed .opportunity-poc-heading span {
+    color: var(--color-text-muted);
+}
+
+.opportunity-poc-completed .opportunity-poc-expand-icon {
+    display: inline-block;
+    width: 14px;
+    margin-right: 4px;
+    color: var(--color-text-muted);
+}
+
+.opportunity-poc-completed.is-collapsed {
+    padding-bottom: 12px;
+}
+
+.opportunity-poc-completed.is-collapsed .opportunity-poc-heading {
+    align-items: center;
+}
+
+.opportunity-poc-details {
+    min-width: 0;
+}
+
+
+/* Completed POCs are collapsed and de-emphasized until expanded. */
+.opportunity-poc-completed {
+    background: var(--surface-muted, #f7f7f7);
+    opacity: 0.72;
+    transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.opportunity-poc-completed:hover {
+    opacity: 0.9;
+}
+
+.opportunity-poc-completed .opportunity-poc-heading {
+    cursor: pointer;
+}
+
+.opportunity-poc-completed .opportunity-poc-heading strong,
+.opportunity-poc-completed .opportunity-poc-heading span {
+    color: var(--color-text-muted);
+}
+
+.opportunity-poc-completed .opportunity-poc-expand-icon {
+    display: inline-block;
+    width: 14px;
+    margin-right: 4px;
+    color: var(--color-text-muted);
+}
+
+.opportunity-poc-completed.is-collapsed {
+    padding-bottom: 12px;
+}
+
+.opportunity-poc-completed.is-collapsed .opportunity-poc-heading {
+    align-items: center;
+}
+
+.opportunity-poc-details {
+    min-width: 0;
+}
+

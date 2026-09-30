@@ -57,6 +57,55 @@ def test_account_names_are_canonical_and_unique(app):
         with pytest.raises(ValueError,match="this account is banned"):
             OpportunityService.create_opportunity({"account_id":b.account_id,"opportunity_name":"bad","estimated_value":1},u,SALES_EXECUTIVE)
 
+@pytest.mark.parametrize(
+    "phone",
+    [
+        "123456789",        # 9 digits
+        "12345678901",      # 11 digits
+        "+911234567890",    # country code
+        "12345 67890",      # space
+        "12345abc90",       # letters
+        "1234567890,9876543210",  # multiple numbers
+    ],
+)
+def test_stakeholder_phone_must_be_exactly_10_digits(app, phone):
+    oid = opp(app)
+
+    with app.app_context():
+        u = U(app, SALES_EXECUTIVE)
+
+        with pytest.raises(ValueError, match="Phone number must contain exactly 10 digits"):
+            StakeholderService.create_stakeholder(
+                {
+                    "opportunity_id": oid,
+                    "name": "Phone Test",
+                    "phone": phone,
+                },
+                u,
+                SALES_EXECUTIVE,
+            )
+
+
+def test_stakeholder_accepts_valid_10_digit_phone(app):
+    oid = opp(app)
+
+    with app.app_context():
+        u = U(app, SALES_EXECUTIVE)
+
+        stakeholder = StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid,
+                "name": "Phone Test",
+                "phone": "9876543210",
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        assert stakeholder.phone == "9876543210"
+
+
+
 def test_only_one_decision_maker_is_allowed(app):
     oid=opp(app)
     with app.app_context():
@@ -64,6 +113,216 @@ def test_only_one_decision_maker_is_allowed(app):
         a=StakeholderService.create_stakeholder({"opportunity_id":oid,"name":"A","tags":["Decision Maker"]},u,SALES_EXECUTIVE)
         with pytest.raises(ValueError):
             StakeholderService.create_stakeholder({"opportunity_id":oid,"name":"B","tags":["Decision Maker"]},u,SALES_EXECUTIVE)
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        "Economic Buyer",
+        "Technical Champion",
+        "End User",
+        "Blocker",
+        "Decision Maker",
+    ],
+)
+def test_only_one_stakeholder_can_have_each_role_per_opportunity(app, role):
+    oid = opp(app)
+
+    with app.app_context():
+        u = U(app, SALES_EXECUTIVE)
+
+        StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid,
+                "name": "First Stakeholder",
+                "tags": [role],
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        with pytest.raises(ValueError, match=role):
+            StakeholderService.create_stakeholder(
+                {
+                    "opportunity_id": oid,
+                    "name": "Second Stakeholder",
+                    "tags": [role],
+                },
+                u,
+                SALES_EXECUTIVE,
+            )
+
+
+def test_same_stakeholder_can_have_multiple_different_roles(app):
+    oid = opp(app)
+
+    with app.app_context():
+        u = U(app, SALES_EXECUTIVE)
+
+        stakeholder = StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid,
+                "name": "Rahul",
+                "tags": ["Economic Buyer", "Decision Maker"],
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        assert {tag.name for tag in stakeholder.tags} == {
+            "Economic Buyer",
+            "Decision Maker",
+        }
+
+
+def test_same_role_is_allowed_in_different_opportunities(app):
+    oid_a = opp(app)
+
+    with app.app_context():
+        u = U(app, SALES_EXECUTIVE)
+
+        # The application allows only one opportunity per account.
+        # Create a second account so this test can verify that the same
+        # stakeholder role is allowed in a different opportunity.
+        account_b = Account(account_name="Beta Corp", is_active=True)
+        db.session.add(account_b)
+        db.session.flush()
+
+        from app.services.opportunity_service import OpportunityService
+
+        oid_b = OpportunityService.create_opportunity(
+            {
+                "account_id": account_b.account_id,
+                "opportunity_name": "P2 Test - Beta",
+                "estimated_value": 100,
+                "description": "d",
+                "pain_points": "p",
+            },
+            u,
+            SALES_EXECUTIVE,
+        ).opportunity_id
+
+        first = StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid_a,
+                "name": "Rahul",
+                "tags": ["Economic Buyer"],
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        second = StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid_b,
+                "name": "Priya",
+                "tags": ["Economic Buyer"],
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        assert first.opportunity_id == oid_a
+        assert second.opportunity_id == oid_b
+
+
+def test_existing_stakeholder_can_keep_existing_role_during_update(app):
+    oid = opp(app)
+
+    with app.app_context():
+        u = U(app, SALES_EXECUTIVE)
+
+        stakeholder = StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid,
+                "name": "Rahul",
+                "tags": ["Economic Buyer"],
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        updated = StakeholderService.update_stakeholder(
+            stakeholder.stakeholder_id,
+            {"tags": ["Economic Buyer"]},
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        assert [tag.name for tag in updated.tags] == ["Economic Buyer"]
+
+
+def test_existing_stakeholder_can_add_unused_role_during_update(app):
+    oid = opp(app)
+
+    with app.app_context():
+        u = U(app, SALES_EXECUTIVE)
+
+        stakeholder = StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid,
+                "name": "Rahul",
+                "tags": ["Economic Buyer"],
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        updated = StakeholderService.update_stakeholder(
+            stakeholder.stakeholder_id,
+            {"tags": ["Economic Buyer", "Technical Champion"]},
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        assert set(tag.name for tag in updated.tags) == {
+            "Economic Buyer",
+            "Technical Champion",
+        }
+
+
+def test_existing_stakeholder_cannot_take_role_used_by_another_stakeholder(app):
+    oid = opp(app)
+
+    with app.app_context():
+        u = U(app, SALES_EXECUTIVE)
+
+        first = StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid,
+                "name": "Rahul",
+                "tags": ["Economic Buyer"],
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        second = StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid,
+                "name": "Priya",
+                "tags": ["Technical Champion"],
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        with pytest.raises(ValueError, match="Economic Buyer"):
+            StakeholderService.update_stakeholder(
+                second.stakeholder_id,
+                {"tags": ["Technical Champion", "Economic Buyer"]},
+                u,
+                SALES_EXECUTIVE,
+            )
+
+        db.session.rollback()
+
+        first = Stakeholder.query.get(first.stakeholder_id)
+        second = Stakeholder.query.get(second.stakeholder_id)
+
+        assert {tag.name for tag in first.tags} == {"Economic Buyer"}
+        assert {tag.name for tag in second.tags} == {"Technical Champion"}
+
 
 def test_oem_contacts_are_redacted_for_employees(app):
     with app.app_context():
@@ -230,3 +489,63 @@ def test_poc_history_rejects_unsupported_event_type(app):
             POCHistoryService.record_poc_history(
                 oid, U(app, SOLUTION_ENGINEER), "POC_CHANGED"
             )
+
+def test_request_new_poc_rejects_latest_draft(app):
+    from datetime import date
+
+    from app.models.opportunity.poc_tracker import POCTracker
+    from app.models.opportunity.opportunity_team import OpportunityTeam
+    from app.services.phase2_service import Phase2Service
+
+    oid = opp(app)
+
+    with app.app_context():
+        se = U(app, SOLUTION_ENGINEER)
+
+        opportunity = db.session.get(Opportunity, oid)
+        opportunity.lifecycle_stage = "POC"
+        opportunity.operational_status = "Active"
+        opportunity.outcome = "Open"
+
+        db.session.add(
+            OpportunityTeam(
+                opportunity_id=oid,
+                user_id=se.user_id,
+                role=SOLUTION_ENGINEER,
+            )
+        )
+
+        draft = POCTracker(
+            opportunity_id=oid,
+            poc_name="Regression Test Draft",
+            target_date=date.today(),
+            status="Draft",
+            requested_by=se.user_id,
+        )
+        db.session.add(draft)
+        db.session.flush()
+
+        initial_count = POCTracker.query.filter_by(
+            opportunity_id=oid
+        ).count()
+
+        with pytest.raises(
+            ValueError,
+            match="A completed POC with Failure outcome is required",
+        ):
+            Phase2Service.request_new_poc(
+                oid,
+                {
+                    "reason": "Regression test",
+                    "row_version": draft.row_version,
+                },
+                se,
+                SOLUTION_ENGINEER,
+            )
+
+        final_count = POCTracker.query.filter_by(
+            opportunity_id=oid
+        ).count()
+
+        assert final_count == initial_count
+

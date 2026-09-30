@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import {
   Activity,
   CalendarCheck,
@@ -30,6 +31,7 @@ export default function Phase2OpportunityPanel({
   activeRole,
   onRefresh,
 }) {
+  const { user: currentUser } = useAuth();
   const id = opportunity.opportunity_id;
 
   const stage = String(
@@ -59,14 +61,18 @@ export default function Phase2OpportunityPanel({
     activeRole === ROLES.DATA_ANALYST;
 
   const rfxBlocked = isClosed || !isRfxReached;
+  const leadershipRfxReadOnly = activeRole === ROLES.LEADERSHIP;
+
   const negotiationsBlocked =
     isClosed || !isNegotiationsReached || isDeliveryTeam;
   const collaborationBlocked = isDeliveryTeam;
 
   const [rfx, setRfx] = useState({ drive_link: "" });
   const [rfxEditing, setRfxEditing] = useState(false);
+  const [rfxCollapsed, setRfxCollapsed] = useState(rfxBlocked);
   const [neg, setNeg] = useState({});
   const [negotiationEditing, setNegotiationEditing] = useState(false);
+  const [negotiationsCollapsed, setNegotiationsCollapsed] = useState(negotiationsBlocked);
   const [acts, setActs] = useState([]);
   const [fus, setFus] = useState([]);
   const [delivery, setDelivery] = useState(null);
@@ -267,12 +273,17 @@ export default function Phase2OpportunityPanel({
       <div style={rfxBlocked ? blockedStyle : undefined}>
         <SectionCard
           title="RFX Context"
+          collapsible={rfxBlocked}
+          collapsed={rfxCollapsed}
+          onToggle={() => setRfxCollapsed(!rfxCollapsed)}
           description={
             isClosed
               ? "This opportunity is closed. RFX context is read-only."
-              : rfxBlocked
-                ? "RFX becomes available when the opportunity reaches the RFX stage."
-                : "Drive link is captured for POC documentation. Deal Room does not verify Drive permissions."
+              : leadershipRfxReadOnly
+                ? "RFX context is view-only for Leadership."
+                : rfxBlocked
+                  ? "RFX becomes available when the opportunity reaches the RFX stage."
+                  : "Drive link is captured for POC documentation. Deal Room does not verify Drive permissions."
           }
           icon={FileText}
         >
@@ -281,7 +292,7 @@ export default function Phase2OpportunityPanel({
               style={{ flex: 1 }}
               value={rfx.drive_link || ""}
               placeholder="Google Drive link"
-              disabled={rfxBlocked || !rfxEditing}
+              disabled={rfxBlocked || leadershipRfxReadOnly || isDeliveryTeam || !rfxEditing}
               onChange={(e) =>
                 setRfx({
                   ...rfx,
@@ -290,23 +301,35 @@ export default function Phase2OpportunityPanel({
               }
             />
 
-            {!rfxEditing && !rfxBlocked ? (
-              <Button
-                onClick={() => {
-                  setError("");
-                  setSuccess("");
-                  setRfxEditing(true);
-                }}
-              >
-                Edit
-              </Button>
+            {isDeliveryTeam ? (
+              rfx.drive_link ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => window.open(rfx.drive_link, "_blank", "noopener,noreferrer")}
+                >
+                  Open Link
+                </Button>
+              ) : null
             ) : (
-              <Button
-                onClick={saveRfx}
-                disabled={rfxBlocked}
-              >
-                {rfxBlocked ? "Locked" : "Save"}
-              </Button>
+              !leadershipRfxReadOnly &&
+              (!rfxEditing && !rfxBlocked ? (
+                <Button
+                  onClick={() => {
+                    setError("");
+                    setSuccess("");
+                    setRfxEditing(true);
+                  }}
+                >
+                  Edit
+                </Button>
+              ) : (
+                <Button
+                  onClick={saveRfx}
+                  disabled={rfxBlocked}
+                >
+                  {rfxBlocked ? "Locked" : "Save"}
+                </Button>
+              ))
             )}
           </div>
         </SectionCard>
@@ -315,6 +338,9 @@ export default function Phase2OpportunityPanel({
       <div style={negotiationsBlocked ? blockedStyle : undefined}>
         <SectionCard
           title="Negotiations"
+          collapsible={negotiationsBlocked}
+          collapsed={negotiationsCollapsed}
+          onToggle={() => setNegotiationsCollapsed(!negotiationsCollapsed)}
           description={
             isClosed
               ? "This opportunity is closed. Negotiations context is read-only."
@@ -327,6 +353,7 @@ export default function Phase2OpportunityPanel({
           icon={Handshake}
         >
           <textarea
+            style={{ width: "100%", boxSizing: "border-box" }}
             placeholder="Negotiation notes"
             value={neg.notes || ""}
             disabled={negotiationsBlocked || !negotiationEditing}
@@ -343,9 +370,11 @@ export default function Phase2OpportunityPanel({
               display: "flex",
               gap: 8,
               marginTop: 8,
+              alignItems: "center",
             }}
           >
             <input
+              style={{ flex: 1 }}
               placeholder="NDA link"
               value={neg.nda_link || ""}
               disabled={negotiationsBlocked || !negotiationEditing}
@@ -358,6 +387,7 @@ export default function Phase2OpportunityPanel({
             />
 
             <input
+              style={{ flex: 1 }}
               placeholder="MSA link"
               value={neg.msa_link || ""}
               disabled={negotiationsBlocked || !negotiationEditing}
@@ -370,6 +400,7 @@ export default function Phase2OpportunityPanel({
             />
 
             <input
+              style={{ flex: 1 }}
               placeholder="SOW link"
               value={neg.sow_link || ""}
               disabled={negotiationsBlocked || !negotiationEditing}
@@ -381,24 +412,26 @@ export default function Phase2OpportunityPanel({
               }
             />
 
-            {!negotiationEditing && !negotiationsBlocked ? (
-              <Button
-                onClick={() => {
-                  setError("");
-                  setSuccess("");
-                  setNegotiationEditing(true);
-                }}
-              >
-                Edit
-              </Button>
-            ) : (
-              <Button
-                onClick={saveNeg}
-                disabled={negotiationsBlocked}
-              >
-                {negotiationsBlocked ? "Locked" : "Save"}
-              </Button>
-            )}
+            <div style={{ marginLeft: "auto" }}>
+              {!negotiationEditing && !negotiationsBlocked ? (
+                <Button
+                  onClick={() => {
+                    setError("");
+                    setSuccess("");
+                    setNegotiationEditing(true);
+                  }}
+                >
+                  Edit
+                </Button>
+              ) : (
+                <Button
+                  onClick={saveNeg}
+                  disabled={negotiationsBlocked}
+                >
+                  {negotiationsBlocked ? "Locked" : "Save"}
+                </Button>
+              )}
+            </div>
           </div>
         </SectionCard>
       </div>
@@ -494,8 +527,9 @@ export default function Phase2OpportunityPanel({
         </SectionCard>
       </div>
 
-      <SectionCard
-        title="Follow-ups"
+      <div style={collaborationBlocked ? blockedStyle : undefined}>
+        <SectionCard
+          title="Follow-ups"
         description={
           collaborationBlocked
             ? "Follow-ups are view-only for the Delivery Team."
@@ -586,10 +620,6 @@ export default function Phase2OpportunityPanel({
                   <div>{f.description}</div>
 
                   <small style={{ color: "#6b7280" }}>
-                    Owner: {f.owner_name || `#${f.owner_id}`}
-                  </small>
-
-                  <small style={{ color: "#6b7280" }}>
                     Created by: {f.creator_name || `#${f.created_by}`}
                   </small>
 
@@ -607,14 +637,15 @@ export default function Phase2OpportunityPanel({
                   )}
                 </div>
 
-                {!isCompleted && (
-                  <Button
-                    onClick={() => completeF(f.follow_up_id)}
-                    disabled={collaborationBlocked}
-                  >
-                    {collaborationBlocked ? "Locked" : "Complete"}
-                  </Button>
-                )}
+                {!isCompleted &&
+                  Number(currentUser?.user_id) === Number(f.created_by) && (
+                    <Button
+                      onClick={() => completeF(f.follow_up_id)}
+                      disabled={collaborationBlocked}
+                    >
+                      {collaborationBlocked ? "Locked" : "Complete"}
+                    </Button>
+                  )}
               </div>
             );
           })
@@ -622,6 +653,7 @@ export default function Phase2OpportunityPanel({
           <EmptyState message="No follow-ups yet." />
         )}
       </SectionCard>
+      </div>
       {delivery && (
         <SectionCard
           title="Delivery Project"

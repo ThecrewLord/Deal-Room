@@ -42,6 +42,17 @@ class AccountController:
         except ValueError as e:
             return jsonify({"message": str(e)}), 409
     @staticmethod
+    def restore(account_id,user,active_role):
+        try:
+            return jsonify(
+                payload(AccountService.restore(account_id, user, active_role))
+            ), 200
+        except AuthorizationDenied as e:
+            return jsonify({"message": str(e)}), 403
+        except ValueError as e:
+            return jsonify({"message": str(e)}), 409
+
+    @staticmethod
     def delete_duplicate(account_id,user,active_role):
         try: AccountService.delete_duplicate(account_id,user,active_role); return jsonify({"message":"Account deleted"}),200
         except AuthorizationDenied as e: return jsonify({"message":str(e)}),403

@@ -441,15 +441,8 @@ class AuthorizationService:
         if followup is None:
             return True
 
-        return (
-            followup.owner_id == user.user_id
-            or followup.created_by == user.user_id
-            or active_role in {
-                SALES_MANAGER,
-                PRE_SALES_MANAGER,
-                LEADERSHIP,
-            }
-        )
+        # Only the user who created the follow-up can complete/manage it.
+        return followup.created_by == user.user_id
 
     @staticmethod
     def can_view_account(user, active_role, account):
@@ -465,8 +458,26 @@ class AuthorizationService:
 
     @staticmethod
     def can_view_poc(user, active_role, poc):
-        return bool(poc) and AuthorizationService.can_view_opportunity(
+        if not poc:
+            return False
+
+        # Normal opportunity visibility still grants POC visibility.
+        if AuthorizationService.can_view_opportunity(
             user, active_role, poc.opportunity
+        ):
+            return True
+
+        # A user directly assigned to the POC team can view that POC
+        # even when the parent opportunity is outside their normal
+        # opportunity visibility.
+        return bool(
+            user
+            and user.active
+            and user.status == STATUS_APPROVED
+            and POCTeamMember.query.filter_by(
+                poc_id=poc.poc_id,
+                user_id=user.user_id,
+            ).first()
         )
 
     @staticmethod
@@ -912,7 +923,7 @@ class AuthorizationService:
                     return False
                 if opportunity.lifecycle_stage == "Lead" and opportunity.created_by == user.user_id and opportunity.review_status == "Draft":
                     return action in {"create", "set_tags", "update"}
-                if active_role == SALES_MANAGER and opportunity.review_status == "Pending Sales Manager Review":
+                if active_role == SALES_MANAGER:
                     return action in {"create", "update", "set_tags"}
             if active_role == SOLUTION_ENGINEER:
                 return (

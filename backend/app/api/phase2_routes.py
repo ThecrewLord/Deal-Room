@@ -1,3 +1,4 @@
+from app.database import db
 from flask import Blueprint, request, jsonify, g, send_file
 
 from app.auth.authorization import phase2_auth_required, AuthorizationService
@@ -6,6 +7,7 @@ from app.services.lifecycle_transition_service import TransitionConflict, Transi
 from app.services.poc_report_service import POCReportService
 from app.services.poc_history_service import POCHistoryService
 from app.models.system.tag import Tag
+from app.models.auth.user import User
 
 phase2_bp = Blueprint("phase2", __name__, url_prefix="/api/v2")
 
@@ -89,16 +91,17 @@ def _project(p):
 
 
 def _fu(f):
+    creator = db.session.get(User, f.created_by)
+
     return {
         "follow_up_id": f.follow_up_id,
         "owner_id": f.owner_id,
-        "owner_name": f.owner.full_name if f.owner else None,
         "description": f.description,
         "due_date": f.due_date.isoformat(),
         "status": f.status,
         "completed_at": f.completed_at.isoformat() if f.completed_at else None,
         "created_by": f.created_by,
-        "creator_name": f.creator.full_name if f.creator else None,
+        "creator_name": creator.full_name if creator else None,
     }
 
 
@@ -379,7 +382,7 @@ def complete_member(mid):
 @phase2_bp.get("/opportunity/<int:oid>/activities")
 @phase2_auth_required
 def activities(oid):
-    return jsonify([{"activity_id": a.activity_id, "activity_type": a.activity_type, "summary": a.summary, "actor_id": a.actor_id, "created_at": a.created_at.isoformat()} for a in Phase2Service.activities(oid, g.auth_user, g.active_role)])
+    return jsonify([{"activity_id": a.activity_id, "activity_type": a.activity_type, "summary": a.summary, "actor_id": a.actor_id, "created_at": (a.created_at.isoformat() + "Z" if a.created_at else None)} for a in Phase2Service.activities(oid, g.auth_user, g.active_role)])
 
 
 @phase2_bp.post("/opportunity/<int:oid>/activities")

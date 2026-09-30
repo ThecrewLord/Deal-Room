@@ -65,6 +65,21 @@ def get_poc(poc_id):
     return (jsonify({"message": "POC not found"}), 404) if not p else (jsonify(_poc(p)), 200)
 
 
+@poc_bp.get("/assigned")
+@business_access_required
+def get_assigned_pocs():
+    pocs = Phase2Service.get_pocs_for_user(g.auth_user, g.active_role)
+
+    print(
+        "ASSIGNED POC DEBUG:",
+        "user_id=", g.auth_user.user_id,
+        "role=", g.active_role,
+        "poc_ids=", [p.poc_id for p in pocs],
+    )
+
+    return jsonify([_poc(p) for p in pocs])
+
+
 @poc_bp.get("/opportunity/<int:opportunity_id>")
 @business_access_required
 def get_pocs_by_opportunity(opportunity_id):

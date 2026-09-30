@@ -1,17 +1,32 @@
 from marshmallow import Schema, fields, validate
+import re
+
+PHONE_PATTERN = r"^\d{10}$"
 TAGS=["Economic Buyer","Technical Champion","End User","Blocker","Decision Maker"]
 class StakeholderCreateSchema(Schema):
     opportunity_id=fields.Int(required=True)
     name=fields.Str(required=True,validate=validate.Length(min=1,max=150))
     job_title=fields.Str(allow_none=True)
     email=fields.Email(allow_none=True)
-    phone=fields.Str(allow_none=True)
+    phone=fields.Str(
+        allow_none=True,
+        validate=validate.Regexp(
+            PHONE_PATTERN,
+            error="Phone number must contain exactly 10 digits.",
+        ),
+    )
     company=fields.Str(allow_none=True)
     tags=fields.List(fields.Str(validate=validate.OneOf(TAGS)), load_default=list)
     notes=fields.Str(allow_none=True)
 class StakeholderUpdateSchema(Schema):
     name=fields.Str(validate=validate.Length(min=1,max=150))
-    job_title=fields.Str(allow_none=True); email=fields.Email(allow_none=True); phone=fields.Str(allow_none=True); company=fields.Str(allow_none=True)
+    job_title=fields.Str(allow_none=True); email=fields.Email(allow_none=True); phone=fields.Str(
+        allow_none=True,
+        validate=validate.Regexp(
+            PHONE_PATTERN,
+            error="Phone number must contain exactly 10 digits.",
+        ),
+    ); company=fields.Str(allow_none=True)
     tags=fields.List(fields.Str(validate=validate.OneOf(TAGS)))
     notes=fields.Str(allow_none=True)
     updated_at=fields.DateTime(allow_none=True)

@@ -9,7 +9,10 @@ from app.schemas.stakeholder_schema import (
     StakeholderResponseSchema,
     StakeholderUpdateSchema,
 )
-from app.services.stakeholder_service import StakeholderService
+from app.services.stakeholder_service import (
+    StakeholderRoleConflict,
+    StakeholderService,
+)
 
 create_schema = StakeholderCreateSchema()
 update_schema = StakeholderUpdateSchema()
@@ -36,6 +39,8 @@ class StakeholderController:
             return jsonify(err.messages), 400
         except AuthorizationDenied as err:
             return jsonify({"message": str(err)}), 403
+        except StakeholderRoleConflict as err:
+            return jsonify({"message": str(err)}), 409
         except IntegrityError as err:
             # Roll back the failed transaction so the SQLAlchemy session can
             # be reused for subsequent requests. Surface the constraint class
@@ -95,6 +100,8 @@ class StakeholderController:
             return jsonify(err.messages), 400
         except AuthorizationDenied as err:
             return jsonify({"message": str(err)}), 403
+        except StakeholderRoleConflict as err:
+            return jsonify({"message": str(err)}), 409
         except RuntimeError as err:
             return jsonify({"message": str(err)}), 409
         except Exception:

@@ -105,8 +105,10 @@ class OpportunityResponseSchema(Schema):
     operational_status = fields.Str()
     review_status = fields.Str()
     row_version = fields.Int()
+    value_version = fields.Int()
     lost_reason = fields.Str(allow_none=True)
     lost_explanation = fields.Str(allow_none=True)
+    closure_reason = fields.Str(allow_none=True)
 
     opportunity_name = fields.Str()
     description = fields.Str(allow_none=True)
@@ -190,7 +192,7 @@ class PreSalesAssignmentSchema(Schema):
     row_version = fields.Int(required=True, validate=validate.Range(min=1))
 
 class OpportunityCloseSchema(Schema):
-    reason = fields.Str(allow_none=True, validate=validate.Length(max=2000))
+    reason = fields.Str(allow_none=True, validate=validate.Length(min=1, max=2000))
     explanation = fields.Str(allow_none=True, validate=validate.Length(max=5000))
     expected_version = fields.Int(required=True, validate=validate.Range(min=1))
 

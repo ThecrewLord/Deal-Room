@@ -16,7 +16,11 @@ from app.models.auth.user import User
 from app.services.activity_service import ActivityService
 from app.services.notification_service import NotificationService
 from app.services.poc_history_service import POCHistoryService
-from app.services.lifecycle_transition_service import TransitionConflict, TransitionInvalid
+from app.services.lifecycle_transition_service import (
+    LifecycleTransitionService,
+    TransitionConflict,
+    TransitionInvalid,
+)
 
 class Phase2Service:
     @staticmethod
@@ -191,6 +195,22 @@ class Phase2Service:
         return p
 
     @staticmethod
+    def get_pocs_for_user(user, role):
+        """Return only POCs the current user is authorized to view."""
+        if not user:
+            return []
+
+        pocs = POCTracker.query.order_by(
+            POCTracker.created_at.asc()
+        ).all()
+
+        return [
+            poc
+            for poc in pocs
+            if AuthorizationService.can_view_poc(user, role, poc)
+        ]
+
+    @staticmethod
     def get_pocs_by_opportunity(oid,user,role):
         o=Phase2Service._opp(oid)
         if not o or not AuthorizationService.can_view_opportunity(user,role,o):
@@ -263,8 +283,14 @@ class Phase2Service:
             .with_for_update()
             .first()
         )
-        if not latest or latest.status not in {POC_STATUS_SUBMITTED, POC_STATUS_COMPLETED}:
-            raise ValueError("A completed or submitted POC is required before requesting a new POC.")
+        if (
+            not latest
+            or latest.status != POC_STATUS_COMPLETED
+            or latest.outcome != "Failure"
+        ):
+            raise ValueError(
+                "A completed POC with Failure outcome is required before requesting a new POC."
+            )
 
         if expected_version != latest.row_version:
             raise TransitionConflict("POC version is stale. Refresh before retrying.")
@@ -378,6 +404,7 @@ class Phase2Service:
     def assign_poc_team(poc_id,member_ids,user,role):
         p=Phase2Service._poc(poc_id)
         if not p: return None
+        LifecycleTransitionService.assert_opportunity_open_for_mutation(p.opportunity)
         if not AuthorizationService.can_request_poc_team_assignment(user,role,p): raise AuthorizationDenied("Only Delivery Manager or Leadership can assign the POC team.")
         if p.status not in {"Draft", "In Progress"}: raise ValueError("POC team can only be assigned while the POC is active.")
         ids=list(dict.fromkeys(int(x) for x in (member_ids or [])))
@@ -409,6 +436,8 @@ class Phase2Service:
         p = POCTracker.query.filter_by(poc_id=poc_id).with_for_update().first()
         if not p:
             return None
+
+        LifecycleTransitionService.assert_opportunity_open_for_mutation(p.opportunity)
 
         if not AuthorizationService.can_submit_poc_result(user, role, p):
             raise AuthorizationDenied("Only an assigned POC team member can submit the result.")
@@ -507,6 +536,8 @@ class Phase2Service:
         if not p:
             return None
 
+        LifecycleTransitionService.assert_opportunity_open_for_mutation(p.opportunity)
+
         if not AuthorizationService.can_complete_poc(user, role, p):
             raise AuthorizationDenied(
                 "Only the assigned Solution Engineer can complete a submitted POC."
@@ -544,6 +575,8 @@ class Phase2Service:
         o = Opportunity.query.filter_by(opportunity_id=oid).with_for_update().first()
         if not o:
             return None
+
+        LifecycleTransitionService.assert_opportunity_open_for_mutation(o)
 
         if not AuthorizationService.can_manage_negotiation(user, role, o):
             raise AuthorizationDenied(
@@ -864,6 +897,7 @@ class Phase2Service:
     @staticmethod
     def add_activity(oid,data,user,role):
         o=Phase2Service._opp(oid)
+        LifecycleTransitionService.assert_opportunity_open_for_mutation(o)
         if not AuthorizationService.can_create_activity(user,role,o): raise AuthorizationDenied("You are not authorized to add activities.")
         a=Activity(opportunity_id=oid,activity_type=data.get("activity_type","note"),summary=str(data.get("summary") or "").strip(),actor_id=user.user_id)
         if not a.summary: raise ValueError("Activity summary is required.")
@@ -887,6 +921,11 @@ class Phase2Service:
 
         if not o:
             raise ValueError("Opportunity does not exist.")
+
+        if o.operational_status == "Closed" or o.outcome in {"Closed Won", "Closed Lost"}:
+            raise AuthorizationDenied(
+                "Closed opportunities cannot be modified."
+            )
 
         if not AuthorizationService.can_manage_followup(
             user, role, None, o

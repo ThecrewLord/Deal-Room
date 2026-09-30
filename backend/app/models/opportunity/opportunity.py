@@ -70,7 +70,11 @@ class Opportunity(BaseModel):
     )
     lost_reason = db.Column(db.String(100), nullable=True)
     lost_explanation = db.Column(db.Text, nullable=True)
+    closure_reason = db.Column(db.Text, nullable=True)
     row_version = db.Column(
+        db.Integer, nullable=False, default=1, server_default="1", index=True
+    )
+    value_version = db.Column(
         db.Integer, nullable=False, default=1, server_default="1", index=True
     )
 

@@ -71,7 +71,8 @@ class OpportunityValueService:
 
     @classmethod
     def change_value(cls, opportunity_id, new_value, reason, expected_version, user, active_role):
-        new_value = cls._validate_value(new_value)
+        raise ValueError("Opportunity Value cannot be changed after opportunity creation.")
+
         reason = cls._validate_reason(reason)
 
         opportunity = Opportunity.query.filter_by(opportunity_id=opportunity_id).with_for_update().first()

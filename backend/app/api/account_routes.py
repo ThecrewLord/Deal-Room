@@ -42,6 +42,15 @@ def unban_account(account_id):
         g.active_role,
     )
 
+@account_bp.post("/<int:account_id>/restore")
+@business_access_required
+def restore_account(account_id):
+    return AccountController.restore(
+        account_id,
+        g.auth_user,
+        g.active_role,
+    )
+
 @account_bp.delete("/<int:account_id>/duplicate")
 @business_access_required
 def delete_duplicate_account(account_id):

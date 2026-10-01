@@ -9,7 +9,7 @@ type="tel"
 placeholder="10-digit phone number"
 inputMode="numeric"
 maxLength={10}
-pattern="\\d{10}"
+pattern="[0-9]{10}"
 value={form.phone||""}
-onChange={e=>setForm({...form,phone:e.target.value.replace(/\\D/g,"").slice(0,10)})}
+onChange={e=>setForm({...form,phone:e.target.value.replace(/\D/g,"").slice(0,10)})}
 /><Button type="submit">Create OEM</Button></form></Card>}<Card padding={false}>{rows.length?rows.map(o=><div key={o.oem_partner_id} style={{padding:16,borderBottom:"1px solid var(--border)",display:"flex",gap:12,alignItems:"center"}}><Building2 size={18}/><div style={{flex:1}}><strong>{o.partner_name}</strong><small>{o.product_name} · Account #{o.account_id}</small></div><StatusBadge status={o.status}/>{leadership&&<small>{o.contact_person||"No contact"} {o.email||""}</small>}</div>):<EmptyState message="No OEM partners found."/>}</Card></div>}

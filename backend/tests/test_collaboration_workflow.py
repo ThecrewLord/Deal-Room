@@ -86,6 +86,24 @@ def test_stakeholder_phone_must_be_exactly_10_digits(app, phone):
             )
 
 
+def test_stakeholder_company_is_derived_from_opportunity_account(app):
+    oid = opp(app)
+
+    with app.app_context():
+        u = U(app, SALES_EXECUTIVE)
+
+        stakeholder = StakeholderService.create_stakeholder(
+            {
+                "opportunity_id": oid,
+                "name": "Company Derivation Test",
+            },
+            u,
+            SALES_EXECUTIVE,
+        )
+
+        assert stakeholder.company == "Acme  Corp"
+
+
 def test_stakeholder_accepts_valid_10_digit_phone(app):
     oid = opp(app)
 

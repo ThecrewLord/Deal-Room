@@ -132,6 +132,19 @@
 .opportunity-stage-rail > div.is-done span, .opportunity-stage-rail > div.is-current span { border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 8%, white); }
 .opportunity-stage-rail > div.is-current small { color: var(--color-primary); font-weight: 700; }
 .opportunity-history { display: grid; gap: 0; margin-top: 14px; }
+.opportunity-history-toggle {
+    margin-top: 10px;
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-primary);
+    font-size: 10px;
+    font-weight: 650;
+    cursor: pointer;
+}
+.opportunity-history-toggle:hover {
+    text-decoration: underline;
+}
 .opportunity-history-row { position: relative; display: flex; gap: 10px; padding: 9px 0 9px 4px; border-top: 1px solid var(--color-border-light); }
 .opportunity-history-dot { width: 8px; height: 8px; flex: 0 0 8px; margin-top: 4px; border-radius: 50%; background: var(--color-primary); }
 .opportunity-history-row div { min-width: 0; display: grid; gap: 2px; }
@@ -286,13 +299,11 @@
 
 /* Completed POCs are collapsed and de-emphasized until expanded. */
 .opportunity-poc-completed {
-    background: var(--surface-muted, #f7f7f7);
-    opacity: 0.72;
-    transition: opacity 0.15s ease, background 0.15s ease;
+    transition: background 0.15s ease;
 }
 
 .opportunity-poc-completed:hover {
-    opacity: 0.9;
+    background: var(--surface-muted, #f7f7f7);
 }
 
 .opportunity-poc-completed .opportunity-poc-heading {
@@ -301,7 +312,7 @@
 
 .opportunity-poc-completed .opportunity-poc-heading strong,
 .opportunity-poc-completed .opportunity-poc-heading span {
-    color: var(--color-text-muted);
+    color: inherit;
 }
 
 .opportunity-poc-completed .opportunity-poc-expand-icon {
@@ -326,13 +337,11 @@
 
 /* Completed POCs are collapsed and de-emphasized until expanded. */
 .opportunity-poc-completed {
-    background: var(--surface-muted, #f7f7f7);
-    opacity: 0.72;
-    transition: opacity 0.15s ease, background 0.15s ease;
+    transition: background 0.15s ease;
 }
 
 .opportunity-poc-completed:hover {
-    opacity: 0.9;
+    background: var(--surface-muted, #f7f7f7);
 }
 
 .opportunity-poc-completed .opportunity-poc-heading {
@@ -341,7 +350,7 @@
 
 .opportunity-poc-completed .opportunity-poc-heading strong,
 .opportunity-poc-completed .opportunity-poc-heading span {
-    color: var(--color-text-muted);
+    color: inherit;
 }
 
 .opportunity-poc-completed .opportunity-poc-expand-icon {

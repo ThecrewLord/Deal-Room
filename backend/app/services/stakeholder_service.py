@@ -2,6 +2,7 @@ from app.auth.authorization import AuthorizationDenied, AuthorizationService
 from app.constants.roles import SALES_EXECUTIVE
 from app.database import db
 from app.models.opportunity.stakeholder import Stakeholder
+from app.models.account.account import Account
 from app.models.system.tag import Tag
 from app.services.activity_service import ActivityService
 from sqlalchemy.exc import IntegrityError
@@ -85,7 +86,11 @@ class StakeholderService:
             raise AuthorizationDenied("You are not authorized to create stakeholders for this opportunity.")
         _validate_phone(data.get("phone"))
 
-        st=Stakeholder(name=data["name"],job_title=data.get("job_title"),email=data.get("email"),phone=data.get("phone"),company=data.get("company"),notes=data.get("notes"),opportunity_id=opp.opportunity_id)
+        account = db.session.get(Account, opp.account_id)
+        if not account:
+            raise ValueError("The opportunity must have an associated account before adding a stakeholder.")
+
+        st=Stakeholder(name=data["name"],job_title=data.get("job_title"),email=data.get("email"),phone=data.get("phone"),company=account.account_name,notes=data.get("notes"),opportunity_id=opp.opportunity_id)
         try:
             db.session.add(st); db.session.flush(); StakeholderService._set_tags(st,data.get("tags",[]))
             ActivityService.log("Stakeholder",st.stakeholder_id,"STAKEHOLDER_CREATED",f"Stakeholder '{st.name}' created.",user.user_id,commit=False,active_role=active_role)

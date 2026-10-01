@@ -79,6 +79,7 @@ export default function OpportunityDetail() {
     const [history, setHistory] = useState([]);
     const [valueHistory, setValueHistory] = useState([]);
     const [showOlderValueHistory, setShowOlderValueHistory] = useState(false);
+    const [showFullPocHistory, setShowFullPocHistory] = useState(false);
     const [pocHistory, setPocHistory] = useState([]);
     const [pocs, setPocs] = useState([]);
     const [selectedOlderPocId, setSelectedOlderPocId] = useState("");
@@ -108,6 +109,8 @@ export default function OpportunityDetail() {
     const [saving, setSaving] = useState(false);
     const [edit, setEdit] = useState(null);
     const [editingSales, setEditingSales] = useState(false);
+    const [editingValue, setEditingValue] = useState(false);
+    const [valueEdit, setValueEdit] = useState({ new_value: "", reason: "" });
     const [resultForms, setResultForms] = useState({});
     const [pocCandidates, setPocCandidates] = useState([]);
     const [pocTeamSelections, setPocTeamSelections] = useState({});
@@ -127,6 +130,49 @@ export default function OpportunityDetail() {
     const technicalRole = pocRoles.includes(activeRole);
     const canLoadPocData = pocRoles.includes(activeRole);
     const canAssignPocTeam = [ROLES.DELIVERY_MANAGER, ROLES.LEADERSHIP].includes(activeRole);
+
+    // The POC team is assigned once per Opportunity.
+    // POC records remain the source of truth; repeat POCs reuse the same team.
+    const latestPoc = orderedPocs[0] || null;
+    const latestPocTeam = Array.isArray(latestPoc?.team)
+        ? latestPoc.team
+        : [];
+    const hasPocTeam = orderedPocs.some(
+        (poc) => Array.isArray(poc.team) && poc.team.length > 0
+    );
+    const firstPocNeedsTeam =
+        Boolean(latestPoc) &&
+        !hasPocTeam &&
+        latestPoc.status !== "Submitted" &&
+        latestPoc.status !== "Completed";
+
+    const selectedPocTeamMembers =
+        latestPocId != null ? (pocTeamSelections[latestPocId] || []) : [];
+
+    const togglePocTeamMember = (userId) => {
+        if (latestPocId == null) return;
+
+        setPocTeamSelections((current) => {
+            const existing = current[latestPocId] || [];
+            const exists = existing.includes(userId);
+
+            if (exists) {
+                return {
+                    ...current,
+                    [latestPocId]: existing.filter((id) => id !== userId),
+                };
+            }
+
+            if (existing.length >= 2) {
+                return current;
+            }
+
+            return {
+                ...current,
+                [latestPocId]: [...existing, userId],
+            };
+        });
+    };
 
     const describeSectionError = (err, fallback) => {
         const statusCode = err?.response?.status;
@@ -311,6 +357,12 @@ export default function OpportunityDetail() {
         stageName === "Lead" &&
         opportunity?.review_status === "Draft";
 
+    const canEditOpportunityValue =
+        activeRole === ROLES.SALES_MANAGER &&
+        opportunity?.operational_status === "Active" &&
+        opportunity?.outcome === "Open" &&
+        opportunity?.review_status === "Pending Sales Manager Review";
+
 
     const run = async (fn) => {
         try {
@@ -385,6 +437,16 @@ export default function OpportunityDetail() {
             expected_version: opportunity.row_version,
         });
         setEditingSales(false);
+    });
+
+    const saveValue = () => run(async () => {
+        await changeOpportunityValue(opportunityId, {
+            new_value: Number(valueEdit.new_value),
+            reason: valueEdit.reason,
+            expected_version: opportunity.row_version,
+        });
+        setEditingValue(false);
+        setValueEdit({ new_value: "", reason: "" });
     });
 
     const submitPocRequest = async (payload) => {
@@ -532,7 +594,6 @@ export default function OpportunityDetail() {
                 <KpiCard icon={Target} label="Probability" value={`${probability}%`} description="Current win probability" />
                 <KpiCard icon={CalendarDays} label="Expected Close" value={dateLabel(opportunity.expected_close_date)} description="Target close date" />
                 <KpiCard icon={Layers3Icon} label="Stage" value={stageName} description={status} />
-                <KpiCard icon={ShieldCheck} label="Version" value={opportunity.value_version} description="Opportunity value version" />
             </div>
 
             <div className="opportunity-two-column">
@@ -559,7 +620,79 @@ export default function OpportunityDetail() {
                                 <InfoItem icon={Target} label="Probability" value={`${probability}%`} />
                                 <InfoItem icon={CalendarDays} label="Expected close" value={dateLabel(opportunity.expected_close_date)} />
                                 <InfoItem icon={Users} label="Sales owner" value={salesOwner} />
+                                <InfoItem icon={History} label="Version" value={opportunity.value_version ?? 1} />
                             </InfoGrid>
+
+                            {editingValue ? (
+                                <div className="field-grid">
+                                    <label className="field-label">
+                                        <span>New value</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={valueEdit.new_value}
+                                            onChange={(e) =>
+                                                setValueEdit({
+                                                    ...valueEdit,
+                                                    new_value: e.target.value,
+                                                })
+                                            }
+                                        />
+                                    </label>
+
+                                    <label className="field-label opportunity-field-full">
+                                        <span>Reason</span>
+                                        <textarea
+                                            rows="3"
+                                            value={valueEdit.reason}
+                                            onChange={(e) =>
+                                                setValueEdit({
+                                                    ...valueEdit,
+                                                    reason: e.target.value,
+                                                })
+                                            }
+                                            placeholder="Why is the opportunity value changing?"
+                                        />
+                                    </label>
+
+                                    <div className="opportunity-form-actions opportunity-field-full">
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() => setEditingValue(false)}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            disabled={
+                                                saving ||
+                                                !valueEdit.reason.trim() ||
+                                                valueEdit.new_value === ""
+                                            }
+                                            onClick={saveValue}
+                                        >
+                                            <Save size={14} /> Save value
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                canEditOpportunityValue && (
+                                    <div className="opportunity-form-actions">
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() => {
+                                                setValueEdit({
+                                                    new_value: opportunity.estimated_value ?? "",
+                                                    reason: "",
+                                                });
+                                                setEditingValue(true);
+                                            }}
+                                        >
+                                            <Edit3 size={13} /> Edit value
+                                        </Button>
+                                    </div>
+                                )
+                            )}
                             <div className="opportunity-description">
                                 <span>Description</span>
                                 <p>{opportunity.description || "No description provided."}</p>
@@ -576,6 +709,128 @@ export default function OpportunityDetail() {
                                 <div><small>{member.label}</small><strong>{member.name}</strong></div>
                             </div>
                         )) : <EmptyState message="No team members are recorded." />}
+                    </div>
+
+                    <div style={{ marginTop: "18px" }}>
+                        <div style={{ marginBottom: "8px" }}>
+                            <small>POC Team</small>
+                        </div>
+
+                        {latestPocTeam.length ? (
+                            <div style={{ display: "grid", gap: "8px" }}>
+                                {latestPocTeam.map((member) => (
+                                    <div
+                                        className="opportunity-team-member"
+                                        key={`poc-team-${member.user_id}`}
+                                    >
+                                        <span className="opportunity-avatar">
+                                            {member.full_name?.charAt(0)?.toUpperCase() || "?"}
+                                        </span>
+                                        <div>
+                                            <small>POC Team · {member.role}</small>
+                                            <strong>
+                                                {member.full_name || `User #${member.user_id}`}
+                                            </strong>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p style={{ margin: "0 0 10px" }}>
+                                No POC team assigned yet.
+                            </p>
+                        )}
+
+                        {canAssignPocTeam && firstPocNeedsTeam && (
+                            <div style={{ marginTop: "12px" }}>
+                                <strong style={{ display: "block", marginBottom: "8px" }}>
+                                    Assign POC Team
+                                </strong>
+
+                                {pocCandidates.length ? (
+                                    <div style={{ display: "grid", gap: "8px" }}>
+                                        {pocCandidates.map((candidate) => {
+                                            const selected =
+                                                selectedPocTeamMembers.includes(candidate.user_id);
+
+                                            return (
+                                                <label
+                                                    key={`poc-candidate-${candidate.user_id}`}
+                                                    style={{
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        gap: "8px",
+                                                        padding: "8px 10px",
+                                                        border: "1px solid var(--border-color, #ddd)",
+                                                        borderRadius: "6px",
+                                                        cursor: "pointer",
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selected}
+                                                        onChange={() =>
+                                                            togglePocTeamMember(candidate.user_id)
+                                                        }
+                                                    />
+
+                                                    <span>
+                                                        <strong>{candidate.full_name}</strong>
+                                                        {candidate.email && (
+                                                            <small style={{ display: "block" }}>
+                                                                {candidate.email}
+                                                            </small>
+                                                        )}
+                                                    </span>
+
+                                                    <span
+                                                        style={{
+                                                            marginLeft: "auto",
+                                                            fontSize: "12px",
+                                                        }}
+                                                    >
+                                                        {(candidate.roles || []).join(", ")}
+                                                    </span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <p>
+                                        No eligible DevOps Engineer or Data Analyst users found.
+                                    </p>
+                                )}
+
+                                <div style={{ marginTop: "10px" }}>
+                                    <Button
+                                        size="sm"
+                                        disabled={
+                                            saving ||
+                                            selectedPocTeamMembers.length === 0
+                                        }
+                                        onClick={() =>
+                                            run(async () => {
+                                                await assignPocTeam(
+                                                    latestPocId,
+                                                    selectedPocTeamMembers
+                                                );
+
+                                                setPocTeamSelections((current) => ({
+                                                    ...current,
+                                                    [latestPocId]: [],
+                                                }));
+
+                                                await retrySection("pocs");
+                                                await retrySection("pocHistory");
+                                            })
+                                        }
+                                    >
+                                        <Users size={13} />
+                                        Assign team ({selectedPocTeamMembers.length}/2)
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </SectionCard>
             </div>
@@ -632,27 +887,41 @@ export default function OpportunityDetail() {
                         onRetry={() => retrySection("pocHistory")}
                     />
                 ) : pocHistory.length ? (
-                    <div className="opportunity-history">
-                        {pocHistory.map((entry) => (
-                            <div className="opportunity-history-row" key={entry.history_id}>
-                                <span className="opportunity-history-dot" />
-                                <div>
-                                    <strong>
-                                        {{
-                                            POC_STARTED: "POC started",
-                                            POC_SUBMITTED: "POC result submitted",
-                                            NEW_POC_REQUESTED: "New POC requested",
-                                        }[entry.event_type] || (entry.event_type || "POC event").replaceAll("_", " ")}
-                                    </strong>
-                                    {entry.reason && <p>{entry.reason}</p>}
-                                    <small>
-                                        {entry.actor?.full_name || `User #${entry.actor_id}`}
-                                        {" · "}{dateLabel(entry.created_at)}
-                                    </small>
+                    <>
+                        <div className="opportunity-history">
+                            {(showFullPocHistory ? pocHistory : pocHistory.slice(0, 1)).map((entry) => (
+                                <div className="opportunity-history-row" key={entry.history_id}>
+                                    <span className="opportunity-history-dot" />
+                                    <div>
+                                        <strong>
+                                            {{
+                                                POC_STARTED: "POC started",
+                                                POC_SUBMITTED: "POC result submitted",
+                                                NEW_POC_REQUESTED: "New POC requested",
+                                            }[entry.event_type] || (entry.event_type || "POC event").replaceAll("_", " ")}
+                                        </strong>
+                                        {entry.reason && <p>{entry.reason}</p>}
+                                        <small>
+                                            {entry.actor?.full_name || `User #${entry.actor_id}`}
+                                            {" · "}{dateLabel(entry.created_at)}
+                                        </small>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+
+                        {pocHistory.length > 1 && (
+                            <button
+                                type="button"
+                                className="opportunity-history-toggle"
+                                onClick={() => setShowFullPocHistory((current) => !current)}
+                            >
+                                {showFullPocHistory
+                                    ? "Hide full history"
+                                    : `View full history (${pocHistory.length - 1} older events)`}
+                            </button>
+                        )}
+                    </>
                 ) : <EmptyState message="No POC history is recorded for this opportunity." />}
             </SectionCard>
 
@@ -846,8 +1115,6 @@ export default function OpportunityDetail() {
                                         member.role === activeRole
                                 );
 
-                                const selectedMembers = pocTeamSelections[poc.poc_id] || [];
-
                                 const resultLink = pocResultLinks[poc.poc_id] || "";
 
                                 const canSubmitResult =
@@ -863,29 +1130,6 @@ export default function OpportunityDetail() {
                                     opportunity?.outcome === "Open" &&
                                     stageName === "POC" &&
                                     poc.status === "Submitted";
-
-                                const toggleTeamMember = (userId) => {
-                                    setPocTeamSelections((current) => {
-                                        const existing = current[poc.poc_id] || [];
-                                        const exists = existing.includes(userId);
-
-                                        if (exists) {
-                                            return {
-                                                ...current,
-                                                [poc.poc_id]: existing.filter((id) => id !== userId),
-                                            };
-                                        }
-
-                                        if (existing.length >= 2) {
-                                            return current;
-                                        }
-
-                                        return {
-                                            ...current,
-                                            [poc.poc_id]: [...existing, userId],
-                                        };
-                                    });
-                                };
 
                                 return (
                                     <article
@@ -974,133 +1218,6 @@ export default function OpportunityDetail() {
                                                 <p>{poc.requested_by || "—"}</p>
                                             </div>
                                         </div>
-
-                                        <div style={{ marginTop: "12px" }}>
-                                            <strong style={{ display: "block", marginBottom: "8px" }}>
-                                                POC Team
-                                            </strong>
-
-                                            {team.length ? (
-                                                <div style={{ display: "grid", gap: "6px" }}>
-                                                    {team.map((member) => (
-                                                        <div
-                                                            key={`${poc.poc_id}-${member.user_id}`}
-                                                            style={{
-                                                                display: "flex",
-                                                                justifyContent: "space-between",
-                                                                alignItems: "center",
-                                                                padding: "8px 10px",
-                                                                border: "1px solid var(--border-color, #ddd)",
-                                                                borderRadius: "6px",
-                                                            }}
-                                                        >
-                                                            <span>
-    {member.full_name ||
-        pocCandidates.find(
-            (candidate) => Number(candidate.user_id) === Number(member.user_id)
-        )?.full_name ||
-        `User #${member.user_id}`}
-</span>
-                                                            <StatusBadge status={member.role} />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p>No POC team assigned yet.</p>
-                                            )}
-                                        </div>
-
-                                        {poc.permission_disclaimer && (
-                                            <div
-                                                style={{
-                                                    marginTop: "12px",
-                                                    padding: "10px 12px",
-                                                    borderRadius: "6px",
-                                                    background: "var(--surface-muted, #f5f5f5)",
-                                                    fontSize: "12px",
-                                                }}
-                                            >
-                                                <ShieldCheck size={13} style={{ verticalAlign: "middle", marginRight: "6px" }} />
-                                                {poc.permission_disclaimer}
-                                            </div>
-                                        )}
-
-                                        {canAssignPocTeam && poc.status !== "Submitted" && (
-                                            <div style={{ marginTop: "16px" }}>
-                                                <strong style={{ display: "block", marginBottom: "8px" }}>
-                                                    Assign POC Team
-                                                </strong>
-
-                                                {pocCandidates.length ? (
-                                                    <div style={{ display: "grid", gap: "8px" }}>
-                                                        {pocCandidates.map((candidate) => {
-                                                            const selected = selectedMembers.includes(candidate.user_id);
-
-                                                            return (
-                                                                <label
-                                                                    key={candidate.user_id}
-                                                                    style={{
-                                                                        display: "flex",
-                                                                        alignItems: "center",
-                                                                        gap: "8px",
-                                                                        padding: "8px 10px",
-                                                                        border: "1px solid var(--border-color, #ddd)",
-                                                                        borderRadius: "6px",
-                                                                        cursor: "pointer",
-                                                                    }}
-                                                                >
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={selected}
-                                                                        onChange={() => toggleTeamMember(candidate.user_id)}
-                                                                    />
-
-                                                                    <span>
-                                                                        <strong>{candidate.full_name}</strong>
-                                                                        {candidate.email && (
-                                                                            <small style={{ display: "block" }}>
-                                                                                {candidate.email}
-                                                                            </small>
-                                                                        )}
-                                                                    </span>
-
-                                                                    <span style={{ marginLeft: "auto", fontSize: "12px" }}>
-                                                                        {(candidate.roles || []).join(", ")}
-                                                                    </span>
-                                                                </label>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                ) : (
-                                                    <p>No eligible DevOps Engineer or Data Analyst users found.</p>
-                                                )}
-
-                                                <div style={{ marginTop: "10px" }}>
-                                                    <Button
-                                                        size="sm"
-                                                        disabled={saving || selectedMembers.length === 0}
-                                                        onClick={() =>
-                                                            run(async () => {
-                                                                await assignPocTeam(
-                                                                    poc.poc_id,
-                                                                    selectedMembers
-                                                                );
-                                                                setPocTeamSelections((current) => ({
-                                                                    ...current,
-                                                                    [poc.poc_id]: [],
-                                                                }));
-                                                                await retrySection("pocs");
-                                                                await retrySection("pocHistory");
-                                                            })
-                                                        }
-                                                    >
-                                                        <Users size={13} />
-                                                        Assign team ({selectedMembers.length}/2)
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        )}
-
                                         {canSubmitResult && (
                                             <div
                                                 className="opportunity-poc-result"

@@ -41,6 +41,6 @@ class POCHistoryService:
         return (
             POCHistory.query
             .filter_by(opportunity_id=opportunity_id)
-            .order_by(POCHistory.created_at.asc(), POCHistory.history_id.asc())
+            .order_by(POCHistory.created_at.desc(), POCHistory.history_id.desc())
             .all()
         )

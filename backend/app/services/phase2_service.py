@@ -401,31 +401,122 @@ class Phase2Service:
         db.session.commit(); return p
 
     @staticmethod
-    def assign_poc_team(poc_id,member_ids,user,role):
-        p=Phase2Service._poc(poc_id)
-        if not p: return None
+    def assign_poc_team(poc_id, member_ids, user, role):
+        p = Phase2Service._poc(poc_id)
+        if not p:
+            return None
+
         LifecycleTransitionService.assert_opportunity_open_for_mutation(p.opportunity)
-        if not AuthorizationService.can_request_poc_team_assignment(user,role,p): raise AuthorizationDenied("Only Delivery Manager or Leadership can assign the POC team.")
-        if p.status not in {"Draft", "In Progress"}: raise ValueError("POC team can only be assigned while the POC is active.")
-        ids=list(dict.fromkeys(int(x) for x in (member_ids or [])))
-        if len(ids)>2: raise ValueError("A POC may have at most two team members.")
-        users={u.user_id:u for u in User.query.filter(User.user_id.in_(ids)).all()}
-        if len(users)!=len(ids): raise ValueError("One or more POC team members do not exist.")
-        for uid in ids:
-            u=users[uid]
-            if not (u.has_role(DEVOPS_ENGINEER) or u.has_role(DATA_ANALYST)): raise ValueError("POC team members may only be DevOps Engineer or Data Analyst.")
-        existing_team_count = POCTeamMember.query.filter_by(poc_id=poc_id).count()
-        p.row_version += 1
-        POCTeamMember.query.filter_by(poc_id=poc_id).delete(synchronize_session=False)
-        for uid in ids:
-            u=users[uid]; member_role=DEVOPS_ENGINEER if u.has_role(DEVOPS_ENGINEER) and not u.has_role(DATA_ANALYST) else DATA_ANALYST
-            db.session.add(POCTeamMember(poc_id=poc_id,user_id=uid,role=member_role,assigned_by=user.user_id))
-        ActivityService.log("POC",poc_id,"POC_ASSIGNED",f"POC team assigned: {ids}.",user.user_id,commit=False,active_role=role)
-        if p.status == "Draft" and existing_team_count == 0:
-            POCHistoryService.record_poc_history(
-                p.opportunity_id, user, "POC_STARTED"
+
+        if not AuthorizationService.can_request_poc_team_assignment(
+            user, role, p
+        ):
+            raise AuthorizationDenied(
+                "Only Delivery Manager or Leadership can assign the POC team."
             )
-        db.session.commit(); return POCTeamMember.query.filter_by(poc_id=poc_id).all()
+
+        if p.status not in {"Draft", "In Progress"}:
+            raise ValueError(
+                "POC team can only be assigned while the POC is active."
+            )
+
+        opportunity = p.opportunity
+
+        # POC team is assigned only once per Opportunity.
+        # Existing POC records are the source of truth for the team.
+        existing_opportunity_poc_team = (
+            POCTeamMember.query
+            .join(POCTracker, POCTeamMember.poc_id == POCTracker.poc_id)
+            .filter(
+                POCTracker.opportunity_id == opportunity.opportunity_id
+            )
+            .first()
+        )
+
+        if existing_opportunity_poc_team:
+            raise ValueError(
+                "A POC team is already assigned to this opportunity."
+            )
+
+        ids = list(dict.fromkeys(int(x) for x in (member_ids or [])))
+
+        if len(ids) == 0:
+            raise ValueError("At least one POC team member is required.")
+
+        if len(ids) > 2:
+            raise ValueError("A POC may have at most two team members.")
+
+        users = {
+            u.user_id: u
+            for u in User.query.filter(User.user_id.in_(ids)).all()
+        }
+
+        if len(users) != len(ids):
+            raise ValueError("One or more POC team members do not exist.")
+
+        for uid in ids:
+            u = users[uid]
+            if not (
+                u.has_role(DEVOPS_ENGINEER)
+                or u.has_role(DATA_ANALYST)
+            ):
+                raise ValueError(
+                    "POC team members may only be DevOps Engineer or Data Analyst."
+                )
+
+        existing_poc_team_count = POCTeamMember.query.filter_by(
+            poc_id=poc_id
+        ).count()
+
+        p.row_version += 1
+
+        # Keep the POC-level records used by the existing POC workflow.
+        POCTeamMember.query.filter_by(poc_id=poc_id).delete(
+            synchronize_session=False
+        )
+
+        for uid in ids:
+            u = users[uid]
+
+            member_role = (
+                DEVOPS_ENGINEER
+                if u.has_role(DEVOPS_ENGINEER)
+                and not u.has_role(DATA_ANALYST)
+                else DATA_ANALYST
+            )
+
+            # Preserve the existing POC-level team assignment.
+            db.session.add(
+                POCTeamMember(
+                    poc_id=poc_id,
+                    user_id=uid,
+                    role=member_role,
+                    assigned_by=user.user_id,
+                )
+            )
+
+        ActivityService.log(
+            "POC",
+            poc_id,
+            "POC_ASSIGNED",
+            f"POC team assigned: {ids}.",
+            user.user_id,
+            commit=False,
+            active_role=role,
+        )
+
+        if p.status == "Draft" and existing_poc_team_count == 0:
+            POCHistoryService.record_poc_history(
+                p.opportunity_id,
+                user,
+                "POC_STARTED",
+            )
+
+        db.session.commit()
+
+        return POCTeamMember.query.filter_by(
+            poc_id=poc_id
+        ).all()
 
     @staticmethod
     def submit_poc(poc_id, data, user, role):

@@ -107,7 +107,7 @@ class Activity(db.Model):
     __tablename__ = "activities"
     __table_args__ = (
         db.CheckConstraint(
-            "activity_type IN ('note', 'call')",
+            "activity_type IN ('note', 'call', 'email', 'meeting', 'demo', 'other')",
             name="ck_activities_activity_type",
         ),
     )

@@ -1,6 +1,6 @@
 from flask import g, jsonify, request
 from marshmallow import ValidationError
-
+from app.database import db
 from app.auth.authorization import AuthorizationDenied
 from app.schemas.opportunity_schema import (
     OpportunityCreateSchema,
@@ -42,8 +42,13 @@ class OpportunityController:
             return jsonify({"message": str(err)}), 403
         except ValueError as err:
             return jsonify({"message": str(err)}), 409
-        except Exception:
-            return jsonify({"message": "Failed to create opportunity"}), 500
+        # except Exception:
+        #     return jsonify({"message": "Failed to create opportunity"}), 500
+        except Exception as err:
+            import traceback
+            traceback.print_exc()
+            db.session.rollback()
+            return jsonify({"message": str(err)}), 500
 
     @staticmethod
     def get_all():

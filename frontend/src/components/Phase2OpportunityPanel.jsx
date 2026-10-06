@@ -271,389 +271,789 @@ export default function Phase2OpportunityPanel({
       )}
 
       <div style={rfxBlocked ? blockedStyle : undefined}>
-        <SectionCard
-          title="RFX Context"
-          collapsible={rfxBlocked}
-          collapsed={rfxCollapsed}
-          onToggle={() => setRfxCollapsed(!rfxCollapsed)}
-          description={
-            isClosed
-              ? "This opportunity is closed. RFX context is read-only."
-              : leadershipRfxReadOnly
-                ? "RFX context is view-only for Leadership."
-                : rfxBlocked
-                  ? "RFX becomes available when the opportunity reaches the RFX stage."
-                  : "Drive link is captured for POC documentation. Deal Room does not verify Drive permissions."
-          }
-          icon={FileText}
-        >
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              style={{ flex: 1 }}
-              value={rfx.drive_link || ""}
-              placeholder="Google Drive link"
-              disabled={rfxBlocked || leadershipRfxReadOnly || isDeliveryTeam || !rfxEditing}
-              onChange={(e) =>
-                setRfx({
-                  ...rfx,
-                  drive_link: e.target.value,
-                })
-              }
-            />
-
-            {isDeliveryTeam ? (
-              rfx.drive_link ? (
-                <Button
-                  variant="secondary"
-                  onClick={() => window.open(rfx.drive_link, "_blank", "noopener,noreferrer")}
-                >
-                  Open Link
-                </Button>
-              ) : null
-            ) : (
-              !leadershipRfxReadOnly &&
-              (!rfxEditing && !rfxBlocked ? (
-                <Button
-                  onClick={() => {
-                    setError("");
-                    setSuccess("");
-                    setRfxEditing(true);
-                  }}
-                >
-                  Edit
-                </Button>
-              ) : (
-                <Button
-                  onClick={saveRfx}
-                  disabled={rfxBlocked}
-                >
-                  {rfxBlocked ? "Locked" : "Save"}
-                </Button>
-              ))
-            )}
+  <SectionCard
+    title="RFX Context"
+    collapsible={rfxBlocked}
+    collapsed={rfxCollapsed}
+    onToggle={() => setRfxCollapsed(!rfxCollapsed)}
+    description={
+      isClosed
+        ? "This opportunity is closed. RFX context is read-only."
+        : leadershipRfxReadOnly
+          ? "RFX context is view-only for Leadership."
+          : rfxBlocked
+            ? "RFX becomes available when the opportunity reaches the RFX stage."
+            : "Capture the key RFX documentation for this opportunity."
+    }
+    icon={FileText}
+  >
+    <div
+      style={{
+        display: "grid",
+        gap: "16px",
+      }}
+    >
+      {/* RFX header */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "12px",
+          padding: "14px 16px",
+          borderRadius: "12px",
+          background: "linear-gradient(135deg, #f5f7ff 0%, #eef2ff 100%)",
+          border: "1px solid #dfe4ff",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div
+            style={{
+              width: "38px",
+              height: "38px",
+              borderRadius: "10px",
+              display: "grid",
+              placeItems: "center",
+              background: "#e0e7ff",
+              color: "#4f46e5",
+            }}
+          >
+            <FileText size={18} />
           </div>
-        </SectionCard>
+
+          <div>
+            <strong
+              style={{
+                display: "block",
+                fontSize: "14px",
+              }}
+            >
+              RFX Documentation
+            </strong>
+
+            <small style={{ color: "#64748b" }}>
+              Store the reference document used during the RFX stage.
+            </small>
+          </div>
+        </div>
+
+        {rfx.drive_link ? (
+          <span
+            style={{
+              padding: "5px 9px",
+              borderRadius: "999px",
+              background: "#dcfce7",
+              color: "#166534",
+              fontSize: "11px",
+              fontWeight: 700,
+            }}
+          >
+            Document Added
+          </span>
+        ) : (
+          <span
+            style={{
+              padding: "5px 9px",
+              borderRadius: "999px",
+              background: "#fef3c7",
+              color: "#92400e",
+              fontSize: "11px",
+              fontWeight: 700,
+            }}
+          >
+            Not Added
+          </span>
+        )}
       </div>
 
-      <div style={negotiationsBlocked ? blockedStyle : undefined}>
-        <SectionCard
-          title="Negotiations"
-          collapsible={negotiationsBlocked}
-          collapsed={negotiationsCollapsed}
-          onToggle={() => setNegotiationsCollapsed(!negotiationsCollapsed)}
-          description={
-            isClosed
-              ? "This opportunity is closed. Negotiations context is read-only."
-              : negotiationsBlocked
-                ? isDeliveryTeam
-                  ? "Negotiations are not available to the Delivery Team."
-                  : "Negotiations becomes available when the opportunity reaches the Negotiations stage."
-                : "NDA/MSA/SOW are optional. NDA may be suggested."
-          }
-          icon={Handshake}
+      {/* Drive link */}
+      <div
+        style={{
+          padding: "16px",
+          borderRadius: "12px",
+          border: "1px solid #e5e7eb",
+          background: "#ffffff",
+        }}
+      >
+        <label
+          style={{
+            display: "block",
+            marginBottom: "8px",
+            fontSize: "12px",
+            fontWeight: 700,
+            color: "#475569",
+          }}
         >
-          <textarea
-            style={{ width: "100%", boxSizing: "border-box" }}
-            placeholder="Negotiation notes"
-            value={neg.notes || ""}
-            disabled={negotiationsBlocked || !negotiationEditing}
+          RFX Document / Google Drive Link
+        </label>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            alignItems: "center",
+          }}
+        >
+          <input
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: "11px 13px",
+              borderRadius: "9px",
+              border: "1px solid #dbe1ea",
+              background: rfxBlocked || leadershipRfxReadOnly
+                ? "#f8fafc"
+                : "#ffffff",
+            }}
+            value={rfx.drive_link || ""}
+            placeholder="https://drive.google.com/..."
+            disabled={
+              rfxBlocked ||
+              leadershipRfxReadOnly ||
+              isDeliveryTeam ||
+              !rfxEditing
+            }
             onChange={(e) =>
-              setNeg({
-                ...neg,
-                notes: e.target.value,
+              setRfx({
+                ...rfx,
+                drive_link: e.target.value,
               })
             }
           />
 
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              marginTop: 8,
-              alignItems: "center",
-            }}
-          >
-            <input
-              style={{ flex: 1 }}
-              placeholder="NDA link"
-              value={neg.nda_link || ""}
-              disabled={negotiationsBlocked || !negotiationEditing}
-              onChange={(e) =>
-                setNeg({
-                  ...neg,
-                  nda_link: e.target.value,
-                })
+          {rfx.drive_link && (
+            <Button
+              variant="secondary"
+              onClick={() =>
+                window.open(
+                  rfx.drive_link,
+                  "_blank",
+                  "noopener,noreferrer"
+                )
               }
-            />
+            >
+              Open
+            </Button>
+          )}
+        </div>
 
-            <input
-              style={{ flex: 1 }}
-              placeholder="MSA link"
-              value={neg.msa_link || ""}
-              disabled={negotiationsBlocked || !negotiationEditing}
-              onChange={(e) =>
-                setNeg({
-                  ...neg,
-                  msa_link: e.target.value,
-                })
-              }
-            />
-
-            <input
-              style={{ flex: 1 }}
-              placeholder="SOW link"
-              value={neg.sow_link || ""}
-              disabled={negotiationsBlocked || !negotiationEditing}
-              onChange={(e) =>
-                setNeg({
-                  ...neg,
-                  sow_link: e.target.value,
-                })
-              }
-            />
-
-            <div style={{ marginLeft: "auto" }}>
-              {!negotiationEditing && !negotiationsBlocked ? (
-                <Button
-                  onClick={() => {
-                    setError("");
-                    setSuccess("");
-                    setNegotiationEditing(true);
-                  }}
-                >
-                  Edit
-                </Button>
-              ) : (
-                <Button
-                  onClick={saveNeg}
-                  disabled={negotiationsBlocked}
-                >
-                  {negotiationsBlocked ? "Locked" : "Save"}
-                </Button>
-              )}
-            </div>
-          </div>
-        </SectionCard>
+        <small
+          style={{
+            display: "block",
+            marginTop: "8px",
+            color: "#94a3b8",
+          }}
+        >
+          Deal Room stores the link but does not verify Google Drive permissions.
+        </small>
       </div>
 
-      <div style={collaborationBlocked ? blockedStyle : undefined}>
-        <SectionCard
-          title="Activities"
-          description={
-            collaborationBlocked
-              ? "Activities are not available to the Delivery Team."
-              : "Business interactions are separate from Audit Log."
-          }
-          icon={Activity}
+      {/* Actions */}
+      {!isDeliveryTeam && !leadershipRfxReadOnly && !rfxBlocked && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "8px",
+          }}
         >
-          <div style={{ display: "flex", gap: 8 }}>
-            <select
-              value={activity.activity_type}
-              disabled={collaborationBlocked}
-              onChange={(e) =>
-                setActivity({
-                  ...activity,
-                  activity_type: e.target.value,
-                })
-              }
-              style={{ minWidth: 130, padding: "8px" }}
-            >
-              <option value="note">Note</option>
-              <option value="call">Call</option>
-              <option value="email">Email</option>
-              <option value="meeting">Meeting</option>
-              <option value="demo">Demo</option>
-              <option value="other">Other</option>
-            </select>
-
-            <input
-              style={{ flex: 1 }}
-              placeholder="Activity summary"
-              value={activity.summary}
-              disabled={collaborationBlocked}
-              onChange={(e) =>
-                setActivity({
-                  ...activity,
-                  summary: e.target.value,
-                })
-              }
-            />
-
+          {!rfxEditing ? (
             <Button
-              onClick={addA}
-              disabled={
-                collaborationBlocked || !activity.summary.trim()
-              }
+              onClick={() => {
+                setError("");
+                setSuccess("");
+                setRfxEditing(true);
+              }}
             >
-              {collaborationBlocked ? "Locked" : "Add"}
+              Edit RFX
             </Button>
-          </div>
+          ) : (
+            <Button
+              onClick={saveRfx}
+              disabled={rfxBlocked}
+            >
+              Save RFX
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  </SectionCard>
+</div>
 
-          {acts.length ? (
-            acts.map((a) => (
-              <div
-                key={a.activity_id}
-                style={{
-                  padding: "12px",
-                  marginTop: "10px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  display: "grid",
-                  gap: "6px",
-                }}
-              >
-                <div>
-                  <strong>
-                    {String(a.activity_type || "note")
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (c) => c.toUpperCase())}
-                  </strong>
-                </div>
+            <div style={negotiationsBlocked ? blockedStyle : undefined}>
+        <SectionCard
+          title="Negotiations"
+          collapsible={negotiationsBlocked}
+          collapsed={negotiationsCollapsed}
+          onToggle={() =>
+            setNegotiationsCollapsed(!negotiationsCollapsed)
+          }
+          description={
+            isClosed
+              ? "This opportunity is closed. Negotiation context is read-only."
+              : negotiationsBlocked
+                ? isDeliveryTeam
+                  ? "Negotiations are not available to the Delivery Team."
+                  : "Negotiations becomes available when the opportunity reaches the Negotiations stage."
+                : "Track commercial documents and important negotiation details."
+          }
+          icon={Handshake}
+        >
+          <div style={{ display: "grid", gap: "16px" }}>
 
-                <div style={{ overflowWrap: "anywhere" }}>
-                  {a.summary || "No description provided."}
-                </div>
+            {/* Status */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "14px 16px",
+                borderRadius: "12px",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <div>
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: "14px",
+                  }}
+                >
+                  Negotiation Status
+                </strong>
 
-                <small style={{ color: "#6b7280" }}>
-                  {a.created_at
-                    ? new Date(a.created_at).toLocaleString()
-                    : "Date not available"}
+                <small style={{ color: "#64748b" }}>
+                  Commercial discussion and documentation
                 </small>
               </div>
-            ))
-          ) : (
-            <EmptyState message="No activities yet." />
-          )}
+
+              <span
+                style={{
+                  padding: "6px 11px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  background: neg.negotiation_context_id
+                    ? "#dcfce7"
+                    : "#fef3c7",
+                  color: neg.negotiation_context_id
+                    ? "#166534"
+                    : "#92400e",
+                }}
+              >
+                {neg.negotiation_context_id
+                  ? "IN PROGRESS"
+                  : "NOT STARTED"}
+              </span>
+            </div>
+
+            {/* Negotiation notes */}
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  marginBottom: "8px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "#475569",
+                }}
+              >
+                Negotiation Notes
+              </label>
+
+              <textarea
+                style={{
+                  width: "100%",
+                  minHeight: "100px",
+                  boxSizing: "border-box",
+                  resize: "vertical",
+                  padding: "11px 13px",
+                  borderRadius: "9px",
+                  border: "1px solid #dbe1ea",
+                }}
+                placeholder="Add pricing discussions, customer concerns, blockers or important negotiation details..."
+                value={neg.notes || ""}
+                disabled={
+                  negotiationsBlocked ||
+                  !negotiationEditing
+                }
+                onChange={(e) =>
+                  setNeg({
+                    ...neg,
+                    notes: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            {/* Documents */}
+            <div
+              style={{
+                padding: "16px",
+                borderRadius: "12px",
+                border: "1px solid #e5e7eb",
+              }}
+            >
+              <div style={{ marginBottom: "14px" }}>
+                <strong
+                  style={{
+                    display: "block",
+                    fontSize: "14px",
+                  }}
+                >
+                  Commercial Documents
+                </strong>
+
+                <small style={{ color: "#64748b" }}>
+                  NDA, MSA and SOW references
+                </small>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(3, minmax(0, 1fr))",
+                  gap: "12px",
+                }}
+              >
+                {[
+                  {
+                    key: "nda_link",
+                    code: "NDA",
+                    title: "Non-Disclosure Agreement",
+                    description:
+                      "Protects confidential information shared with the customer.",
+                    placeholder: "Paste NDA document link",
+                    badgeBg: "#e8f1ff",
+                    badgeColor: "#2563eb",
+                  },
+                  {
+                    key: "msa_link",
+                    code: "MSA",
+                    title: "Master Services Agreement",
+                    description:
+                      "Defines the overall terms of the business relationship.",
+                    placeholder: "Paste MSA document link",
+                    badgeBg: "#e9f9f0",
+                    badgeColor: "#15803d",
+                  },
+                  {
+                    key: "sow_link",
+                    code: "SOW",
+                    title: "Statement of Work",
+                    description:
+                      "Defines the agreed scope, deliverables and responsibilities.",
+                    placeholder: "Paste SOW document link",
+                    badgeBg: "#fff4df",
+                    badgeColor: "#b45309",
+                  },
+                ].map((doc) => (
+                  <div
+                    key={doc.key}
+                    style={{
+                      border: "1px solid var(--border)",
+                      borderRadius: "10px",
+                      padding: "14px",
+                      background: "var(--surface)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "9px",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          background: doc.badgeBg,
+                          color: doc.badgeColor,
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          letterSpacing: "0.4px",
+                        }}
+                      >
+                        {doc.code}
+                      </span>
+
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "13px",
+                        }}
+                      >
+                        {doc.title}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        lineHeight: 1.5,
+                        color: "var(--muted)",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      {doc.description}
+                    </div>
+
+                    <input
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                      }}
+                      placeholder={doc.placeholder}
+                      value={neg[doc.key] || ""}
+                      disabled={
+                        negotiationsBlocked ||
+                        !negotiationEditing
+                      }
+                      onChange={(e) =>
+                        setNeg({
+                          ...neg,
+                          [doc.key]: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* NDA suggestion */}
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "13px",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={Boolean(neg.nda_suggested)}
+                disabled={
+                  negotiationsBlocked ||
+                  !negotiationEditing
+                }
+                onChange={(e) =>
+                  setNeg({
+                    ...neg,
+                    nda_suggested: e.target.checked,
+                  })
+                }
+              />
+
+              <span>
+                NDA suggested for this opportunity
+              </span>
+            </label>
+
+            {/* Actions */}
+            {!isDeliveryTeam &&
+              !negotiationsBlocked && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "8px",
+                  }}
+                >
+                  {!negotiationEditing ? (
+                    <Button
+                      onClick={() => {
+                        setError("");
+                        setSuccess("");
+                        setNegotiationEditing(true);
+                      }}
+                    >
+                      Edit Negotiations
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={saveNeg}
+                      disabled={negotiationsBlocked}
+                    >
+                      Save Negotiations
+                    </Button>
+                  )}
+                </div>
+              )}
+          </div>
         </SectionCard>
       </div>
 
       <div style={collaborationBlocked ? blockedStyle : undefined}>
         <SectionCard
           title="Follow-ups"
-        description={
-          collaborationBlocked
-            ? "Follow-ups are view-only for the Delivery Team."
-            : "Open, completed and overdue follow-ups."
-        }
-        icon={CalendarCheck}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            opacity: collaborationBlocked ? 0.6 : 1,
-          }}
+          description={
+            collaborationBlocked
+              ? "Follow-ups are view-only for the Delivery Team."
+              : "Track customer actions, internal tasks and important next steps."
+          }
+          icon={CalendarCheck}
         >
-          <input
-            style={{ flex: 1 }}
-            placeholder="Follow-up"
-            value={fu.description}
-            disabled={collaborationBlocked}
-            onChange={(e) =>
-              setFu({
-                ...fu,
-                description: e.target.value,
-              })
-            }
-          />
-
-          <input
-            type="date"
-            value={fu.due_date}
-            disabled={collaborationBlocked}
-            onChange={(e) =>
-              setFu({
-                ...fu,
-                due_date: e.target.value,
-              })
-            }
-          />
-
-          <Button
-            onClick={addF}
-            disabled={
-              collaborationBlocked ||
-              !fu.description.trim() ||
-              !fu.due_date
-            }
-          >
-            {collaborationBlocked ? "Locked" : "Add"}
-          </Button>
-        </div>
-
-        {collaborationBlocked && (
-          <small
+          {/* Add Follow-up */}
+          <div
             style={{
-              display: "block",
-              marginTop: "8px",
-              color: "#6b7280",
+              padding: "16px",
+              border: "1px solid var(--border)",
+              borderRadius: "12px",
+              background: "var(--surface)",
+              opacity: collaborationBlocked ? 0.65 : 1,
             }}
           >
-            You can view follow-ups, but you cannot create or complete them.
-          </small>
-        )}
-
-        {fus.length ? (
-          fus.map((f) => {
-            const isCompleted =
-              String(f.status || "").toLowerCase() === "completed";
-
-            return (
-              <div
-                key={f.follow_up_id}
+            <div style={{ marginBottom: "12px" }}>
+              <strong
                 style={{
-                  padding: "12px",
-                  marginTop: "10px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "12px",
+                  display: "block",
+                  fontSize: "14px",
+                  marginBottom: "4px",
                 }}
               >
-                <div style={{ display: "grid", gap: "4px" }}>
-                  <div>
-                    <strong>{f.status || "Open"}</strong>
-                  </div>
+                Add a Follow-up
+              </strong>
 
-                  <div>{f.description}</div>
+              <small style={{ color: "var(--muted)" }}>
+                Record the next action that needs to be completed.
+              </small>
+            </div>
 
-                  <small style={{ color: "#6b7280" }}>
-                    Created by: {f.creator_name || `#${f.created_by}`}
-                  </small>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 180px auto",
+                gap: "10px",
+                alignItems: "end",
+              }}
+            >
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    marginBottom: "6px",
+                    color: "var(--muted)",
+                  }}
+                >
+                  Next Action
+                </label>
 
-                  <small style={{ color: "#6b7280" }}>
-                    Due: {f.due_date || "Date not available"}
-                  </small>
-
-                  {isCompleted && (
-                    <small style={{ color: "#6b7280" }}>
-                      Completed:{" "}
-                      {f.completed_at
-                        ? new Date(f.completed_at).toLocaleString()
-                        : "Date not available"}
-                    </small>
-                  )}
-                </div>
-
-                {!isCompleted &&
-                  Number(currentUser?.user_id) === Number(f.created_by) && (
-                    <Button
-                      onClick={() => completeF(f.follow_up_id)}
-                      disabled={collaborationBlocked}
-                    >
-                      {collaborationBlocked ? "Locked" : "Complete"}
-                    </Button>
-                  )}
+                <textarea
+                  style={{
+                    width: "100%",
+                    minHeight: "90px",
+                    boxSizing: "border-box",
+                    resize: "vertical",
+                    padding: "11px 13px",
+                    borderRadius: "9px",
+                    border: "1px solid #dbe1ea",
+                    background: "#ffffff",
+                    fontSize: "13px",
+                    lineHeight: 1.5,
+                    outline: "none",
+                  }}
+                  placeholder="Describe the action that needs to be completed...\n\nExample: Send the revised pricing proposal to the customer and schedule a review call."
+                  value={fu.description}
+                  disabled={collaborationBlocked}
+                  onChange={(e) =>
+                    setFu({
+                      ...fu,
+                      description: e.target.value,
+                    })
+                  }
+                />
               </div>
-            );
-          })
-        ) : (
-          <EmptyState message="No follow-ups yet." />
-        )}
-      </SectionCard>
+
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    marginBottom: "6px",
+                    color: "var(--muted)",
+                  }}
+                >
+                  Due Date
+                </label>
+
+                <input
+                  type="date"
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                  value={fu.due_date}
+                  disabled={collaborationBlocked}
+                  onChange={(e) =>
+                    setFu({
+                      ...fu,
+                      due_date: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <Button
+                onClick={addF}
+                disabled={
+                  collaborationBlocked ||
+                  !fu.description.trim() ||
+                  !fu.due_date
+                }
+              >
+                {collaborationBlocked ? "Locked" : "Add Follow-up"}
+              </Button>
+            </div>
+
+            {collaborationBlocked && (
+              <small
+                style={{
+                  display: "block",
+                  marginTop: "10px",
+                  color: "var(--muted)",
+                }}
+              >
+                You can view follow-ups, but you cannot create or complete them.
+              </small>
+            )}
+          </div>
+
+          {/* Follow-up list */}
+          <div
+            style={{
+              display: "grid",
+              gap: "10px",
+              marginTop: "16px",
+            }}
+          >
+            {fus.length ? (
+              fus.map((f) => {
+                const isCompleted =
+                  String(f.status || "").toLowerCase() === "completed";
+
+                const isOverdue =
+                  !isCompleted &&
+                  f.due_date &&
+                  new Date(f.due_date) < new Date();
+
+                return (
+                  <div
+                    key={f.follow_up_id}
+                    style={{
+                      padding: "15px",
+                      border: "1px solid var(--border)",
+                      borderRadius: "10px",
+                      background: "var(--surface)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "16px",
+                      opacity: isCompleted ? 0.65 : 1,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: "6px",
+                        minWidth: 0,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: "6px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            background: isCompleted
+                              ? "#ecfdf3"
+                              : isOverdue
+                                ? "#fef2f2"
+                                : "#eff6ff",
+                            color: isCompleted
+                              ? "#15803d"
+                              : isOverdue
+                                ? "#dc2626"
+                                : "#2563eb",
+                          }}
+                        >
+                          {isCompleted
+                            ? "COMPLETED"
+                            : isOverdue
+                              ? "OVERDUE"
+                              : "OPEN"}
+                        </span>
+
+                        <strong style={{ fontSize: "14px" }}>
+                          {f.description}
+                        </strong>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "14px",
+                          flexWrap: "wrap",
+                          fontSize: "12px",
+                          color: "var(--muted)",
+                        }}
+                      >
+                        <span>
+                          📅 Due: {f.due_date || "Date not available"}
+                        </span>
+
+                        <span>
+                          Created by:{" "}
+                          {f.creator_name || `#${f.created_by}`}
+                        </span>
+                      </div>
+
+                      {isCompleted && (
+                        <small style={{ color: "var(--muted)" }}>
+                          Completed:{" "}
+                          {f.completed_at
+                            ? new Date(f.completed_at).toLocaleString()
+                            : "Date not available"}
+                        </small>
+                      )}
+                    </div>
+
+                    {!isCompleted &&
+                      Number(currentUser?.user_id) ===
+                        Number(f.created_by) && (
+                        <Button
+                          onClick={() => completeF(f.follow_up_id)}
+                          disabled={collaborationBlocked}
+                        >
+                          {collaborationBlocked ? "Locked" : "Complete"}
+                        </Button>
+                      )}
+                  </div>
+                );
+              })
+            ) : (
+              <EmptyState message="No follow-ups yet. Add the next action above." />
+            )}
+          </div>
+        </SectionCard>
       </div>
+
       {delivery && (
         <SectionCard
           title="Delivery Project"

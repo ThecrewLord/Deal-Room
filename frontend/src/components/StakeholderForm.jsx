@@ -1,54 +1,114 @@
-import { useState } from "react";
+
+import { useState, useEffect, useRef } from "react";
 import { createStakeholder } from "../api/stakeholderApi";
 import { getTags } from "../api/phase2Api";
 import Button from "./ui/Button";
-import { useEffect } from "react";
+import "./StakeholderForm.css";
 
-const DEFAULT = [
+const DEFAULT_TAGS = [
     "Economic Buyer",
     "Technical Champion",
     "End User",
     "Blocker",
     "Decision Maker",
+    "Other",
 ];
 
-export default function StakeholderForm({
-    opportunityId,
-    companyName = "",
-    onCreated,
-}) {
-    const [form, setForm] = useState({
-        name: "",
-        job_title: "",
-        email: "",
-        phone: "",
-        company: companyName,
-        tags: [],
-    });
+const EMPTY_FORM = {
+    name: "",
+    job_title: "",
+    email: "",
+    phone: "",
+    company: "",
+    tags: [],
+};
 
-    const [tags, setTags] = useState(DEFAULT);
+const roleClass = (tag) =>
+    `role-chip role-chip--${tag.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
+export default function StakeholderForm({ opportunityId, onCreated }) {
+    const [form, setForm] = useState(EMPTY_FORM);
+    const [tags, setTags] = useState(DEFAULT_TAGS);
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState("");
     const [error, setError] = useState("");
+    const [success, setSuccess] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+
+    const dropdownRef = useRef(null);
+    const searchRef = useRef(null);
 
     useEffect(() => {
+        let active = true;
+
         getTags()
-            .then((x) => setTags(x.map((t) => t.name)))
+            .then((items) => {
+                if (active && Array.isArray(items) && items.length) {
+                    setTags([
+                        ...new Set([
+                            ...DEFAULT_TAGS,
+                            ...items.map((item) => item.name).filter(Boolean),
+                        ]),
+                    ]);
+                }
+            })
             .catch(() => {});
+
+        return () => {
+            active = false;
+        };
     }, []);
 
     useEffect(() => {
+        if (!open) return;
+
+        const onPointerDown = (event) => {
+            if (!dropdownRef.current?.contains(event.target)) {
+                setOpen(false);
+                setSearch("");
+            }
+        };
+
+        const onKeyDown = (event) => {
+            if (event.key === "Escape") {
+                setOpen(false);
+                setSearch("");
+            }
+        };
+
+        document.addEventListener("mousedown", onPointerDown);
+        document.addEventListener("keydown", onKeyDown);
+
+        return () => {
+            document.removeEventListener("mousedown", onPointerDown);
+            document.removeEventListener("keydown", onKeyDown);
+        };
+    }, [open]);
+
+    useEffect(() => {
+        if (open) searchRef.current?.focus();
+    }, [open]);
+
+    const toggle = (tag) => {
         setForm((current) => ({
             ...current,
-            company: companyName || current.company,
+            tags: current.tags.includes(tag)
+                ? current.tags.filter((item) => item !== tag)
+                : [...current.tags, tag],
         }));
-    }, [companyName]);
+    };
 
-    const submit = async (e) => {
-        e.preventDefault();
+    const updateField = (field, value) => {
+        setForm((current) => ({ ...current, [field]: value }));
+    };
 
-        if (form.phone && form.phone.length !== 10) {
-            setError("Phone number must contain exactly 10 digits.");
-            return;
-        }
+    const submit = async (event) => {
+        event.preventDefault();
+        if (submitting) return;
+
+        setSubmitting(true);
+        setError("");
+        setSuccess("");
 
         try {
             await createStakeholder({
@@ -56,124 +116,178 @@ export default function StakeholderForm({
                 opportunity_id: Number(opportunityId),
             });
 
-            setForm({
-                name: "",
-                job_title: "",
-                email: "",
-                phone: "",
-                company: companyName,
-                tags: [],
-            });
-
-            setError("");
+            setForm({ ...EMPTY_FORM, tags: [] });
+            setOpen(false);
+            setSearch("");
             onCreated?.();
-        } catch (x) {
+            setSuccess("Stakeholder added successfully.");
+        } catch (err) {
             setError(
-                x?.response?.data?.message ||
-                "Unable to save stakeholder."
+                err?.response?.data?.message ||
+                    "Unable to save stakeholder. Please try again."
             );
+        } finally {
+            setSubmitting(false);
         }
     };
 
-    const toggle = (t) =>
-        setForm((f) => ({
-            ...f,
-            tags: f.tags.includes(t)
-                ? f.tags.filter((x) => x !== t)
-                : [...f.tags, t],
-        }));
-
-    const handlePhoneChange = (e) => {
-        const digitsOnly = e.target.value
-            .replace(/\D/g, "")
-            .slice(0, 10);
-
-        setForm((current) => ({
-            ...current,
-            phone: digitsOnly,
-        }));
-
-        if (error === "Phone number must contain exactly 10 digits.") {
-            setError("");
-        }
-    };
+    const filteredTags = tags.filter((tag) =>
+        tag.toLowerCase().includes(search.trim().toLowerCase())
+    );
 
     return (
-        <form onSubmit={submit} className="ui-form-grid">
-            {error && <div className="standard-error">{error}</div>}
+        <form onSubmit={submit} className="ui-form-grid stakeholder-form">
+            {error && <div className="standard-error" role="alert">{error}</div>}
+            {success && (
+                <div className="standard-success" role="status">
+                    ✓ {success}
+                </div>
+            )}
 
             <input
                 required
                 placeholder="Name"
                 value={form.name}
-                onChange={(e) =>
-                    setForm({ ...form, name: e.target.value })
-                }
+                disabled={submitting}
+                onChange={(e) => updateField("name", e.target.value)}
             />
-
             <input
                 placeholder="Job title"
                 value={form.job_title}
-                onChange={(e) =>
-                    setForm({ ...form, job_title: e.target.value })
-                }
+                disabled={submitting}
+                onChange={(e) => updateField("job_title", e.target.value)}
             />
-
             <input
                 placeholder="Email"
                 type="email"
                 value={form.email}
-                onChange={(e) =>
-                    setForm({ ...form, email: e.target.value })
-                }
+                disabled={submitting}
+                onChange={(e) => updateField("email", e.target.value)}
             />
-
             <input
                 placeholder="10-digit phone number"
-                type="tel"
-                inputMode="numeric"
-                maxLength={10}
                 value={form.phone}
-                onChange={handlePhoneChange}
+                disabled={submitting}
+                onChange={(e) => updateField("phone", e.target.value)}
             />
-
             <input
                 placeholder="Company"
                 value={form.company}
-                readOnly={Boolean(companyName)}
-                onChange={(e) =>
-                    setForm({ ...form, company: e.target.value })
-                }
+                disabled={submitting}
+                onChange={(e) => updateField("company", e.target.value)}
             />
 
-            <div>
-                <strong>Tags</strong>
-                <div
-                    style={{
-                        display: "flex",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        marginTop: 8,
-                    }}
+            <section className="role-field" ref={dropdownRef}>
+                <div className="role-heading">
+                    <label htmlFor="role-dropdown">Stakeholder roles</label>
+                    <span>Optional · Select multiple</span>
+                </div>
+
+                <button
+                    id="role-dropdown"
+                    type="button"
+                    className={`role-trigger ${open ? "is-open" : ""}`}
+                    aria-expanded={open}
+                    disabled={submitting}
+                    onClick={() => setOpen((value) => !value)}
                 >
-                    {tags.map((t) => (
+                    <span>
+                        {form.tags.length
+                            ? `${form.tags.length} role${form.tags.length === 1 ? "" : "s"} selected`
+                            : "Select stakeholder roles"}
+                    </span>
+                    <span className={`role-chevron ${open ? "rotated" : ""}`}>
+                        ▾
+                    </span>
+                </button>
+
+                {form.tags.length > 0 && (
+                    <div className="role-selected">
+                        {form.tags.map((tag) => (
+                            <span className={roleClass(tag)} key={tag}>
+                                {tag}
+                                <button
+                                    type="button"
+                                    aria-label={`Remove ${tag}`}
+                                    disabled={submitting}
+                                    onClick={() => toggle(tag)}
+                                >
+                                    ×
+                                </button>
+                            </span>
+                        ))}
                         <button
                             type="button"
-                            key={t}
-                            className={
-                                form.tags.includes(t)
-                                    ? "tag-selected"
-                                    : ""
+                            className="role-clear"
+                            onClick={() =>
+                                setForm((current) => ({ ...current, tags: [] }))
                             }
-                            onClick={() => toggle(t)}
+                            disabled={submitting}
                         >
-                            {t}
+                            Clear all
                         </button>
-                    ))}
-                </div>
-            </div>
+                    </div>
+                )}
 
-            <Button type="submit">Add stakeholder</Button>
+                {open && (
+                    <div className="role-menu">
+                        <div className="role-search">
+                            <span aria-hidden="true">⌕</span>
+                            <input
+                                ref={searchRef}
+                                placeholder="Search roles..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                aria-label="Search stakeholder roles"
+                            />
+                        </div>
+
+                        <div className="role-options">
+                            {filteredTags.length ? (
+                                filteredTags.map((tag) => {
+                                    const selected = form.tags.includes(tag);
+
+                                    return (
+                                        <button
+                                            type="button"
+                                            key={tag}
+                                            className={`role-option ${selected ? "selected" : ""}`}
+                                            aria-pressed={selected}
+                                            onClick={() => toggle(tag)}
+                                        >
+                                            <span className={`role-checkbox ${selected ? "checked" : ""}`}>
+                                                {selected ? "✓" : ""}
+                                            </span>
+                                            <span>{tag}</span>
+                                        </button>
+                                    );
+                                })
+                            ) : (
+                                <p className="role-empty">No matching roles found.</p>
+                            )}
+                        </div>
+
+                        <div className="role-footer">
+                            <span>{form.tags.length} selected</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setOpen(false);
+                                    setSearch("");
+                                }}
+                            >
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </section>
+
+            <div className="role-submit">
+                <Button type="submit" disabled={submitting}>
+                    {submitting ? "Saving stakeholder…" : "Add stakeholder"}
+                </Button>
+            </div>
         </form>
     );
 }

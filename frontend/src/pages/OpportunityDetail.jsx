@@ -1,5 +1,6 @@
 import "../styles/business-workspaces.css";
 import { useEffect, useMemo, useState } from "react";
+
 import {
     ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock3, DollarSign,
     Edit3, FileText, History, MessageSquare, RefreshCw, Save,
@@ -69,6 +70,7 @@ function ActionNote({ children }) {
 }
 
 export default function OpportunityDetail() {
+
     const { id } = useParams();
     const navigate = useNavigate();
     const opportunityId = Number(id);
@@ -82,6 +84,7 @@ export default function OpportunityDetail() {
     const [showFullPocHistory, setShowFullPocHistory] = useState(false);
     const [pocHistory, setPocHistory] = useState([]);
     const [pocs, setPocs] = useState([]);
+    const [selectedPocId, setSelectedPocId] = useState("");
     const [selectedOlderPocId, setSelectedOlderPocId] = useState("");
     const [expandedCompletedPocs, setExpandedCompletedPocs] = useState(new Set());
 
@@ -598,11 +601,22 @@ export default function OpportunityDetail() {
 
             <div className="opportunity-two-column">
                 <SectionCard
-                    title="Deal Overview"
+                 title="Deal Overview"
                     description="Commercial context and opportunity metadata."
                     icon={FileText}
-                    action={canEditSales && <Button variant="ghost" size="sm" onClick={() => setEditingSales((value) => !value)}><Edit3 size={13} />{editingSales ? "Cancel" : "Edit"}</Button>}
-                >
+                    action={
+                        canEditSales && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingSales((value) => !value)}
+                            >
+                                <Edit3 size={13} />
+                                {editingSales ? "Cancel" : "Edit"}
+                            </Button>
+                        )
+                    }
+>
                     {editingSales ? (
                         <div className="field-grid">
                             <label className="field-label"><span>Opportunity name</span><input value={edit.opportunity_name} onChange={(e) => setEdit({ ...edit, opportunity_name: e.target.value })} /></label>
@@ -615,12 +629,12 @@ export default function OpportunityDetail() {
                     ) : (
                         <>
                             <InfoGrid>
-                                <InfoItem icon={DollarSign} label="Current Opportunity Value" value={money(opportunity.estimated_value)} />
                                 <InfoItem icon={DollarSign} label="Final revenue" value={money(opportunity.final_revenue)} />
-                                <InfoItem icon={Target} label="Probability" value={`${probability}%`} />
-                                <InfoItem icon={CalendarDays} label="Expected close" value={dateLabel(opportunity.expected_close_date)} />
-                                <InfoItem icon={Users} label="Sales owner" value={salesOwner} />
                                 <InfoItem icon={History} label="Version" value={opportunity.value_version ?? 1} />
+                                <InfoItem icon={FileText} label="Account" value={opportunity.account_name || `Account #${opportunity.account_id}`} />
+                                <InfoItem icon={UserRound} label="Created by" value={createdBy} />
+                                <InfoItem icon={CalendarDays} label="Created on" value={dateLabel(opportunity.created_at)} />
+                                <InfoItem icon={Clock3} label="Last updated" value={dateLabel(opportunity.updated_at)} />
                             </InfoGrid>
 
                             {editingValue ? (
@@ -689,17 +703,27 @@ export default function OpportunityDetail() {
                                             }}
                                         >
                                             <Edit3 size={13} /> Edit value
-                                        </Button>
-                                    </div>
-                                )
-                            )}
-                            <div className="opportunity-description">
-                                <span>Description</span>
-                                <p>{opportunity.description || "No description provided."}</p>
+                              </Button>
                             </div>
-                        </>
+                        )
                     )}
-                </SectionCard>
+
+                    <div className="opportunity-description">
+                        <span>Description</span>
+                        <p>{opportunity.description || "No description provided."}</p>
+                    </div>
+
+                    {opportunity.pain_points && (
+                        <div className="opportunity-description">
+                            <span>Pain points</span>
+                            <p>{opportunity.pain_points}</p>
+                        </div>
+                    )}
+                </>
+            )}
+        </SectionCard>
+                            
+                
 
                 <SectionCard title="Ownership & Team" description="People currently associated with the opportunity." icon={Users}>
                     <div className="opportunity-team-list">
@@ -1030,19 +1054,28 @@ export default function OpportunityDetail() {
                 </SectionCard>
             )}
 
-            {technicalRole && (
-                <SectionCard
-                    title="POC Execution"
-                    description="POC execution, team assignment, and result submission."
-                    icon={FlaskConical}
-                >
-                    {sectionErrors.pocs ? (
-                        <ErrorState
-                            title={sectionErrors.pocs.status === 403 ? "POC data is read-only" : "Unable to load POCs"}
-                            message={sectionErrors.pocs.message}
-                            onRetry={sectionErrors.pocs.status === 403 ? undefined : () => retrySection("pocs")}
-                        />
-                    ) : pocs.length ? (
+ 
+{technicalRole && (
+    <SectionCard
+        title="POC Execution"
+        description="POC execution, team assignment, and result submission."
+        icon={FlaskConical}
+    >
+        {sectionErrors.pocs ? (
+            <ErrorState
+                title={
+                    sectionErrors.pocs.status === 403
+                        ? "POC data is read-only"
+                        : "Unable to load POCs"
+                }
+                message={sectionErrors.pocs.message}
+                onRetry={
+                    sectionErrors.pocs.status === 403
+                        ? undefined
+                        : () => retrySection("pocs")
+                }
+            />
+        ) : pocs.length ? (
                         <div className="opportunity-poc-list">
                             {orderedPocs.length > 1 && (
                                 <div style={{ marginBottom: "14px" }}>
@@ -1414,75 +1447,152 @@ export default function OpportunityDetail() {
                     ) : (
                         <EmptyState message="No POCs have been created for this opportunity." />
                     )}
-                </SectionCard>
-            )}
+    </SectionCard>
+)}
 
+                            
             <Phase2OpportunityPanel opportunity={opportunity} activeRole={activeRole} onRefresh={() => retrySection("stakeholders")} />
 
-            <SectionCard title="Stakeholders" description="Customer contacts connected to this opportunity." icon={Users}>
-                {(([
-                    ROLES.LEADERSHIP,
-                    ROLES.SALES_EXECUTIVE,
-                    ROLES.PRE_SALES_MANAGER,
-                    ROLES.SOLUTION_ENGINEER,
-                    ROLES.DELIVERY_MANAGER,
-                    ROLES.DEVOPS_ENGINEER,
-                    ROLES.DATA_ANALYST,
-                ].includes(activeRole) &&
-                    opportunity.created_by === currentUserId &&
-                    opportunity.is_active &&
-                    opportunity.operational_status === "Active" &&
-                    stageName === "Lead" &&
-                    opportunity.review_status === "Draft") ||
-                    (activeRole === ROLES.SALES_MANAGER &&
-                        opportunity.is_active &&
-                        opportunity.operational_status === "Active") ||
-                    (activeRole === ROLES.SOLUTION_ENGINEER && assignedSE)) && (
-                    <StakeholderForm
-                        opportunityId={opportunityId}
-                        companyName={opportunity.account_name || ""}
-                        onCreated={() => retrySection("stakeholders")}
-                    />
-                )}
-                {sectionErrors.stakeholders ? (
-                    <ErrorState
-                        title={sectionErrors.stakeholders.status === 403 ? "Stakeholders are read-only" : "Unable to load stakeholders"}
-                        message={sectionErrors.stakeholders.message}
-                        onRetry={sectionErrors.stakeholders.status === 403 ? undefined : () => retrySection("stakeholders")}
-                    />
-                ) : stakeholders.length ? (
-                    <div className="opportunity-stakeholder-list">
-                        {stakeholders.map((stakeholder) => (
-                            <div className="opportunity-stakeholder" key={stakeholder.stakeholder_id}>
-                                <span className="opportunity-avatar">{(stakeholder.name || "?").charAt(0).toUpperCase()}</span>
-                                <div className="opportunity-stakeholder-identity">
-                                    <strong>{stakeholder.name || "Unnamed stakeholder"}</strong>
-                                    <small>{stakeholder.job_title || "Role not provided"}</small>
-                                    {stakeholder.company && (
-                                        <small>{stakeholder.company}</small>
-                                    )}
-                                    {stakeholder.tags?.length > 0 && (
-                                        <div className="opportunity-stakeholder-tags">
-                                            {stakeholder.tags.map((tag) => (
-                                                <span
-                                                    className="opportunity-stakeholder-tag"
-                                                    key={tag}
-                                                >
-                                                    {tag}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="opportunity-stakeholder-contact">
-                                    {stakeholder.email && <span><UserRound size={12} />{stakeholder.email}</span>}
-                                    {stakeholder.phone && <span><PhoneIcon size={12} />{stakeholder.phone}</span>}
-                                </div>
+            <SectionCard
+    title="Stakeholders"
+    description="Key customer contacts and decision makers connected to this opportunity."
+    icon={Users}
+    action={
+        stakeholders.length > 0 && (
+            <span className="stakeholder-count">
+                {stakeholders.length} contact{stakeholders.length !== 1 ? "s" : ""}
+            </span>
+        )
+    }
+>
+    {(([
+        ROLES.LEADERSHIP,
+        ROLES.SALES_EXECUTIVE,
+        ROLES.PRE_SALES_MANAGER,
+        ROLES.SOLUTION_ENGINEER,
+        ROLES.DELIVERY_MANAGER,
+        ROLES.DEVOPS_ENGINEER,
+        ROLES.DATA_ANALYST,
+    ].includes(activeRole) &&
+        opportunity.created_by === currentUserId &&
+        opportunity.is_active &&
+        opportunity.operational_status === "Active" &&
+        stageName === "Lead" &&
+        opportunity.review_status === "Draft") ||
+        (activeRole === ROLES.SALES_MANAGER &&
+            opportunity.is_active &&
+            opportunity.operational_status === "Active") ||
+        (activeRole === ROLES.SOLUTION_ENGINEER && assignedSE)) && (
+        <div className="stakeholder-add-area">
+            <StakeholderForm
+                opportunityId={opportunityId}
+                companyName={opportunity.account_name || ""}
+                onCreated={() => retrySection("stakeholders")}
+            />
+        </div>
+    )}
+
+    {sectionErrors.stakeholders ? (
+        <ErrorState
+            title={
+                sectionErrors.stakeholders.status === 403
+                    ? "Stakeholders are read-only"
+                    : "Unable to load stakeholders"
+            }
+            message={sectionErrors.stakeholders.message}
+            onRetry={
+                sectionErrors.stakeholders.status === 403
+                    ? undefined
+                    : () => retrySection("stakeholders")
+            }
+        />
+    ) : stakeholders.length ? (
+        <div className="stakeholder-card-list">
+            {stakeholders.map((stakeholder) => (
+                <div
+                    className={`stakeholder-card ${
+                        stakeholder.is_decision_maker
+                            ? "is-decision-maker"
+                            : ""
+                    }`}
+                    key={stakeholder.stakeholder_id}
+                >
+                    <div className="stakeholder-main">
+                        <div className="stakeholder-avatar">
+                            {(stakeholder.name || "?")
+                                .charAt(0)
+                                .toUpperCase()}
+                        </div>
+
+                        <div className="stakeholder-identity">
+                            <div className="stakeholder-name-row">
+                                <strong>
+                                    {stakeholder.name ||
+                                        "Unnamed stakeholder"}
+                                </strong>
+
+                                {stakeholder.is_decision_maker && (
+                                    <span className="stakeholder-decision-badge">
+                                        <ShieldCheck size={12} />
+                                        Decision Maker
+                                    </span>
+                                )}
                             </div>
-                        ))}
+
+                            <span className="stakeholder-role">
+                                {stakeholder.job_title ||
+                                    "Role not provided"}
+                            </span>
+
+                            {stakeholder.company && (
+                                <span className="stakeholder-company">
+                                    {stakeholder.company}
+                                </span>
+                            )}
+
+                            {stakeholder.tags?.length > 0 && (
+                                <div className="stakeholder-tags">
+                                    {stakeholder.tags.map((tag) => (
+                                        <span
+                                            className="stakeholder-tag"
+                                            key={tag}
+                                        >
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="stakeholder-contact">
+                            {stakeholder.email && (
+                                <a
+                                    href={`mailto:${stakeholder.email}`}
+                                    className="stakeholder-contact-item"
+                                >
+                                    <UserRound size={14} />
+                                    <span>{stakeholder.email}</span>
+                                </a>
+                            )}
+
+                            {stakeholder.phone && (
+                                <a
+                                    href={`tel:${stakeholder.phone}`}
+                                    className="stakeholder-contact-item"
+                                >
+                                    <PhoneIcon size={14} />
+                                    <span>{stakeholder.phone}</span>
+                                </a>
+                            )}
+                        </div>
                     </div>
-                ) : <EmptyState message="No stakeholders recorded." />}
-            </SectionCard>
+                </div>
+            ))}
+        </div>
+    ) : (
+        <EmptyState message="No stakeholders recorded for this opportunity." />
+    )}
+</SectionCard>
         </div>
     );
 }

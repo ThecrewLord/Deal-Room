@@ -53,6 +53,7 @@ class OpportunityService:
         if not AuthorizationService.can_view_account(user, active_role, account):
             raise AuthorizationDenied("You are not authorized to use this account.")
 
+        print("DEBUG DUPLICATE CHECK:", repr(data["opportunity_name"]), repr(data["account_id"]))
         if OpportunityRepository.exists(data["opportunity_name"], data["account_id"]):
             raise ValueError("Opportunity already exists for this account.")
 

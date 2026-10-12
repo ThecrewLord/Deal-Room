@@ -372,3 +372,226 @@
     min-width: 0;
 }
 
+
+/* =========================================================
+   Opportunity Detail - Stakeholders
+   ========================================================= */
+
+.stakeholder-count {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: var(--surface-muted, #f4f6f8);
+    color: var(--text-muted, #667085);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.stakeholder-card-list {
+    display: grid;
+    gap: 10px;
+}
+
+.stakeholder-card {
+    position: relative;
+    padding: 16px 18px;
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 12px;
+    background: var(--surface, #ffffff);
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease,
+        transform 0.15s ease;
+}
+
+.stakeholder-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+    transform: translateY(-1px);
+}
+
+.stakeholder-card.is-decision-maker {
+    border-color: #c7d2fe;
+    background: linear-gradient(
+        90deg,
+        #f8faff 0%,
+        #ffffff 45%
+    );
+}
+
+.stakeholder-card.is-decision-maker::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 12px;
+    bottom: 12px;
+    width: 3px;
+    border-radius: 999px;
+    background: #4f46e5;
+}
+
+.stakeholder-main {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+
+.stakeholder-avatar {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #eef2ff;
+    color: #4338ca;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.stakeholder-identity {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.stakeholder-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.stakeholder-name-row strong {
+    font-size: 14px;
+    color: var(--text-primary, #111827);
+}
+
+.stakeholder-role {
+    font-size: 12px;
+    color: var(--text-muted, #667085);
+    font-weight: 500;
+}
+
+.stakeholder-company {
+    font-size: 12px;
+    color: var(--text-muted, #667085);
+}
+
+.stakeholder-decision-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #4338ca;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.stakeholder-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 5px;
+}
+
+.stakeholder-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: #f3f4f6;
+    color: #475467;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.stakeholder-contact {
+    min-width: 210px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.stakeholder-contact-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 240px;
+    color: #667085;
+    font-size: 11px;
+    text-decoration: none;
+}
+
+.stakeholder-contact-item:hover {
+    color: #4338ca;
+}
+
+.stakeholder-contact-item span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stakeholder-add-area {
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+@media (max-width: 800px) {
+    .stakeholder-main {
+        align-items: flex-start;
+    }
+
+    .stakeholder-contact {
+        min-width: 0;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 600px) {
+    .stakeholder-main {
+        flex-wrap: wrap;
+    }
+
+    .stakeholder-contact {
+        width: 100%;
+        padding-left: 56px;
+    }
+}
+
+.poc-history-selector {
+    display: grid;
+    gap: 8px;
+    max-width: 520px;
+    margin: 16px 0 22px;
+}
+
+.poc-history-selector label {
+    color: #172033;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.poc-history-selector select {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    background: #fff;
+    color: #172033;
+    font-size: 14px;
+}

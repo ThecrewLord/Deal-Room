@@ -61,8 +61,13 @@ api.interceptors.response.use(
             error.config;
 
         const message = error.response?.data?.message || "";
-        if (error.response?.status === 409 && error.response?.data) {
-            error.response.data.message = "This record was changed by another user. Refresh and try again.";
+        // 409 is used for several legitimate business conflicts (for example
+        // a duplicate/invalid database record). Only translate responses that
+        // are actually optimistic-concurrency failures. Rewriting every 409
+        // was hiding the real backend error from users.
+        const concurrencyMessage = /changed|modified|concurrent|refresh/i.test(String(message));
+        if (error.response?.status === 409 && error.response?.data && concurrencyMessage) {
+            error.response.data.message = message || "This record was changed by another user. Refresh and try again.";
         }
         if (error.response?.status === 403 && message.toLowerCase().includes("revoked")) {
             clearSession();

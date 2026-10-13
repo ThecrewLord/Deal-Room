@@ -5,13 +5,14 @@ from app.repositories.activity_repository import ActivityRepository
 
 class ActivityService:
     @staticmethod
-    def log(entity_type, entity_id, action, description, user_id=None, commit=True):
+    def log(entity_type, entity_id, action, description, user_id=None, commit=True, active_role=None):
         activity = AuditLog(
             entity_type=entity_type,
             entity_id=entity_id,
             action=action,
             description=description,
             performed_by=user_id,
+            actor_active_role=active_role,
         )
         if commit:
             return ActivityRepository.create(activity)

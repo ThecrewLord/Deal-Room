@@ -412,7 +412,7 @@
 }
 
 .psm-assignment-shell {
-    overflow: hidden;
+    overflow: visible;
 }
 
 .psm-assignment-toolbar {

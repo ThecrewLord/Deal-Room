@@ -1,0 +1,247 @@
+. Tables NEW or UPDATED by A1–A5
+1. users — UPDATED
+Column	Type
+user_id	Integer PK
+full_name	String
+email	String
+password_hash	String
+active	Boolean
+status	String
+last_login	DateTime
+approved_at	DateTime
+approved_by	Integer FK → users
+manager_id	Integer FK → users
+created_at	DateTime
+updated_at	DateTime
+auth_version	Integer
+
+2. user_roles — UPDATED/USED BY A1
+Column	Type
+id	Integer PK
+user_id	Integer FK → users
+role	String
+
+This is the role-assignment table used by the Leadership/Admin authorization work.
+
+3. user_system_permissions — NEW in A1
+Column	Type
+id	Integer PK
+user_id	Integer FK → users
+permission	String
+
+This supports delegated system permissions.
+
+4. opportunities — HEAVILY UPDATED
+
+This is the most heavily modified table in A1–A5.
+
+Column	Type
+opportunity_id	Integer PK
+account_id	Integer FK → accounts
+created_by	Integer FK → users
+sales_owner_id	Integer FK → users
+stage_id	Integer FK → stage_master
+opportunity_name	String(200)
+description	Text
+pain_points	Text
+estimated_value	Numeric(15,2)
+final_revenue	Numeric(15,2)
+probability	Integer
+expected_close_date	Date
+lifecycle_stage	String
+outcome	String
+operational_status	String
+review_status	String
+lost_reason	String(100)
+lost_explanation	Text
+row_version	Integer
+status	String
+is_active	Boolean
+created_at	DateTime
+updated_at	DateTime
+Important A1–A5 additions
+created_by
+sales_owner_id
+lifecycle_stage
+outcome
+operational_status
+review_status
+lost_reason
+lost_explanation
+row_version
+pain_points
+final_revenue
+
+The Closed Lost remark you just requested maps most naturally to:
+
+lost_explanation
+
+but I would rename/label it in the UI as Closed Lost Remark or Closure Remark rather than exposing the technical field name.
+
+5. stage_master — UPDATED
+Column	Type
+stage_id	Integer PK
+stage_name	String
+display_order	Integer
+requires_poc	Boolean
+is_closed	Boolean
+is_won	Boolean
+created_at	DateTime
+updated_at	DateTime
+
+The important v2 lifecycle fields are:
+
+stage_name
+display_order
+requires_poc
+is_closed
+is_won
+
+However: the migration history shows older stage names were originally seeded. The v2 application code now uses the frozen lifecycle values, so this table needs to be part of the Phase 1/2 database audit.
+
+6. stage_history — UPDATED
+Column	Type
+history_id	Integer PK
+opportunity_id	Integer FK → opportunities
+stage_id	Integer FK → stage_master
+from_lifecycle_stage	String(30)
+to_lifecycle_stage	String(30)
+actor_active_role	String(50)
+version	Integer
+changed_by	Integer FK → users
+remarks	Text
+created_at	DateTime
+updated_at	DateTime
+
+A2 added the important historical transition information:
+
+from_lifecycle_stage
+to_lifecycle_stage
+actor_active_role
+version
+7. audit_logs — UPDATED
+Column	Type
+audit_log_id	Integer PK
+entity_type	String
+entity_id	Integer
+action	String
+description	Text
+performed_by	Integer FK → users
+actor_active_role	String
+created_at	DateTime
+updated_at	DateTime
+
+A3 added:
+
+actor_active_role
+8. notifications — NEW/UPDATED
+
+Introduced as part of the Sales Manager workflow.
+
+Column	Type
+notification_id	Integer PK
+recipient_user_id	Integer FK → users
+notification_type	String(100)
+entity_type	String(50)
+entity_id	Integer
+message	Text
+is_read	Boolean
+created_at	DateTime
+updated_at	DateTime
+9. opportunity_team — UPDATED
+Column	Type
+team_id	Integer PK
+opportunity_id	Integer FK → opportunities
+user_id	Integer FK → users
+role	String
+created_at	DateTime
+updated_at	DateTime
+
+This is important for:
+
+Sales Executive assignment
+Solution Engineer assignment
+team scope
+participation revenue
+10. poc_tracker — UPDATED
+Column	Type
+poc_id	Integer PK
+opportunity_id	Integer FK → opportunities
+poc_name	String
+start_date	Date
+end_date	Date
+status	String
+remarks	Text
+objective	Text
+success_metric	Text
+target_date	Date
+failure_condition	Text
+outcome	String
+outcome_notes	Text
+exit_criteria	Text
+requested_by	Integer FK → users
+submitted_by	Integer FK → users
+submitted_at	DateTime
+created_at	DateTime
+updated_at	DateTime
+
+Important: this is one of the tables I would flag for redesign in Phase 2 because the frozen v2 POC workflow requires a different execution/assignment model.
+
+11. solution_designs — EXISTING, USED/UPDATED AROUND A2/A3
+Column	Type
+design_id	Integer PK
+opportunity_id	Integer FK → opportunities
+solution_summary	Text
+technical_approach	Text
+technical_requirements	Text
+architecture_notes	Text
+risks	Text
+assumptions	Text
+created_at	DateTime
+updated_at	DateTime
+12. opportunity_value_history — NEW in A4
+
+This is the major A4 table.
+
+Column	Type
+history_id	Integer PK
+opportunity_id	Integer FK → opportunities
+old_value	Numeric(15,2)
+new_value	Numeric(15,2)
+reason	String(2000)
+actor_id	Integer FK → users
+actor_active_role	String(100)
+changed_at	DateTime
+opportunity_row_version	Integer
+created_at	DateTime
+updated_at	DateTime
+
+This is correctly designed around:
+
+old value
+new value
+reason
+actor
+role
+timestamp
+version
+13. closed_won_requests — NEW in A5
+Column	Type
+request_id	Integer PK
+opportunity_id	Integer FK → opportunities
+requested_by	Integer FK → users
+requested_active_role	String(100)
+status	String(20)
+resolved_by	Integer FK → users
+resolved_active_role	String(100)
+resolution_reason	Text
+requested_at	DateTime
+resolved_at	DateTime
+created_at	DateTime
+updated_at	DateTime
+
+Statuses currently constrained to:
+
+Pending
+Approved
+Rejected

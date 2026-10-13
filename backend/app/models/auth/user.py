@@ -89,6 +89,13 @@ class User(db.Model):
         cascade="all, delete-orphan",
     )
 
+    system_permissions = db.relationship(
+        "UserSystemPermission",
+        backref="user",
+        lazy=True,
+        cascade="all, delete-orphan",
+    )
+
     manager = db.relationship(
         "User",
         remote_side=[user_id],
@@ -104,6 +111,7 @@ class User(db.Model):
             "status": self.status,
             "active": self.active,
             "roles": [role.role for role in self.roles],
+            "system_permissions": [permission.permission for permission in self.system_permissions],
             "manager_id": self.manager_id,
             "manager_name": self.manager.full_name if self.manager else None,
             "organization": self.organization(),

@@ -36,10 +36,13 @@ class SolutionDesignService:
             for key, value in payload.items():
                 setattr(design, key, value)
         ActivityService.log(
-            "Opportunity", opportunity.opportunity_id,
+            "Opportunity",
+            opportunity.opportunity_id,
             SOLUTION_DESIGN_CREATED if created else SOLUTION_DESIGN_UPDATED,
             "Technical solution design created." if created else "Technical solution design updated.",
-            user.user_id, commit=False,
+            user.user_id,
+            commit=False,
+            active_role=active_role,
         )
         db.session.commit()
         return design

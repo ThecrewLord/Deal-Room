@@ -60,7 +60,7 @@ class PreSalesPerformanceRepository:
         total = opportunities.count()
         active = opportunities.filter(
             Opportunity.is_active.is_(True),
-            Opportunity.status.in_(["Approved", "Active", "Open"]),
+            Opportunity.operational_status.in_(["Active", "Stalled"]),
         ).all()
         assigned_value = sum(float(o.estimated_value or 0) for o in active)
         weighted_forecast = sum(

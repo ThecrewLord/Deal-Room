@@ -84,7 +84,7 @@ class SalesManagerPerformanceService:
             ) if open_opportunities else 0,
             "unassigned_submissions": sum(
                 1 for o in opportunities
-                if o.status == "Pending Sales Manager Review" and o.sales_owner_id is None
+                if o.review_status == "Pending Sales Manager Review" and o.sales_owner_id is None
             ),
         }
 

@@ -1,4 +1,4 @@
-from flask import g, jsonify
+from flask import current_app, g, jsonify
 
 from app.services.dashboard_service import DashboardService
 from app.constants.roles import ADMIN
@@ -13,4 +13,5 @@ class DashboardController:
             data = DashboardService.get_dashboard_summary(g.auth_user, g.active_role)
             return jsonify(data), 200
         except Exception:
+            current_app.logger.exception("Dashboard load failed for active_role=%s", getattr(g, "active_role", None))
             return jsonify({"message": "Failed to load dashboard"}), 500

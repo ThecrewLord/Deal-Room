@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { ROLES } from "../../auth/roles";
 import { getDashboardSummary } from "../../api/dashboardApi";
 import { getTeamPerformance } from "../../api/managerPerformanceApi";
+import { getSalesManagerReviewQueue } from "../../api/opportunityApi";
 import { getPreSalesTeamPerformance } from "../../api/preSalesPerformanceApi";
 import { getPendingPreSalesAssignments } from "../../api/preSalesAssignmentApi";
 import adminApi from "../../api/adminApi";
@@ -21,6 +22,8 @@ import LoadingState from "../../components/ui/LoadingState";
 import ErrorState from "../../components/ui/ErrorState";
 import EmptyState from "../../components/ui/EmptyState";
 
+import FollowUpIntelligence from "../../components/FollowUpIntelligence";
+
 const money = (value) => {
     const n = Number(value || 0);
     if (n >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
@@ -28,7 +31,7 @@ const money = (value) => {
     return `$${n.toLocaleString()}`;
 };
 
-const buildBusinessKpis = (role, data, team, assignments) => {
+const buildBusinessKpis = (role, data, team, assignments, reviewQueue) => {
     const common = {
         opportunities: Number(data?.total_opportunities || 0),
         pipeline: Number(data?.total_pipeline_value || 0),
@@ -63,7 +66,7 @@ const buildBusinessKpis = (role, data, team, assignments) => {
 
     if (role === ROLES.SALES_MANAGER) {
         return [
-            { label: "Team Members", value: team?.team_size ?? "—", description: "Direct reports", icon: Users },
+            { label: "Review Queue", value: Array.isArray(reviewQueue) ? reviewQueue.length : "—", description: "Opportunities awaiting review", icon: Clock3 },
             { label: "Team Pipeline", value: money(common.pipeline), description: `${common.open} open opportunities`, icon: DollarSign },
             { label: "Weighted Forecast", value: money(common.forecast), description: "Probability-adjusted", icon: TrendingUp },
             { label: "Deals Won", value: common.won, description: `${common.opportunities} opportunities in scope`, icon: Target },
@@ -81,6 +84,35 @@ const buildBusinessKpis = (role, data, team, assignments) => {
         ];
     }
 
+    if (role === ROLES.LEADERSHIP) {
+        return [
+            { label: "Total Pipeline", value: money(common.pipeline), description: `${common.open} open opportunities`, icon: DollarSign },
+            { label: "Weighted Forecast", value: money(common.forecast), description: "Probability-adjusted", icon: TrendingUp },
+            { label: "Closed Won Revenue", value: money(data?.revenue_intelligence?.closed_won_revenue), description: "Immutable final revenue", icon: Target },
+            { label: "Win Rate", value: `${Number(data?.conversion_rate || 0).toFixed(1)}%`, description: `${common.won} won / ${Number(data?.closed_lost || 0)} lost`, icon: Percent },
+            { label: "Stalled Deals", value: common.stalled, description: common.stalled ? "Needs attention" : "No stalled deals", icon: AlertTriangle },
+        ];
+    }
+
+    if (role === ROLES.DELIVERY_MANAGER) {
+        return [
+            { label: "Active Delivery Projects", value: data?.operational?.active_delivery_projects ?? 0, description: "Projects in delivery", icon: BriefcaseBusiness },
+            { label: "Projects Completed", value: data?.operational?.completed_delivery_projects ?? 0, description: "Completed delivery work", icon: Target },
+            { label: "POC Work", value: common.activePocs, description: "Active POCs in authorized scope", icon: FlaskConical },
+            { label: "Overdue Follow-ups", value: data?.operational?.overdue_follow_ups ?? 0, description: "Open items past due", icon: Clock3 },
+            { label: "Stalled Opportunities", value: common.stalled, description: "Open work needing attention", icon: AlertTriangle },
+        ];
+    }
+
+    if (role === ROLES.DEVOPS_ENGINEER || role === ROLES.DATA_ANALYST) {
+        return [
+            { label: "Assigned Opportunities", value: common.opportunities, description: `${common.open} currently active`, icon: BriefcaseBusiness },
+            { label: "Active POCs", value: common.activePocs, description: "Authorized POC work", icon: FlaskConical },
+            { label: "Overdue Follow-ups", value: data?.operational?.overdue_follow_ups ?? 0, description: "Open items past due", icon: Clock3 },
+            { label: "Activities", value: data?.activities?.total ?? 0, description: "Authorized activity records", icon: Target },
+        ];
+    }
+
     return [];
 };
 
@@ -93,6 +125,7 @@ function BusinessDashboard({ user, role }) {
     const [assignments, setAssignments] = useState(null);
     const [assignmentError, setAssignmentError] = useState("");
     const [assignmentLoading, setAssignmentLoading] = useState(false);
+    const [reviewQueue, setReviewQueue] = useState(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState("");
@@ -121,6 +154,15 @@ function BusinessDashboard({ user, role }) {
             } finally {
                 setTeamLoading(false);
             }
+
+            try {
+                const queue = await getSalesManagerReviewQueue();
+                setReviewQueue(Array.isArray(queue) ? queue : []);
+            } catch (err) {
+                setReviewQueue(null);
+            }
+        } else {
+            setReviewQueue(null);
         }
 
         if (role === ROLES.PRE_SALES_MANAGER) {
@@ -151,7 +193,10 @@ function BusinessDashboard({ user, role }) {
         load();
     }, [role]);
 
-    const kpis = useMemo(() => buildBusinessKpis(role, data, team, assignments), [role, data, team, assignments]);
+    const kpis = useMemo(
+        () => buildBusinessKpis(role, data, team, assignments, reviewQueue),
+        [role, data, team, assignments, reviewQueue]
+    );
     const pipeline = data?.pipeline_by_stage || [];
     const recentOpportunities = data?.recent_opportunities || [];
     const recentPocs = data?.upcoming_pocs || [];
@@ -183,6 +228,26 @@ function BusinessDashboard({ user, role }) {
             <DashboardKpiRow items={kpis} />
 
             <PipelineOutcomePanel pipeline={pipeline} won={won} lost={lost} open={open} total={total} />
+
+            {(role === ROLES.LEADERSHIP || role === ROLES.SALES_MANAGER) && data?.revenue_intelligence && (
+                <Card>
+                    <div className="dashboard-card-header">
+                        <div><h2>Revenue Intelligence</h2><p>Closed Won revenue and immutable Sales Executive attribution.</p></div>
+                    </div>
+                    <div className="dashboard-admin-role-list">
+                        <div className="dashboard-admin-role-row"><span>Closed Won Revenue</span><strong>{money(data.revenue_intelligence.closed_won_revenue)}</strong></div>
+                        {(data.revenue_intelligence.executives || []).slice(0, 8).map((item) => (
+                            <div className="dashboard-admin-role-row" key={item.user_id}>
+                                <span>{item.full_name} · sourced {money(item.sourced_revenue)} · participation {money(item.participation_revenue)}</span>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            )}
+
+            <Card>
+                <FollowUpIntelligence followUps={data?.follow_ups} />
+            </Card>
 
             {role === ROLES.SOLUTION_ENGINEER && (
                 <TechnicalWorkspace

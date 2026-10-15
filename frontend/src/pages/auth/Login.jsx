@@ -57,7 +57,10 @@ export default function Login() {
                 <label className="auth-field">
                     <span>Email</span>
                     <input
+                        id="login-email"
                         type="email"
+                        aria-invalid={Boolean(error)}
+                        aria-describedby={error ? "login-error" : undefined}
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@company.com"
@@ -69,7 +72,10 @@ export default function Login() {
                 <label className="auth-field">
                     <span>Password</span>
                     <input
+                        id="login-password"
                         type="password"
+                        aria-invalid={Boolean(error)}
+                        aria-describedby={error ? "login-error" : undefined}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="Enter your password"
@@ -79,7 +85,7 @@ export default function Login() {
                 </label>
 
                 {error && (
-                    <div className="auth-error" role="alert">
+                    <div id="login-error" className="auth-error" role="alert">
                         {error}
                     </div>
                 )}

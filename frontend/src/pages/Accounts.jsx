@@ -26,6 +26,8 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import SearchInput from "../components/ui/SearchInput";
 import EmptyState from "../components/ui/EmptyState";
+import FormSection from "../components/ui/FormSection";
+import FormActions from "../components/ui/FormActions";
 
 export default function Accounts() {
     const { activeRole } = useAuth();
@@ -39,6 +41,7 @@ export default function Accounts() {
     });
     const [show, setShow] = useState(false);
     const [error, setError] = useState("");
+    const [saving, setSaving] = useState(false);
 
     const load = async () => {
         try {
@@ -78,23 +81,18 @@ export default function Accounts() {
 
     const submit = async (e) => {
         e.preventDefault();
-
+        if (saving) return;
+        setSaving(true);
+        setError("");
         try {
             await createAccount(form);
-
-            setForm({
-                account_name: "",
-                industry: "",
-                website: "",
-            });
-
+            setForm({ account_name: "", industry: "", website: "" });
             setShow(false);
-            load();
+            await load();
         } catch (x) {
-            setError(
-                x?.response?.data?.message ||
-                    "Unable to create account."
-            );
+            setError(x?.response?.data?.message || "Unable to create account.");
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -312,64 +310,31 @@ export default function Accounts() {
 
             {/* Create Account */}
             {show && (
-                <Card
-                    style={{
-                        marginBottom: 18,
-                        borderRadius: 15,
-                        border: "1px solid #e4e5f2",
-                        background:
-                            "linear-gradient(135deg, #faf9ff, #f7fbff)",
-                        boxShadow:
-                            "0 6px 24px rgba(79,70,229,0.06)",
-                    }}
-                >
-                    <form
-                        onSubmit={submit}
-                        style={{
-                            display: "grid",
-                            gap: 12,
-                        }}
-                    >
-                        <input
-                            required
-                            placeholder="Company name"
-                            value={form.account_name}
-                            onChange={(e) =>
-                                setForm({
-                                    ...form,
-                                    account_name:
-                                        e.target.value,
-                                })
-                            }
-                        />
-
-                        <input
-                            placeholder="Industry"
-                            value={form.industry}
-                            onChange={(e) =>
-                                setForm({
-                                    ...form,
-                                    industry:
-                                        e.target.value,
-                                })
-                            }
-                        />
-
-                        <input
-                            placeholder="Website (optional)"
-                            value={form.website}
-                            onChange={(e) =>
-                                setForm({
-                                    ...form,
-                                    website:
-                                        e.target.value,
-                                })
-                            }
-                        />
-
-                        <Button type="submit">
-                            Save Account
-                        </Button>
+                <Card className="account-form-card">
+                    <form onSubmit={submit} className="account-form">
+                        <FormSection title="Account information" description="Create a canonical company record that can be linked to opportunities.">
+                            <div className="field-grid">
+                                <label className="shared-form-field">
+                                    <span>Company name <span className="required-mark">*</span></span>
+                                    <input required maxLength={150} autoComplete="organization" value={form.account_name}
+                                        onChange={(e) => setForm({ ...form, account_name: e.target.value })} />
+                                </label>
+                                <label className="shared-form-field">
+                                    <span>Industry</span>
+                                    <input maxLength={100} value={form.industry}
+                                        onChange={(e) => setForm({ ...form, industry: e.target.value })} />
+                                </label>
+                                <label className="shared-form-field">
+                                    <span>Website</span>
+                                    <input type="url" placeholder="https://example.com" value={form.website}
+                                        onChange={(e) => setForm({ ...form, website: e.target.value })} />
+                                </label>
+                            </div>
+                        </FormSection>
+                        <FormActions>
+                            <Button type="button" variant="secondary" disabled={saving} onClick={() => { setShow(false); setError(""); }}>Cancel</Button>
+                            <Button type="submit" disabled={saving}>{saving ? "Saving account…" : "Save Account"}</Button>
+                        </FormActions>
                     </form>
                 </Card>
             )}

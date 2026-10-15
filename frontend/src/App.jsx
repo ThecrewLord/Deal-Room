@@ -21,6 +21,10 @@ import SalesManagerEmployeePerformance from "./pages/SalesManagerEmployeePerform
 import PreSalesAssignment from "./pages/PreSalesAssignment";
 import PreSalesManagerTeamPerformance from "./pages/PreSalesManagerTeamPerformance";
 import PreSalesManagerEmployeePerformance from "./pages/PreSalesManagerEmployeePerformance";
+import DeliveryManagerPocAssignment from "./pages/DeliveryManagerPocAssignment";
+import DeliveryManagerTeamAssignment from "./pages/DeliveryManagerTeamAssignment";
+import DeliveryManagerTeamPerformance from "./pages/DeliveryManagerTeamPerformance";
+import DeliveryManagerEmployeePerformance from "./pages/DeliveryManagerEmployeePerformance";
 
 import UserManagement from "./pages/admin/UserManagement";
 
@@ -263,6 +267,11 @@ export default function App() {
                     </Layout>
                 }
             />
+
+            <Route path="/delivery-manager/poc-team-assignment" element={<Layout><RoleRoute roles={[ROLES.DELIVERY_MANAGER, ROLES.LEADERSHIP]}><DeliveryManagerPocAssignment /></RoleRoute></Layout>} />
+            <Route path="/delivery-manager/team-assignment" element={<Layout><RoleRoute roles={[ROLES.DELIVERY_MANAGER, ROLES.LEADERSHIP]}><DeliveryManagerTeamAssignment /></RoleRoute></Layout>} />
+            <Route path="/delivery-manager/team-performance" element={<Layout><RoleRoute roles={[ROLES.DELIVERY_MANAGER]}><DeliveryManagerTeamPerformance /></RoleRoute></Layout>} />
+            <Route path="/delivery-manager/team-performance/:employeeId" element={<Layout><RoleRoute roles={[ROLES.DELIVERY_MANAGER]}><DeliveryManagerEmployeePerformance /></RoleRoute></Layout>} />
 
             <Route
                 path="/opportunity/:id"

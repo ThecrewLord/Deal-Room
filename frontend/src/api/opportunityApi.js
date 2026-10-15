@@ -3,6 +3,7 @@ import api from "./axiosClient";
 export const getOpportunities = async () => (await api.get("/opportunities")).data;
 export const createOpportunity = async (payload) => (await api.post("/opportunities", payload)).data;
 export const getOpportunity = async (id) => (await api.get(`/opportunities/${id}`)).data;
+export const getOpportunityMetadata = async (id) => (await api.get(`/opportunities/${id}/metadata`)).data;
 export const getOpportunityStageHistory = async (id) => (await api.get(`/opportunities/${id}/stage-history`)).data;
 export const getOpportunityValueHistory = async (id) => (await api.get(`/opportunities/${id}/value-history`)).data;
 export const changeOpportunityValue = async (id, payload) => (await api.post(`/opportunities/${id}/value`, payload)).data;

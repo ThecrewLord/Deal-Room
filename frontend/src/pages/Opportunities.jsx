@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "../styles/Opportunities.css";
+import "../styles/opportunities.css";
 import {
     Search,
     RefreshCw,
@@ -22,6 +22,8 @@ import SearchInput from "../components/ui/SearchInput";
 import StageBadge from "../components/ui/StageBadge";
 import StatusBadge from "../components/ui/StatusBadge";
 import EmptyState from "../components/ui/EmptyState";
+import FormSection from "../components/ui/FormSection";
+import FormActions from "../components/ui/FormActions";
 
 export default function Opportunities() {
     const { activeRole } = useAuth();
@@ -100,6 +102,7 @@ export default function Opportunities() {
 
     const submit = async (e) => {
         e.preventDefault();
+        if (creating) return;
 
         try {
             setCreating(true);
@@ -409,10 +412,11 @@ export default function Opportunities() {
                         {/* STEP 1 */}
                         {createStep === 1 && (
                             <div className="standard-form">
+                                <FormSection title="Opportunity details" description="Capture the account, commercial value, timing, and customer problem.">
                                 <div className="field-grid">
 
                                     <label className="field-label">
-                                        Account
+                                        Account *
 
                                         <select
                                             required
@@ -447,7 +451,7 @@ export default function Opportunities() {
                                     </label>
 
                                     <label className="field-label">
-                                        Opportunity name
+                                        Opportunity name *
 
                                         <input
                                             required
@@ -464,7 +468,7 @@ export default function Opportunities() {
                                     </label>
 
                                     <label className="field-label">
-                                        Initial Opportunity Value
+                                        Initial Opportunity Value *
 
                                         <input
                                             type="number"
@@ -483,7 +487,7 @@ export default function Opportunities() {
                                     </label>
 
                                     <label className="field-label">
-                                        Pain points
+                                        Pain points *
 
                                         <textarea
                                             required
@@ -553,8 +557,9 @@ export default function Opportunities() {
                                     </label>
 
                                 </div>
+                                </FormSection>
 
-                                <div className="record-actions">
+                                <FormActions>
                                     <Button
                                         type="button"
                                         onClick={() => {
@@ -592,17 +597,18 @@ export default function Opportunities() {
                                     >
                                         Next: Stakeholder
                                     </Button>
-                                </div>
+                                </FormActions>
                             </div>
                         )}
 
                         {/* STEP 2 */}
                         {createStep === 2 && (
                             <div className="standard-form">
+                                <FormSection title="Primary stakeholder" description="Add the main customer contact and their decision-making roles.">
                                 <div className="field-grid">
 
                                     <label className="field-label">
-                                        Stakeholder name
+                                        Stakeholder name *
 
                                         <input
                                             required
@@ -703,8 +709,9 @@ export default function Opportunities() {
                                         ))}
                                     </div>
                                 </div>
+                                </FormSection>
 
-                                <div className="record-actions">
+                                <FormActions>
                                     <Button
                                         type="button"
                                         variant="secondary"
@@ -735,7 +742,7 @@ export default function Opportunities() {
                                     >
                                         Next: Review
                                     </Button>
-                                </div>
+                                </FormActions>
                             </div>
                         )}
 
@@ -745,52 +752,18 @@ export default function Opportunities() {
                                 className="standard-form"
                                 onSubmit={submit}
                             >
-                                <div
-                                    style={{
-                                        padding: 16,
-                                        border: "1px solid #ddd",
-                                        borderRadius: 10,
-                                    }}
-                                >
-                                    <h3>Review Opportunity</h3>
+                                <FormSection title="Review opportunity" description="Confirm the opportunity details and primary stakeholder before creating the record.">
+                                    <div className="review-detail-grid">
+                                        <div><span>Account</span><strong>{accounts.find((a) => String(a.account_id) === String(form.account_id))?.account_name || "—"}</strong></div>
+                                        <div><span>Opportunity</span><strong>{form.opportunity_name || "—"}</strong></div>
+                                        <div><span>Initial value</span><strong>{form.estimated_value || "—"}</strong></div>
+                                        <div><span>Probability</span><strong>{form.probability || 0}%</strong></div>
+                                        <div><span>Expected close</span><strong>{form.expected_close_date || "—"}</strong></div>
+                                    </div>
+                                    <p className="review-description"><strong>Pain points:</strong> {form.pain_points || "—"}</p>
+                                    <div className="shared-form-section-heading"><h3>Primary stakeholder</h3></div>
 
-                                    <p>
-                                        <strong>Account:</strong>{" "}
-                                        {accounts.find(
-                                            (a) =>
-                                                String(a.account_id) ===
-                                                String(form.account_id)
-                                        )?.account_name || "—"}
-                                    </p>
-
-                                    <p>
-                                        <strong>Opportunity:</strong>{" "}
-                                        {form.opportunity_name}
-                                    </p>
-
-                                    <p>
-                                        <strong>Initial Value:</strong>{" "}
-                                        {form.estimated_value}
-                                    </p>
-
-                                    <p>
-                                        <strong>Probability:</strong>{" "}
-                                        {form.probability || 0}%
-                                    </p>
-
-                                    <p>
-                                        <strong>Expected Close:</strong>{" "}
-                                        {form.expected_close_date || "—"}
-                                    </p>
-
-                                    <p>
-                                        <strong>Pain Points:</strong>{" "}
-                                        {form.pain_points || "—"}
-                                    </p>
-
-                                    <hr />
-
-                                    <h3>Stakeholder</h3>
+                                    <div className="shared-form-section-heading"><h3>Stakeholder details</h3></div>
 
                                     <p>
                                         <strong>Name:</strong>{" "}
@@ -815,9 +788,9 @@ export default function Opportunities() {
                                             ? stakeholder.tags.join(", ")
                                             : "None"}
                                     </p>
-                                </div>
+                                </FormSection>
 
-                                <div className="record-actions">
+                                <FormActions>
                                     <Button
                                         type="button"
                                         variant="secondary"
@@ -838,7 +811,7 @@ export default function Opportunities() {
                                             ? "Creating..."
                                             : "Create Opportunity"}
                                     </Button>
-                                </div>
+                                </FormActions>
                             </form>
                         )}
                     </div>

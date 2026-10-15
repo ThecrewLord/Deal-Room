@@ -37,6 +37,8 @@ const businessNavigation = (role) => [
 const navigation = {
     [ROLES.LEADERSHIP]: [
         ...businessNavigation(ROLES.LEADERSHIP),
+        { name: "POC Team Assignment", path: "/delivery-manager/poc-team-assignment" },
+        { name: "Delivery Team Assignment", path: "/delivery-manager/team-assignment" },
         { name: "Administration", path: "/admin/users" },
     ],
 
@@ -69,9 +71,12 @@ const navigation = {
         ROLES.SOLUTION_ENGINEER
     ),
 
-    [ROLES.DELIVERY_MANAGER]: businessNavigation(
-        ROLES.DELIVERY_MANAGER
-    ),
+    [ROLES.DELIVERY_MANAGER]: [
+        ...businessNavigation(ROLES.DELIVERY_MANAGER),
+        { name: "POC Team Assignment", path: "/delivery-manager/poc-team-assignment" },
+        { name: "Delivery Team Assignment", path: "/delivery-manager/team-assignment" },
+        { name: "Delivery Team Performance", path: "/delivery-manager/team-performance" },
+    ],
 
     [ROLES.DEVOPS_ENGINEER]: businessNavigation(
         ROLES.DEVOPS_ENGINEER

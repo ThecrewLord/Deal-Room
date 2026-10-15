@@ -166,5 +166,69 @@ def test_closed_opportunity_rejects_submission(app):
         _, p, submitter, _ = make_poc(app)
         o = db.session.get(Opportunity, p.opportunity_id)
         o.outcome = "Closed Won"; o.operational_status = "Closed"; db.session.commit()
-        with pytest.raises(AuthorizationDenied):
+        # A closed opportunity is a lifecycle/state conflict, not an authorization failure.
+        with pytest.raises(TransitionConflict):
             Phase2Service.submit_poc(p.poc_id, {"result_view_link": "https://example.com/x", "row_version": p.row_version}, submitter, DEVOPS_ENGINEER)
+
+
+def test_poc_completion_requires_nonblank_reason_and_valid_outcome(app):
+    with app.app_context():
+        _, p, submitter, se = make_poc(app, DEVOPS_ENGINEER)
+        Phase2Service.submit_poc(
+            p.poc_id,
+            {"result_view_link": "https://example.com/result", "row_version": p.row_version},
+            submitter, DEVOPS_ENGINEER,
+        )
+        submitted = db.session.get(type(p), p.poc_id)
+        with pytest.raises(TransitionInvalid):
+            Phase2Service.complete_poc(
+                p.poc_id,
+                {"outcome": "Success", "outcome_notes": "   ", "row_version": submitted.row_version},
+                se, SOLUTION_ENGINEER,
+            )
+        db.session.rollback()
+        submitted = db.session.get(type(p), p.poc_id)
+        assert submitted.status == "Submitted"
+        assert submitted.outcome is None
+
+
+@pytest.mark.parametrize("outcome", ["Success", "Failure"])
+def test_poc_completion_persists_outcome_reason_and_history(app, outcome):
+    from app.models.opportunity.poc_history import POCHistory
+    with app.app_context():
+        _, p, submitter, se = make_poc(app, DEVOPS_ENGINEER)
+        Phase2Service.submit_poc(
+            p.poc_id,
+            {"result_view_link": "https://example.com/result", "row_version": p.row_version},
+            submitter, DEVOPS_ENGINEER,
+        )
+        submitted = db.session.get(type(p), p.poc_id)
+        # Capture a scalar before completion: expire/refresh updates the same ORM
+        # identity in place, so reading submitted.row_version afterwards would
+        # observe the completed version rather than the originally loaded one.
+        submitted_version = submitted.row_version
+        result = Phase2Service.complete_poc(
+            p.poc_id,
+            {"outcome": outcome, "outcome_notes": "Verified against agreed acceptance criteria.",
+             "row_version": submitted_version},
+            se, SOLUTION_ENGINEER,
+        )
+        assert result.status == "Completed"
+        assert result.outcome == outcome
+        assert result.outcome_notes == "Verified against agreed acceptance criteria."
+        assert result.row_version == submitted_version + 1
+        event = POCHistory.query.filter_by(opportunity_id=p.opportunity_id, event_type="POC_COMPLETED").one()
+        assert outcome in event.reason
+        assert "acceptance criteria" in event.reason
+
+
+def test_second_open_poc_is_rejected(app):
+    with app.app_context():
+        oid, p, _, se = make_poc(app, DEVOPS_ENGINEER)
+        with pytest.raises(TransitionConflict):
+            Phase2Service.request_poc(
+                oid, {"target_date": date.today()}, se, SOLUTION_ENGINEER
+            )
+        assert Phase2Service.get_pocs_by_opportunity(
+            oid, se, SOLUTION_ENGINEER
+        )[0].poc_id == p.poc_id

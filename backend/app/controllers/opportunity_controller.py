@@ -58,6 +58,15 @@ class OpportunityController:
         return jsonify(response_schema.dump(opportunity)), 200
 
     @staticmethod
+    def metadata(opportunity_id):
+        metadata = OpportunityService.get_update_metadata(
+            opportunity_id, g.auth_user, g.active_role
+        )
+        if not metadata:
+            return jsonify({"message": "Opportunity not found"}), 404
+        return jsonify(metadata), 200
+
+    @staticmethod
     def update(opportunity_id):
         try:
             data = update_schema.load(request.get_json() or {})
@@ -73,8 +82,19 @@ class OpportunityController:
             return jsonify({"message": str(err)}), 403
         except ValueError as err:
             return jsonify({"message": str(err)}), 409
-        except RuntimeError as err:
-            return jsonify({"message": str(err)}), 409
+        except TransitionConflict as err:
+            latest = OpportunityService.get_by_id(opportunity_id, g.auth_user, g.active_role)
+            if not latest:
+                return jsonify({"message": "Opportunity not found"}), 404
+            metadata = OpportunityService.get_update_metadata(
+                opportunity_id, g.auth_user, g.active_role
+            ) or {}
+            return jsonify({
+                "message": str(err),
+                "latest_version": latest.row_version,
+                "updated_at": latest.updated_at.isoformat() if latest.updated_at else None,
+                "last_updated_by": metadata.get("last_updated_by"),
+            }), 409
         except Exception:
             return jsonify({"message": "Failed to update opportunity"}), 500
 

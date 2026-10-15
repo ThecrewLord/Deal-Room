@@ -1,7 +1,11 @@
+from datetime import datetime
 from app.auth.authorization import AuthorizationDenied, AuthorizationService
 from app.constants.roles import SALES_EXECUTIVE
 from app.database import db
+from sqlalchemy import update
+from app.services.lifecycle_transition_service import TransitionConflict
 from app.models.opportunity.stakeholder import Stakeholder
+from app.models.opportunity.opportunity import Opportunity
 from app.models.account.account import Account
 from app.models.system.tag import Tag
 from app.services.activity_service import ActivityService
@@ -107,45 +111,69 @@ class StakeholderService:
         return Stakeholder.query.filter_by(opportunity_id=opportunity_id).all() if opp and AuthorizationService.can_view_opportunity(user,active_role,opp) else []
     @staticmethod
     def update_stakeholder(stakeholder_id,data,user,active_role):
-        st=db.session.get(Stakeholder, stakeholder_id)
-        if not st: return None
+        data = dict(data or {})
+        try:
+            expected_version = int(data.pop("expected_version"))
+        except (TypeError, ValueError):
+            raise ValueError("expected_version is required and must be an integer.")
 
-        # Sales Executives may change stakeholder roles/tags through the
-        # existing "set_tags" permission, but may not edit stakeholder
-        # identity/details through the general "update" permission.
-        identity_fields = {"name","job_title","email","phone","company","notes"}
+        st = (
+            Stakeholder.query.filter_by(stakeholder_id=stakeholder_id)
+            .with_for_update().first()
+        )
+        if not st:
+            return None
+
+        identity_fields = {"name", "job_title", "email", "phone", "company", "notes"}
         tags_only = "tags" in data and not any(k in data for k in identity_fields)
         action = "set_tags" if tags_only else "update"
-
         if not AuthorizationService.can_mutate_related(
-            user,
-            active_role,
-            st.opportunity,
-            "stakeholder",
-            action,
+            user, active_role, st.opportunity, "stakeholder", action
         ):
             raise AuthorizationDenied("You are not authorized to update this stakeholder.")
-
-        if st.opportunity.operational_status=="Closed":
+        if st.opportunity.operational_status == "Closed":
             raise AuthorizationDenied("Closed opportunities are locked.")
-
-        if active_role==SALES_EXECUTIVE and any(
-            k in data for k in {"name","job_title","email","phone","company"}
+        if active_role == SALES_EXECUTIVE and any(
+            k in data for k in {"name", "job_title", "email", "phone", "company"}
         ):
             raise AuthorizationDenied("Sales Executive cannot edit stakeholder identity fields.")
-
         if "phone" in data:
             _validate_phone(data["phone"])
 
-        for k in ("name","job_title","email","phone","company","notes"):
-            if k in data:
-                setattr(st,k,data[k])
-
+        opportunity = st.opportunity
+        result = db.session.execute(
+            update(Opportunity)
+            .where(
+                Opportunity.opportunity_id == opportunity.opportunity_id,
+                Opportunity.row_version == expected_version,
+                Opportunity.operational_status != "Closed",
+            )
+            .values(
+                row_version=Opportunity.row_version + 1,
+                updated_at=datetime.utcnow(),
+            )
+        )
+        if result.rowcount != 1:
+            db.session.rollback()
+            raise TransitionConflict("Opportunity version is stale. Refresh before retrying.")
+        for key in ("name", "job_title", "email", "phone", "company", "notes"):
+            if key in data:
+                setattr(st, key, data[key])
         if "tags" in data:
-            StakeholderService._set_tags(st,data["tags"])
-
-        db.session.commit()
+            StakeholderService._set_tags(st, data["tags"])
+        from app.services.activity_service import ActivityService
+        ActivityService.log(
+            "Stakeholder", st.stakeholder_id, "STAKEHOLDER_UPDATED",
+            f"Stakeholder '{st.name}' updated.", user.user_id,
+            commit=False, active_role=active_role,
+        )
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
         return st
+
     @staticmethod
     def delete_stakeholder(stakeholder_id,user,active_role):
         st=db.session.get(Stakeholder, stakeholder_id)

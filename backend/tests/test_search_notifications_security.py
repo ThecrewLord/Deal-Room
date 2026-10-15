@@ -159,3 +159,26 @@ def test_search_result_projection_does_not_expose_oem_contacts():
     result = SearchService._project("oem", oem)
     assert result["title"] == "Acme OEM"
     assert "email" not in result and "phone" not in result and "contact_person" not in result
+
+
+
+def test_mark_all_read_endpoint_and_service_are_role_scoped():
+    routes = open(
+        os.path.join(ROOT, "app", "api", "notification_routes.py"),
+        encoding="utf8",
+    ).read()
+    service = open(
+        os.path.join(ROOT, "app", "services", "notification_service.py"),
+        encoding="utf8",
+    ).read()
+    controller = open(
+        os.path.join(ROOT, "app", "controllers", "notification_controller.py"),
+        encoding="utf8",
+    ).read()
+
+    assert '@notification_bp.post("/read-all")' in routes
+    assert "@phase2_auth_required" in routes
+    assert "def mark_all_read(user, active_role)" in service
+    assert "NotificationService.get_for_user(" in service
+    assert "unread_only=True" in service
+    assert "NotificationService.mark_all_read(user, active_role)" in controller

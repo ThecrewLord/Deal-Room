@@ -1,0 +1,30 @@
+.oem-registry-page { display: grid; gap: 16px; align-content: start; }
+.oem-form-card { margin-bottom: 0; }
+.oem-form-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:16px; }
+.oem-form-heading h2 { margin:0; color:var(--color-text); font-size:15px; }
+.oem-form-heading p { margin:5px 0 0; color:var(--color-text-secondary); font-size:12px; }
+.oem-form { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
+.oem-form .shared-form-section { margin:0; }
+.oem-form .field-grid { margin:0; }
+.oem-form .field-label input, .oem-form .field-label select, .oem-form .field-label textarea { margin-top:2px; }
+.oem-notes-field { grid-column:1 / -1; }
+.oem-form-actions { grid-column:1 / -1; display:flex; justify-content:flex-end; gap:8px; padding-top:4px; margin-top:0; }
+.oem-table-card { overflow:hidden; }
+.oem-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:16px 18px; background:linear-gradient(90deg,#fafaff,#f8fbff); border-bottom:1px solid #eaecf4; }
+.oem-toolbar .ui-search { flex:1 1 260px; min-width:220px; }
+.oem-status-filters { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.oem-status-filters button { border:1px solid transparent; border-radius:8px; background:transparent; color:var(--color-text-secondary); padding:8px 10px; font-size:11px; cursor:pointer; }
+.oem-status-filters button:hover { background:#fff; border-color:var(--color-border); }
+.oem-status-filters button.active { background:#2563eb; color:#fff; }
+.oem-result-count { margin-left:auto; color:var(--color-text-muted); font-size:11px; white-space:nowrap; }
+.oem-table-wrap { width:100%; }
+.oem-table { min-width:720px; }
+.oem-table th { white-space:nowrap; }
+.oem-name-cell { display:flex; align-items:center; gap:10px; min-width:180px; }
+.oem-icon { width:34px; height:34px; flex:0 0 34px; display:grid; place-items:center; border-radius:9px; background:#eff6ff; color:#2563eb; border:1px solid #dbeafe; }
+.oem-name-cell strong, .oem-contact-cell strong { display:block; font-size:12px; color:var(--color-text); }
+.oem-name-cell small, .oem-contact-cell small { display:block; margin-top:3px; color:var(--color-text-muted); font-size:10px; overflow-wrap:anywhere; }
+.oem-actions-heading { text-align:right!important; }
+.oem-row-actions { display:flex; align-items:center; justify-content:flex-end; gap:5px; }
+.oem-row-actions .ui-button { white-space:nowrap; }
+@media(max-width:760px) { .oem-form { grid-template-columns:1fr; } .oem-notes-field,.oem-form-actions { grid-column:auto; } .oem-toolbar { align-items:stretch; } .oem-toolbar .ui-search { min-width:0; width:100%; } .oem-result-count { margin-left:0; } }

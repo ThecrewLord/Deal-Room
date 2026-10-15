@@ -262,7 +262,7 @@ def test_existing_stakeholder_can_keep_existing_role_during_update(app):
 
         updated = StakeholderService.update_stakeholder(
             stakeholder.stakeholder_id,
-            {"tags": ["Economic Buyer"]},
+            {"tags": ["Economic Buyer"], "expected_version": Opportunity.query.get(oid).row_version},
             u,
             SALES_EXECUTIVE,
         )
@@ -288,7 +288,7 @@ def test_existing_stakeholder_can_add_unused_role_during_update(app):
 
         updated = StakeholderService.update_stakeholder(
             stakeholder.stakeholder_id,
-            {"tags": ["Economic Buyer", "Technical Champion"]},
+            {"tags": ["Economic Buyer", "Technical Champion"], "expected_version": Opportunity.query.get(oid).row_version},
             u,
             SALES_EXECUTIVE,
         )
@@ -328,7 +328,7 @@ def test_existing_stakeholder_cannot_take_role_used_by_another_stakeholder(app):
         with pytest.raises(ValueError, match="Economic Buyer"):
             StakeholderService.update_stakeholder(
                 second.stakeholder_id,
-                {"tags": ["Technical Champion", "Economic Buyer"]},
+                {"tags": ["Technical Champion", "Economic Buyer"], "expected_version": Opportunity.query.get(oid).row_version},
                 u,
                 SALES_EXECUTIVE,
             )

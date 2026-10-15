@@ -32,6 +32,9 @@ class StakeholderCreateSchema(Schema):
 
 
 class StakeholderUpdateSchema(Schema):
+    # Uses the parent opportunity's row_version because stakeholder mutations
+    # change shared deal context and share its optimistic-concurrency boundary.
+    expected_version = fields.Int(required=True, validate=validate.Range(min=1))
     name = fields.Str(validate=validate.Length(min=1, max=150))
     job_title = fields.Str(allow_none=True)
     email = fields.Email(allow_none=True)
@@ -51,6 +54,7 @@ class StakeholderUpdateSchema(Schema):
 class StakeholderResponseSchema(Schema):
     stakeholder_id = fields.Int()
     opportunity_id = fields.Int()
+    opportunity_version = fields.Method("get_opportunity_version")
 
     opportunity_name = fields.Method("get_opportunity_name")
 
@@ -66,6 +70,9 @@ class StakeholderResponseSchema(Schema):
 
     def get_tags(self, obj):
         return [t.name for t in obj.tags]
+
+    def get_opportunity_version(self, obj):
+        return obj.opportunity.row_version if obj.opportunity else None
 
     def get_opportunity_name(self, obj):
         return (

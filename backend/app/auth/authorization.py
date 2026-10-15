@@ -664,9 +664,12 @@ class AuthorizationService:
             return False
         if not opportunity or opportunity.operational_status == "Closed":
             return False
-        # A2 only removes lifecycle/status mutation. Ordinary field editing
-        # remains governed by the existing role/domain policies.
-        if active_role in {SALES_EXECUTIVE, SALES_MANAGER, PRE_SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST}:
+        # P1 Deal Overview edits are available to Sales Executive and Sales
+        # Manager on any open opportunity they can access. Other roles retain
+        # their established workflow-specific editing policy.
+        if active_role in {SALES_EXECUTIVE, SALES_MANAGER}:
+            return opportunity.outcome == "Open"
+        if active_role in {PRE_SALES_MANAGER, SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST}:
             return (
                 opportunity.created_by == user.user_id
                 and opportunity.lifecycle_stage == "Lead"
@@ -689,6 +692,7 @@ class AuthorizationService:
         return (
             bool(user and opportunity)
             and active_role in {
+                SALES_EXECUTIVE,
                 SALES_MANAGER,
                 PRE_SALES_MANAGER,
                 LEADERSHIP,

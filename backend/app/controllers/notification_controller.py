@@ -12,6 +12,11 @@ class NotificationController:
         ])
 
     @staticmethod
+    def mark_all_read(user, active_role):
+        updated = NotificationService.mark_all_read(user, active_role)
+        return jsonify({"updated": updated, "message": "Notifications marked as read."})
+
+    @staticmethod
     def mark_read(notification_id, user, active_role):
         notification = NotificationService.mark_read(notification_id, user, active_role)
         if not notification:

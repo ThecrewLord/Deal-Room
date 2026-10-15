@@ -40,6 +40,23 @@ class NegotiationContext(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     opportunity = db.relationship("Opportunity", back_populates="negotiation_context")
 
+class OpportunityPOCTeamMember(db.Model):
+    """Canonical POC team for an opportunity, shared by every POC cycle."""
+    __tablename__ = "opportunity_poc_team_members"
+    __table_args__ = (
+        db.UniqueConstraint("opportunity_id", "user_id", name="uq_opportunity_poc_team_member_user"),
+        db.CheckConstraint("role IN ('DevOps Engineer', 'Data Analyst')", name="ck_opportunity_poc_team_role"),
+    )
+    opportunity_poc_team_member_id = db.Column(db.Integer, primary_key=True)
+    opportunity_id = db.Column(db.Integer, db.ForeignKey("opportunities.opportunity_id", ondelete="RESTRICT"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False, index=True)
+    role = db.Column(db.String(30), nullable=False)
+    assigned_by = db.Column(db.Integer, db.ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False)
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    user = db.relationship("User", foreign_keys=[user_id])
+    assigner = db.relationship("User", foreign_keys=[assigned_by])
+
+
 class POCTeamMember(db.Model):
     __tablename__ = "poc_team_members"
     __table_args__ = (
@@ -107,7 +124,7 @@ class Activity(db.Model):
     __tablename__ = "activities"
     __table_args__ = (
         db.CheckConstraint(
-            "activity_type IN ('note', 'call', 'email', 'meeting', 'demo', 'other')",
+            "activity_type IN ('note', 'call')",
             name="ck_activities_activity_type",
         ),
     )

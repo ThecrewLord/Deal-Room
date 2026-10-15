@@ -16,6 +16,7 @@ import { NavLink } from "react-router-dom";
 
 import navigation from "../config/navigation";
 import { useAuth } from "../context/AuthContext";
+import { PRODUCT_SHORT_NAME, PRODUCT_BYLINE } from "../config/branding";
 
 import "../styles/sidebar.css";
 
@@ -34,6 +35,9 @@ const iconMap = {
     "Pending Approvals": ShieldCheck,
     Administration: ShieldCheck,
     "Pending Technical Assignment": Target,
+    "POC Team Assignment": FlaskConical,
+    "Delivery Team Assignment": Users,
+    "Delivery Team Performance": BarChart3,
     Users: Users,
     "Role Management": Users,
     "Access Management": ShieldCheck,
@@ -86,11 +90,11 @@ export default function Sidebar() {
 
                 <div className="sidebar-brand-text">
                     <span className="sidebar-brand-name">
-                        Deal Room
+                        {PRODUCT_SHORT_NAME}
                     </span>
 
                     <span className="sidebar-brand-subtitle">
-                        Sales Intelligence
+                        {PRODUCT_BYLINE}
                     </span>
                 </div>
             </div>

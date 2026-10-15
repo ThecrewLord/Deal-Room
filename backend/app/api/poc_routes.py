@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g, send_file
 from app.auth.authorization import business_access_required
 from app.services.phase2_service import Phase2Service
 from app.services.poc_report_service import POCReportService
+from app.services.lifecycle_transition_service import TransitionConflict, TransitionInvalid
 
 poc_bp = Blueprint("poc_compat", __name__, url_prefix="/api/poc")
 
@@ -20,6 +21,8 @@ def _poc(p):
         "requested_by": p.requested_by, "submitted_by": p.submitted_by,
         "submitted_at": p.submitted_at.isoformat() if p.submitted_at else None,
         "row_version": p.row_version,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
     }
 
 
@@ -90,9 +93,15 @@ def get_pocs_by_opportunity(opportunity_id):
 @business_access_required
 def complete_poc(poc_id):
     try:
-        p = Phase2Service.complete_poc(poc_id, g.auth_user, g.active_role)
+        p = Phase2Service.complete_poc(
+            poc_id, request.get_json() or {}, g.auth_user, g.active_role
+        )
         return (jsonify({"message": "POC not found"}), 404) if not p else jsonify(_poc(p))
     except PermissionError as exc:
         return jsonify({"message": str(exc)}), 403
+    except TransitionConflict as exc:
+        return jsonify({"message": str(exc)}), 409
+    except TransitionInvalid as exc:
+        return jsonify({"message": str(exc)}), 422
     except ValueError as exc:
         return jsonify({"message": str(exc)}), 409

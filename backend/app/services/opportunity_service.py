@@ -1,3 +1,4 @@
+from datetime import datetime
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError, OperationalError
 
@@ -25,13 +26,15 @@ from app.database import db
 from app.models.account.account import Account
 from app.models.auth.user import User
 from app.models.opportunity.opportunity import Opportunity
+from app.models.system.audit_log import AuditLog
+from app.models.auth.user import User
 from app.models.opportunity.opportunity_team import OpportunityTeam
 from app.models.opportunity.stakeholder import Stakeholder
 from app.repositories.opportunity_repository import OpportunityRepository
 from app.services.activity_service import ActivityService
 from app.services.notification_service import NotificationService
 from app.services.stage_service import StageService
-from app.services.lifecycle_transition_service import LifecycleTransitionService, TransitionConflict, TransitionInvalid
+from app.services.lifecycle_transition_service import TransitionConflict, LifecycleTransitionService, TransitionInvalid
 from app.services.opportunity_value_service import OpportunityValueService
 from app.repositories.stage_repository import StageRepository
 
@@ -297,6 +300,24 @@ class OpportunityService:
         )
 
     @staticmethod
+    def get_update_metadata(opportunity_id, user, active_role):
+        opportunity = OpportunityRepository.get_by_id(opportunity_id)
+        if not opportunity or not AuthorizationService.can_view_opportunity(user, active_role, opportunity):
+            return None
+        latest_audit = (
+            AuditLog.query.filter_by(entity_type="Opportunity", entity_id=opportunity_id)
+            .order_by(AuditLog.created_at.desc(), AuditLog.audit_log_id.desc())
+            .first()
+        )
+        editor = db.session.get(User, latest_audit.performed_by) if latest_audit and latest_audit.performed_by else None
+        return {
+            "opportunity_id": opportunity.opportunity_id,
+            "row_version": opportunity.row_version,
+            "updated_at": opportunity.updated_at.isoformat() if opportunity.updated_at else None,
+            "last_updated_by": editor.full_name if editor else None,
+        }
+
+    @staticmethod
     def update_opportunity(opportunity_id, data, user, active_role):
         opportunity = OpportunityRepository.get_by_id(opportunity_id)
         if not opportunity:
@@ -314,7 +335,7 @@ class OpportunityService:
             raise ValueError("expected_version is required and must be an integer.")
 
         if expected_version != opportunity.row_version:
-            raise RuntimeError("Opportunity version is stale. Refresh before retrying.")
+            raise TransitionConflict("Opportunity version is stale. Refresh before retrying.")
 
         allowed_fields = {"opportunity_name", "description", "pain_points", "probability", "expected_close_date"}
         values = {key: value for key, value in data.items() if key in allowed_fields}
@@ -326,11 +347,11 @@ class OpportunityService:
             .where(Opportunity.opportunity_id == opportunity.opportunity_id,
                    Opportunity.row_version == expected_version,
                    Opportunity.operational_status != "Closed")
-            .values(**values)
+            .values(updated_at=datetime.utcnow(), **values)
         )
         if result.rowcount != 1:
             db.session.rollback()
-            raise RuntimeError("Opportunity version is stale. Refresh before retrying.")
+            raise TransitionConflict("Opportunity version is stale. Refresh before retrying.")
         db.session.expire(opportunity)
         db.session.refresh(opportunity)
         ActivityService.log(

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func
 
@@ -246,10 +246,10 @@ class DashboardRepository:
 
 
     @staticmethod
-    def get_follow_up_summary(user, active_role):
+    def get_follow_up_summary(user, active_role, today=None):
         from app.models.phase2 import FollowUp
 
-        today = datetime.utcnow().date()
+        today = today or date.today()
         ids = DashboardRepository._opportunity_ids(user, active_role)
 
         q = FollowUp.query.filter(
@@ -268,7 +268,6 @@ class DashboardRepository:
 
         upcoming = q.filter(
             FollowUp.due_date > today,
-            FollowUp.due_date <= today + timedelta(days=7),
             FollowUp.status != "Completed",
         ).count()
 
@@ -341,11 +340,92 @@ class DashboardRepository:
             })
 
         return {
+            "total": q.count(),
             "due_today": due_today,
             "overdue": overdue,
             "upcoming": upcoming,
             "completed": completed,
             "items": items,
+        }
+
+    @staticmethod
+    def get_follow_ups_page(user, active_role, filter_name="all", page=1, page_size=10, today=None):
+        """Return a bounded, authorized page of follow-ups for dashboard filters."""
+        from app.models.phase2 import FollowUp
+
+        allowed_filters = {"all", "overdue", "today", "upcoming", "completed"}
+        filter_name = str(filter_name or "all").strip().lower()
+        if filter_name not in allowed_filters:
+            filter_name = "all"
+
+        try:
+            page = max(1, int(page))
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = min(50, max(1, int(page_size)))
+        except (TypeError, ValueError):
+            page_size = 10
+
+        today = today or date.today()
+        ids = DashboardRepository._opportunity_ids(user, active_role)
+        query = FollowUp.query.filter(FollowUp.opportunity_id.in_(ids))
+
+        if filter_name == "completed":
+            query = query.filter(FollowUp.status == "Completed")
+        elif filter_name == "overdue":
+            query = query.filter(FollowUp.status != "Completed", FollowUp.due_date < today)
+        elif filter_name == "today":
+            query = query.filter(FollowUp.status != "Completed", FollowUp.due_date == today)
+        elif filter_name == "upcoming":
+            query = query.filter(FollowUp.status != "Completed", FollowUp.due_date > today)
+
+        total = query.count()
+        rows = query.order_by(
+            FollowUp.due_date.asc(),
+            FollowUp.created_at.desc(),
+            FollowUp.follow_up_id.desc(),
+        ).offset((page - 1) * page_size).limit(page_size).all()
+
+        items = []
+        for follow_up in rows:
+            opportunity = follow_up.opportunity
+            if follow_up.status == "Completed":
+                status, due_label = "completed", "Completed"
+            elif follow_up.due_date < today:
+                days_overdue = (today - follow_up.due_date).days
+                status = "overdue"
+                due_label = "1 day overdue" if days_overdue == 1 else f"{days_overdue} days overdue"
+            elif follow_up.due_date == today:
+                status, due_label = "today", "Today"
+            else:
+                days_until = (follow_up.due_date - today).days
+                status = "upcoming"
+                due_label = "Tomorrow" if days_until == 1 else f"In {days_until} days"
+
+            items.append({
+                "id": follow_up.follow_up_id,
+                "opportunity_id": follow_up.opportunity_id,
+                "opportunity": opportunity.opportunity_name if opportunity else f"Opportunity #{follow_up.opportunity_id}",
+                "account": getattr(opportunity.account, "account_name", None) if opportunity and opportunity.account else "",
+                "action": follow_up.description,
+                "action_detail": "",
+                "stakeholder": "",
+                "stakeholder_role": "",
+                "stage": opportunity.lifecycle_stage if opportunity else "-",
+                "due_date": follow_up.due_date.isoformat() if follow_up.due_date else None,
+                "due_label": due_label,
+                "status": status,
+                "priority": "Medium",
+            })
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size,
+            "filter": filter_name,
         }
 
     @staticmethod
@@ -356,10 +436,10 @@ class DashboardRepository:
         return {"total": q.count()}
 
     @staticmethod
-    def get_role_operational_summary(user, active_role):
+    def get_role_operational_summary(user, active_role, today=None):
         from app.models.phase2 import DeliveryProject
         summary = {
-            "overdue_follow_ups": DashboardRepository.get_follow_up_summary(user, active_role)["overdue"],
+            "overdue_follow_ups": DashboardRepository.get_follow_up_summary(user, active_role, today=today)["overdue"],
             "stalled_opportunities": DashboardRepository.get_stalled_deals(user, active_role),
             "active_pocs": DashboardRepository.get_active_pocs(user, active_role),
         }

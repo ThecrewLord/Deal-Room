@@ -158,6 +158,12 @@ def mark_active(opportunity_id):
 
 # Ordinary field update is intentionally retained only for non-state fields.
 # The schema rejects stage/status/outcome and requires optimistic concurrency.
+@opportunity_bp.get("/<int:opportunity_id>/metadata")
+@business_access_required
+def get_opportunity_metadata(opportunity_id):
+    return OpportunityController.metadata(opportunity_id)
+
+
 @opportunity_bp.put("/<int:opportunity_id>")
 @business_access_required
 def update_opportunity(opportunity_id):

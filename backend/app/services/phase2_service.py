@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from urllib.parse import urlparse
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError, OperationalError
 from app.database import db
 from app.auth.authorization import AuthorizationService, AuthorizationDenied
 from app.constants.roles import SOLUTION_ENGINEER, DELIVERY_MANAGER, DEVOPS_ENGINEER, DATA_ANALYST, LEADERSHIP
@@ -11,7 +12,7 @@ from app.models.opportunity.opportunity import Opportunity
 from app.models.opportunity.poc_tracker import POCTracker
 from app.models.opportunity.opportunity_team import OpportunityTeam
 from app.models.account.oem_partner import OEMPartner
-from app.models.phase2 import OEMOpportunity, RFXContext, NegotiationContext, POCTeamMember, DeliveryProject, DeliveryProjectMember, Activity, FollowUp
+from app.models.phase2 import OEMOpportunity, RFXContext, NegotiationContext, POCTeamMember, OpportunityPOCTeamMember, DeliveryProject, DeliveryProjectMember, Activity, FollowUp
 from app.models.auth.user import User
 from app.services.activity_service import ActivityService
 from app.services.notification_service import NotificationService
@@ -287,22 +288,36 @@ class Phase2Service:
             not latest
             or latest.status != POC_STATUS_COMPLETED
             or latest.outcome != "Failure"
+            or not str(latest.outcome_notes or "").strip()
         ):
             raise ValueError(
-                "A completed POC with Failure outcome is required before requesting a new POC."
+                "A completed POC with Failure outcome is required before requesting a new POC, and a written outcome reason must be provided."
             )
 
         if expected_version != latest.row_version:
             raise TransitionConflict("POC version is stale. Refresh before retrying.")
 
-        existing_members = list(
-            POCTeamMember.query
-            .filter_by(poc_id=latest.poc_id)
-            .order_by(POCTeamMember.poc_team_member_id.asc())
+        canonical_members = list(
+            OpportunityPOCTeamMember.query
+            .filter_by(opportunity_id=oid)
+            .order_by(OpportunityPOCTeamMember.opportunity_poc_team_member_id.asc())
             .all()
         )
-        if not existing_members:
+        if canonical_members:
+            team_snapshot = [(member.user_id, member.role, member.assigned_by, member.assigned_at) for member in canonical_members]
+        else:
+            # Compatibility fallback for databases not yet backfilled by migration.
+            existing_members = list(
+                POCTeamMember.query.filter_by(poc_id=latest.poc_id)
+                .order_by(POCTeamMember.poc_team_member_id.asc()).all()
+            )
+            team_snapshot = [(member.user_id, member.role, member.assigned_by, member.assigned_at) for member in existing_members]
+        if not team_snapshot:
             raise ValueError("An existing POC team is required before requesting a new POC.")
+        for member_user_id, member_role, _assigned_by, _assigned_at in team_snapshot:
+            member_user = db.session.get(User, member_user_id)
+            if not member_user or not member_user.active or member_user.status != "APPROVED":
+                raise ValueError("The existing POC team contains an inactive or unapproved member. A Delivery Manager must explicitly reassign the team before requesting another POC.")
 
         try:
             # Carry the POC aggregate version forward to the new cycle. The
@@ -320,16 +335,16 @@ class Phase2Service:
             db.session.add(new_poc)
             db.session.flush()
 
-            for member in existing_members:
-                db.session.add(
-                    POCTeamMember(
-                        poc_id=new_poc.poc_id,
-                        user_id=member.user_id,
-                        role=member.role,
-                        assigned_by=member.assigned_by,
-                        assigned_at=member.assigned_at,
-                    )
-                )
+            # POC-level rows remain execution snapshots for existing POC APIs;
+            # the canonical team itself stays opportunity-scoped and unchanged.
+            for member_user_id, member_role, assigned_by, assigned_at in team_snapshot:
+                db.session.add(POCTeamMember(
+                    poc_id=new_poc.poc_id,
+                    user_id=member_user_id,
+                    role=member_role,
+                    assigned_by=assigned_by,
+                    assigned_at=assigned_at,
+                ))
 
             POCHistoryService.record_poc_history(
                 o.opportunity_id, user, "NEW_POC_REQUESTED", reason
@@ -344,9 +359,13 @@ class Phase2Service:
                 active_role=role,
             )
 
-            for member in existing_members:
+            # Notify the canonical team snapshot, regardless of whether it
+            # came from the opportunity-level membership table or the legacy
+            # per-POC fallback. `existing_members` is intentionally only
+            # defined in the fallback branch above.
+            for member_user_id, _member_role, _assigned_by, _assigned_at in team_snapshot:
                 NotificationService.queue(
-                    member.user_id,
+                    member_user_id,
                     "NEW_POC_REQUESTED",
                     "POC",
                     new_poc.poc_id,
@@ -355,16 +374,25 @@ class Phase2Service:
 
             db.session.commit()
             return new_poc
-        except Exception:
+        except Exception as exc:
             db.session.rollback()
+            from sqlalchemy.exc import IntegrityError
+            if isinstance(exc, IntegrityError):
+                raise TransitionConflict("Another POC request was committed first. Refresh before retrying.") from exc
             raise
 
     @staticmethod
     def request_poc(oid,data,user,role):
-        o=Phase2Service._opp(oid)
+        o=Opportunity.query.filter_by(opportunity_id=oid).with_for_update().first()
         if not o: return None
         if role != SOLUTION_ENGINEER or not AuthorizationService.is_assigned_role(user,o,SOLUTION_ENGINEER): raise AuthorizationDenied("Only an assigned Solution Engineer can request a POC.")
-        if o.lifecycle_stage!="POC" or o.operational_status=="Closed": raise ValueError("Opportunity must be open at POC stage.")
+        if o.lifecycle_stage!="POC" or o.operational_status=="Closed" or o.outcome != "Open": raise ValueError("Opportunity must be open at POC stage.")
+        active_poc = POCTracker.query.filter(
+            POCTracker.opportunity_id == oid,
+            POCTracker.status.in_(["Draft", "In Progress", "Submitted"]),
+        ).with_for_update().first()
+        if active_poc:
+            raise TransitionConflict("An unresolved POC already exists for this opportunity.")
         allowed={"poc_name","target_date","remarks"}
         unexpected=set(data or {})-allowed
         if unexpected:
@@ -387,7 +415,15 @@ class Phase2Service:
             status="Draft",
             remarks=data.get("remarks"),
         )
-        db.session.add(p); db.session.flush()
+        try:
+            db.session.add(p)
+            db.session.flush()
+        except Exception as exc:
+            db.session.rollback()
+            from sqlalchemy.exc import IntegrityError
+            if isinstance(exc, IntegrityError):
+                raise TransitionConflict("An unresolved POC already exists for this opportunity.") from exc
+            raise
         ActivityService.log("POC",p.poc_id,"POC_REQUESTED",f"POC '{p.poc_name}' requested.",user.user_id,commit=False,active_role=role)
         dms=User.query.filter(User.active.is_(True),User.status=="APPROVED",User.roles.any(role=DELIVERY_MANAGER)).all()
         for dm in dms:
@@ -401,8 +437,8 @@ class Phase2Service:
         db.session.commit(); return p
 
     @staticmethod
-    def assign_poc_team(poc_id, member_ids, user, role):
-        p = Phase2Service._poc(poc_id)
+    def assign_poc_team(poc_id, member_ids, user, role, expected_version=None):
+        p = POCTracker.query.filter_by(poc_id=poc_id).with_for_update().first()
         if not p:
             return None
 
@@ -416,22 +452,29 @@ class Phase2Service:
             )
 
         if p.status not in {"Draft", "In Progress"}:
-            raise ValueError(
-                "POC team can only be assigned while the POC is active."
-            )
+            raise ValueError("POC team can only be assigned while the POC is active.")
+        if expected_version is not None:
+            try:
+                expected_version = int(expected_version)
+            except (TypeError, ValueError):
+                raise TransitionInvalid("expected_version must be an integer.")
+            if expected_version != p.row_version:
+                raise TransitionConflict("POC version is stale. Refresh before retrying.")
 
-        opportunity = p.opportunity
+        opportunity = Opportunity.query.filter_by(opportunity_id=p.opportunity_id).with_for_update().first()
+        if not opportunity:
+            return None
 
         # POC team is assigned only once per Opportunity.
         # Existing POC records are the source of truth for the team.
-        existing_opportunity_poc_team = (
-            POCTeamMember.query
-            .join(POCTracker, POCTeamMember.poc_id == POCTracker.poc_id)
-            .filter(
-                POCTracker.opportunity_id == opportunity.opportunity_id
+        existing_opportunity_poc_team = OpportunityPOCTeamMember.query.filter_by(
+            opportunity_id=opportunity.opportunity_id
+        ).first()
+        if not existing_opportunity_poc_team:
+            existing_opportunity_poc_team = (
+                POCTeamMember.query.join(POCTracker, POCTeamMember.poc_id == POCTracker.poc_id)
+                .filter(POCTracker.opportunity_id == opportunity.opportunity_id).first()
             )
-            .first()
-        )
 
         if existing_opportunity_poc_team:
             raise ValueError(
@@ -456,17 +499,30 @@ class Phase2Service:
 
         for uid in ids:
             u = users[uid]
-            if not (
-                u.has_role(DEVOPS_ENGINEER)
-                or u.has_role(DATA_ANALYST)
-            ):
+            if not (u.active and u.status == "APPROVED"):
+                raise ValueError("Inactive or unapproved users cannot be assigned to a POC team.")
+            if not (u.has_role(DEVOPS_ENGINEER) or u.has_role(DATA_ANALYST)):
                 raise ValueError(
                     "POC team members may only be DevOps Engineer or Data Analyst."
                 )
 
-        existing_poc_team_count = POCTeamMember.query.filter_by(
-            poc_id=poc_id
-        ).count()
+        existing_poc_team_count = POCTeamMember.query.filter_by(poc_id=poc_id).count()
+        expected_opportunity_version = opportunity.row_version
+        try:
+            opportunity_update = db.session.execute(
+                update(Opportunity)
+                .where(
+                    Opportunity.opportunity_id == opportunity.opportunity_id,
+                    Opportunity.row_version == expected_opportunity_version,
+                )
+                .values(row_version=expected_opportunity_version + 1)
+            )
+        except OperationalError as exc:
+            db.session.rollback()
+            raise TransitionConflict("Opportunity changed while assigning its POC team. Refresh before retrying.") from exc
+        if opportunity_update.rowcount != 1:
+            db.session.rollback()
+            raise TransitionConflict("Opportunity changed while assigning its POC team. Refresh before retrying.")
 
         p.row_version += 1
 
@@ -486,14 +542,18 @@ class Phase2Service:
             )
 
             # Preserve the existing POC-level team assignment.
-            db.session.add(
-                POCTeamMember(
-                    poc_id=poc_id,
-                    user_id=uid,
-                    role=member_role,
-                    assigned_by=user.user_id,
-                )
-            )
+            db.session.add(POCTeamMember(
+                poc_id=poc_id,
+                user_id=uid,
+                role=member_role,
+                assigned_by=user.user_id,
+            ))
+            db.session.add(OpportunityPOCTeamMember(
+                opportunity_id=opportunity.opportunity_id,
+                user_id=uid,
+                role=member_role,
+                assigned_by=user.user_id,
+            ))
 
         ActivityService.log(
             "POC",
@@ -512,11 +572,88 @@ class Phase2Service:
                 "POC_STARTED",
             )
 
-        db.session.commit()
+        try:
+            db.session.commit()
+        except (IntegrityError, OperationalError) as exc:
+            db.session.rollback()
+            raise TransitionConflict("Another team assignment was saved first. Refresh before retrying.") from exc
 
-        return POCTeamMember.query.filter_by(
-            poc_id=poc_id
-        ).all()
+        return POCTeamMember.query.filter_by(poc_id=poc_id).all()
+
+    @staticmethod
+    def reassign_opportunity_poc_team(oid, data, user, role):
+        opportunity = Opportunity.query.filter_by(opportunity_id=oid).with_for_update().first()
+        if not opportunity:
+            return None
+        if not (user and user.active and user.status == "APPROVED" and role in {DELIVERY_MANAGER, LEADERSHIP}):
+            raise AuthorizationDenied("Only Delivery Manager or Leadership can reassign a POC team.")
+        LifecycleTransitionService.assert_opportunity_open_for_mutation(opportunity)
+        if opportunity.lifecycle_stage != "POC" or opportunity.outcome != "Open" or opportunity.operational_status == "Closed":
+            raise ValueError("POC team can only be changed while the opportunity is open at POC stage.")
+        try:
+            expected_version = int((data or {}).get("expected_version"))
+        except (TypeError, ValueError):
+            raise TransitionInvalid("expected_version is required and must be an integer.")
+        if expected_version != opportunity.row_version:
+            raise TransitionConflict("Opportunity version is stale. Refresh before retrying.")
+        canonical = OpportunityPOCTeamMember.query.filter_by(opportunity_id=oid).with_for_update().all()
+        if not canonical:
+            raise ValueError("An existing opportunity POC team is required for reassignment.")
+        submitted_poc = POCTracker.query.filter_by(opportunity_id=oid, status="Submitted").with_for_update().first()
+        if submitted_poc:
+            raise ValueError("POC team reassignment is blocked while a POC result is submitted and awaiting completion.")
+        active_poc = POCTracker.query.filter(
+            POCTracker.opportunity_id == oid,
+            POCTracker.status.in_(["Draft", "In Progress"]),
+        ).order_by(POCTracker.poc_id.desc()).with_for_update().first()
+        ids = list(dict.fromkeys(int(value) for value in ((data or {}).get("member_ids") or [])))
+        if not ids or len(ids) > 2:
+            raise ValueError("Select one or two POC team members.")
+        users = {candidate.user_id: candidate for candidate in User.query.filter(User.user_id.in_(ids)).all()}
+        if len(users) != len(ids):
+            raise ValueError("One or more POC team members do not exist.")
+        for candidate in users.values():
+            if not candidate.active or candidate.status != "APPROVED":
+                raise ValueError("Inactive or unapproved users cannot be assigned to a POC team.")
+            if not (candidate.has_role(DEVOPS_ENGINEER) or candidate.has_role(DATA_ANALYST)):
+                raise ValueError("POC team members may only be DevOps Engineer or Data Analyst.")
+        try:
+            # Conditional update serializes reassignment even where SELECT FOR UPDATE
+            # is ignored (e.g. SQLite). The canonical opportunity team is the source
+            # of truth; a current active POC keeps a synchronized execution snapshot.
+            result = db.session.execute(update(Opportunity).where(
+                Opportunity.opportunity_id == oid,
+                Opportunity.row_version == expected_version,
+            ).values(row_version=expected_version + 1))
+            if result.rowcount != 1:
+                db.session.rollback()
+                raise TransitionConflict("Opportunity version is stale. Refresh before retrying.")
+            OpportunityPOCTeamMember.query.filter_by(opportunity_id=oid).delete(synchronize_session=False)
+            if active_poc:
+                POCTeamMember.query.filter_by(poc_id=active_poc.poc_id).delete(synchronize_session=False)
+            for candidate in users.values():
+                member_role = DEVOPS_ENGINEER if candidate.has_role(DEVOPS_ENGINEER) and not candidate.has_role(DATA_ANALYST) else DATA_ANALYST
+                db.session.add(OpportunityPOCTeamMember(opportunity_id=oid, user_id=candidate.user_id, role=member_role, assigned_by=user.user_id))
+                if active_poc:
+                    db.session.add(POCTeamMember(poc_id=active_poc.poc_id, user_id=candidate.user_id, role=member_role, assigned_by=user.user_id))
+            if active_poc:
+                old_poc_version = active_poc.row_version
+                poc_update = db.session.execute(update(POCTracker).where(
+                    POCTracker.poc_id == active_poc.poc_id,
+                    POCTracker.row_version == old_poc_version,
+                ).values(row_version=old_poc_version + 1))
+                if poc_update.rowcount != 1:
+                    db.session.rollback()
+                    raise TransitionConflict("POC version is stale. Refresh before retrying.")
+            ActivityService.log("Opportunity", oid, "POC_TEAM_REASSIGNED", f"POC team explicitly reassigned to user IDs {ids}.", user.user_id, commit=False, active_role=role)
+            db.session.commit()
+            return {"opportunity_id": oid, "poc_id": active_poc.poc_id if active_poc else None, "row_version": expected_version + 1, "team": [{"user_id": candidate.user_id, "full_name": candidate.full_name, "role": DEVOPS_ENGINEER if candidate.has_role(DEVOPS_ENGINEER) and not candidate.has_role(DATA_ANALYST) else DATA_ANALYST} for candidate in users.values()]}
+        except (IntegrityError, OperationalError) as exc:
+            db.session.rollback()
+            raise TransitionConflict("Another team assignment was saved first. Refresh before retrying.") from exc
+        except Exception:
+            db.session.rollback()
+            raise
 
     @staticmethod
     def submit_poc(poc_id, data, user, role):
@@ -623,39 +760,63 @@ class Phase2Service:
 
     @staticmethod
     def complete_poc(poc_id, data, user, role):
-        p = Phase2Service._poc(poc_id)
+        data = data or {}
+        p = POCTracker.query.filter_by(poc_id=poc_id).with_for_update().first()
         if not p:
             return None
 
         LifecycleTransitionService.assert_opportunity_open_for_mutation(p.opportunity)
-
         if not AuthorizationService.can_complete_poc(user, role, p):
             raise AuthorizationDenied(
                 "Only the assigned Solution Engineer can complete a submitted POC."
             )
-
         if p.status != POC_STATUS_SUBMITTED:
-            raise ValueError("Only a submitted POC can be completed.")
+            raise TransitionConflict("Only a submitted POC can be completed.")
 
-        outcome = (data.get("outcome") or "").strip()
-
-        if outcome not in ("Success", "Failure"):
-            raise ValueError("POC outcome must be Success or Failure.")
-
-        p.outcome = outcome
-        p.status = POC_STATUS_COMPLETED
-        p.row_version += 1
-
-        ActivityService.log(
-            "POC",
-            p.poc_id,
-            "POC_COMPLETED",
-            f"POC '{p.poc_name}' marked completed with outcome '{outcome}'.",
-            user.user_id,
-            commit=False,
-            active_role=role,
+        unexpected = set(data) - {"outcome", "outcome_notes", "row_version"}
+        if unexpected:
+            raise TransitionInvalid("Only outcome, outcome_notes and row_version may be supplied.")
+        outcome = str(data.get("outcome") or "").strip()
+        if outcome not in {"Success", "Failure"}:
+            raise TransitionInvalid("POC outcome must be Success or Failure.")
+        reason = str(data.get("outcome_notes") or "").strip()
+        if not reason:
+            raise TransitionInvalid("A written reason is required for both Success and Failure.")
+        if len(reason) > 2000:
+            raise TransitionInvalid("POC outcome reason must be 2000 characters or fewer.")
+        try:
+            expected_version = int(data.get("row_version"))
+        except (TypeError, ValueError):
+            raise TransitionInvalid("row_version is required and must be an integer.")
+        result = db.session.execute(
+            update(POCTracker)
+            .where(
+                POCTracker.poc_id == poc_id,
+                POCTracker.row_version == expected_version,
+                POCTracker.status == POC_STATUS_SUBMITTED,
+            )
+            .values(
+                outcome=outcome,
+                outcome_notes=reason,
+                status=POC_STATUS_COMPLETED,
+                row_version=POCTracker.row_version + 1,
+                updated_at=datetime.utcnow(),
+            )
         )
-
+        if result.rowcount != 1:
+            db.session.rollback()
+            raise TransitionConflict("POC version is stale or the POC was already completed.")
+        db.session.expire(p)
+        db.session.refresh(p)
+        POCHistoryService.record_poc_history(
+            p.opportunity_id, user, "POC_COMPLETED",
+            f"Outcome: {outcome}. Reason: {reason}",
+        )
+        ActivityService.log(
+            "POC", p.poc_id, "POC_COMPLETED",
+            f"POC '{p.poc_name}' marked completed with outcome '{outcome}'.",
+            user.user_id, commit=False, active_role=role,
+        )
         db.session.commit()
         return p
 
@@ -792,6 +953,88 @@ class Phase2Service:
         return n
 
     @staticmethod
+    def get_poc_assignment_queue(user, role, search=None, assignment_status="all"):
+        if not (user and user.active and user.status == "APPROVED" and role in {DELIVERY_MANAGER, LEADERSHIP}):
+            raise AuthorizationDenied("Only Delivery Manager or Leadership can view POC team assignments.")
+        query = Opportunity.query.filter(
+            Opportunity.lifecycle_stage == "POC",
+            Opportunity.outcome == "Open",
+            Opportunity.operational_status.in_(["Active", "Stalled"]),
+        )
+        if search:
+            query = query.filter(Opportunity.opportunity_name.ilike(f"%{search.strip()}%"))
+        opportunities = query.order_by(Opportunity.updated_at.desc(), Opportunity.opportunity_id.desc()).all()
+        result = []
+        for opportunity in opportunities:
+            pocs = POCTracker.query.filter_by(opportunity_id=opportunity.opportunity_id).order_by(POCTracker.created_at.desc(), POCTracker.poc_id.desc()).all()
+            active_poc = next((poc for poc in pocs if poc.status in {"Draft", "In Progress"}), None)
+            latest_poc = active_poc or (pocs[0] if pocs else None)
+            canonical = OpportunityPOCTeamMember.query.filter_by(opportunity_id=opportunity.opportunity_id).order_by(OpportunityPOCTeamMember.opportunity_poc_team_member_id.asc()).all()
+            team_rows = [(member.user_id, member.role, member.user) for member in canonical]
+            if not team_rows and active_poc:
+                team_rows = [(member.user_id, member.role, member.user) for member in active_poc.team_members]
+            assigned = bool(team_rows)
+            # Unassigned rows require a live POC that can receive its initial team.
+            if not assigned and not active_poc:
+                continue
+            if assignment_status == "unassigned" and (assigned or not active_poc):
+                continue
+            if assignment_status == "assigned" and not assigned:
+                continue
+            if not latest_poc:
+                continue
+            result.append({
+                "opportunity_id": opportunity.opportunity_id,
+                "opportunity_name": opportunity.opportunity_name,
+                "account_name": opportunity.account.account_name if opportunity.account else None,
+                "stage": opportunity.lifecycle_stage,
+                "outcome": opportunity.outcome,
+                "row_version": opportunity.row_version,
+                "poc": {"poc_id": latest_poc.poc_id, "poc_name": latest_poc.poc_name, "status": latest_poc.status, "row_version": latest_poc.row_version, "target_date": latest_poc.target_date.isoformat() if latest_poc.target_date else None},
+                "active_poc": bool(active_poc),
+                "team_editable": bool(latest_poc.status != "Submitted"),
+                "team_assigned": assigned,
+                "team": [{"user_id": member_id, "full_name": member_user.full_name if member_user else None, "role": member_role, "active": bool(member_user and member_user.active and member_user.status == "APPROVED"), "roles": member_user.role_names() if member_user else []} for member_id, member_role, member_user in team_rows],
+            })
+        return result
+
+    @staticmethod
+    def get_delivery_assignment_queue(user, role, search=None, assignment_status="all"):
+        if not (user and user.active and user.status == "APPROVED" and role in {DELIVERY_MANAGER, LEADERSHIP}):
+            raise AuthorizationDenied("Only Delivery Manager or Leadership can view delivery team assignments.")
+        query = DeliveryProject.query.join(Opportunity).filter(DeliveryProject.status == "Active")
+        if role == DELIVERY_MANAGER:
+            query = query.filter(DeliveryProject.manager_id == user.user_id)
+        if search:
+            query = query.filter(Opportunity.opportunity_name.ilike(f"%{search.strip()}%"))
+        projects = query.order_by(DeliveryProject.updated_at.desc(), DeliveryProject.delivery_project_id.desc()).all()
+        result = []
+        for project in projects:
+            assigned = bool(project.members)
+            if assignment_status == "unassigned" and assigned:
+                continue
+            if assignment_status == "assigned" and not assigned:
+                continue
+            canonical = OpportunityPOCTeamMember.query.filter_by(opportunity_id=project.opportunity_id).order_by(OpportunityPOCTeamMember.opportunity_poc_team_member_id.asc()).all()
+            if not canonical:
+                latest = POCTracker.query.filter_by(opportunity_id=project.opportunity_id).order_by(POCTracker.created_at.desc(), POCTracker.poc_id.desc()).first()
+                canonical = list(latest.team_members) if latest else []
+            result.append({
+                "delivery_project_id": project.delivery_project_id,
+                "opportunity_id": project.opportunity_id,
+                "opportunity_name": project.opportunity.opportunity_name if project.opportunity else None,
+                "account_name": project.account.account_name if project.account else None,
+                "stage": project.opportunity.lifecycle_stage if project.opportunity else None,
+                "outcome": project.opportunity.outcome if project.opportunity else None,
+                "status": project.status,
+                "row_version": project.row_version,
+                "team_assigned": assigned,
+                "members": [{"user_id": member.user_id, "full_name": member.user.full_name if member.user else None, "roles": member.user.role_names() if member.user else [], "active": bool(member.user and member.user.active and member.user.status == "APPROVED"), "is_done": member.is_done, "is_suggested": member.is_suggested} for member in project.members],
+                "suggested_members": [{"user_id": member.user_id, "full_name": member.user.full_name if member.user else None, "role": member.role, "roles": member.user.role_names() if member.user else [], "active": bool(member.user and member.user.active and member.user.status == "APPROVED")} for member in canonical],
+            })
+        return result
+
+    @staticmethod
     def get_delivery(oid,user,role):
         p=DeliveryProject.query.filter_by(opportunity_id=oid).first()
         return p if p and AuthorizationService.can_view_opportunity(user,role,p.opportunity) else None
@@ -805,10 +1048,15 @@ class Phase2Service:
         p=DeliveryProject(opportunity_id=o.opportunity_id,account_id=o.account_id,manager_id=manager.user_id,status="Active",row_version=1)
         db.session.add(p); db.session.flush()
         # Proposed POC team only; Delivery Manager controls final membership.
-        latest=POCTracker.query.filter_by(opportunity_id=o.opportunity_id).order_by(POCTracker.created_at.desc()).first()
-        if latest:
-            for tm in latest.team_members:
+        canonical_team = OpportunityPOCTeamMember.query.filter_by(opportunity_id=o.opportunity_id).order_by(OpportunityPOCTeamMember.opportunity_poc_team_member_id.asc()).all()
+        if canonical_team:
+            for tm in canonical_team:
                 db.session.add(DeliveryProjectMember(delivery_project_id=p.delivery_project_id,user_id=tm.user_id,assigned_by=manager.user_id,is_suggested=True))
+        else:
+            latest=POCTracker.query.filter_by(opportunity_id=o.opportunity_id).order_by(POCTracker.created_at.desc(), POCTracker.poc_id.desc()).first()
+            if latest:
+                for tm in latest.team_members:
+                    db.session.add(DeliveryProjectMember(delivery_project_id=p.delivery_project_id,user_id=tm.user_id,assigned_by=manager.user_id,is_suggested=True))
         ActivityService.log("DeliveryProject",p.delivery_project_id,"DELIVERY_PROJECT_CREATED","Delivery Project created from Closed Won.",user.user_id,commit=False,active_role=role)
         NotificationService.queue(manager.user_id,"DELIVERY_PROJECT_CREATED","Opportunity",o.opportunity_id,f"Delivery Project created for '{o.opportunity_name}'.")
         return p
@@ -818,6 +1066,10 @@ class Phase2Service:
         p=db.session.get(DeliveryProject, project_id)
         if not p: return None
         if not AuthorizationService.can_manage_delivery_project(user,role,p): raise AuthorizationDenied("Only Delivery Manager or Leadership can manage project membership.")
+        if role == DELIVERY_MANAGER and p.manager_id != user.user_id:
+            raise AuthorizationDenied("You can only manage delivery projects assigned to you.")
+        if p.status != "Active":
+            raise ValueError("A completed delivery project cannot be reassigned.")
 
         try:
             expected_version = int(expected_version)
@@ -828,9 +1080,13 @@ class Phase2Service:
             raise TransitionConflict("Delivery Project version is stale. Refresh before retrying.")
 
         ids=list(dict.fromkeys(int(x) for x in (member_ids or [])))
+        if not ids:
+            raise ValueError("At least one delivery team member is required.")
         users={u.user_id:u for u in User.query.filter(User.user_id.in_(ids)).all()}
         if len(users)!=len(ids): raise ValueError("One or more members do not exist.")
         for uid in ids:
+            if not users[uid].active or users[uid].status != "APPROVED":
+                raise ValueError("Inactive or unapproved users cannot be assigned to a delivery team.")
             if not (users[uid].has_role(DEVOPS_ENGINEER) or users[uid].has_role(DATA_ANALYST)):
                 raise ValueError("Only valid delivery team roles may be assigned.")
 

@@ -5,6 +5,7 @@ from sqlalchemy import event
 POC_HISTORY_EVENT_TYPES = {
     "POC_STARTED",
     "POC_SUBMITTED",
+    "POC_COMPLETED",
     "NEW_POC_REQUESTED",
 }
 
@@ -15,7 +16,7 @@ class POCHistory(db.Model):
     __tablename__ = "poc_history"
     __table_args__ = (
         db.CheckConstraint(
-            "event_type IN ('POC_STARTED','POC_SUBMITTED','NEW_POC_REQUESTED')",
+            "event_type IN ('POC_STARTED','POC_SUBMITTED','POC_COMPLETED','NEW_POC_REQUESTED')",
             name="ck_poc_history_event_type",
         ),
         db.CheckConstraint(

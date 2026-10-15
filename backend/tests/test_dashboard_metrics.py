@@ -67,10 +67,24 @@ def test_dashboard_api(dashboard_client):
     assert "weighted_forecast" in data
     assert "pipeline_by_stage" in data
 
+    follow_ups_response = dashboard_client.get(
+        "/api/dashboard/follow-ups?filter=all&page=1&page_size=10",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert follow_ups_response.status_code == 200
+    follow_up_data = follow_ups_response.get_json()
+    assert follow_up_data["items"] == []
+    assert follow_up_data["total"] == 0
+    assert follow_up_data["page"] == 1
+    assert follow_up_data["total_pages"] == 0
+
 
 def test_dashboard_requires_authentication(dashboard_client):
     response = dashboard_client.get("/api/dashboard")
     assert response.status_code == 401
+
+    follow_ups_response = dashboard_client.get("/api/dashboard/follow-ups")
+    assert follow_ups_response.status_code == 401
 
 
 def test_weighted_forecast():

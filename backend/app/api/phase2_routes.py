@@ -251,11 +251,33 @@ def get_delivery_team_candidates():
     return err(action)
 
 
+@phase2_bp.get("/delivery-manager/poc-assignments")
+@phase2_auth_required
+def delivery_manager_poc_assignments():
+    return err(lambda: jsonify(Phase2Service.get_poc_assignment_queue(
+        g.auth_user, g.active_role, request.args.get("search"), request.args.get("status", "all")
+    )))
+
+
+@phase2_bp.get("/delivery-manager/delivery-assignments")
+@phase2_auth_required
+def delivery_manager_delivery_assignments():
+    return err(lambda: jsonify(Phase2Service.get_delivery_assignment_queue(
+        g.auth_user, g.active_role, request.args.get("search"), request.args.get("status", "all")
+    )))
+
+
+@phase2_bp.put("/opportunity/<int:oid>/poc-team")
+@phase2_auth_required
+def reassign_opportunity_poc_team(oid):
+    return err(lambda: jsonify(Phase2Service.reassign_opportunity_poc_team(oid, request.get_json() or {}, g.auth_user, g.active_role)))
+
+
 @phase2_bp.post("/pocs/<int:poc_id>/team")
 @phase2_auth_required
 def assign_poc_team(poc_id):
     def action():
-        rows = Phase2Service.assign_poc_team(poc_id, (request.get_json() or {}).get("member_ids", []), g.auth_user, g.active_role)
+        rows = Phase2Service.assign_poc_team(poc_id, (request.get_json() or {}).get("member_ids", []), g.auth_user, g.active_role, (request.get_json() or {}).get("expected_version"))
         if rows is None:
             return jsonify({"message": "POC not found"}), 404
         return jsonify([{"user_id": m.user_id, "role": m.role} for m in rows])

@@ -97,11 +97,7 @@
    ========================================================= */
 
 .followup-kpis {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
-
-    padding: 0 20px 22px;
+    display: none;
 }
 
 .followup-kpi {
@@ -258,7 +254,7 @@
 
     padding: 18px 0 14px;
 
-    border-top: 1px solid #edf1f6;
+    border-top: 0;
 }
 
 .priority-heading h3 {
@@ -797,3 +793,23 @@
         padding: 0 12px 15px;
     }
 }
+
+.followup-opportunity-link {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #1d4ed8;
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+.followup-opportunity-link:hover { text-decoration: underline; }
+.followup-opportunity-link:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; border-radius: 3px; }
+.followup-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 2px 0; color: #718096; font-size: 11px; }
+.followup-pagination > div { display: flex; gap: 8px; }
+.followup-pagination button { padding: 7px 10px; border: 1px solid #dce5f0; border-radius: 8px; background: #fff; color: #334155; font-size: 11px; cursor: pointer; }
+.followup-pagination button:disabled { opacity: .45; cursor: not-allowed; }
+.followup-arrow:disabled { opacity: .35; cursor: not-allowed; }
+@media (max-width: 700px) { .followup-pagination { align-items: flex-start; flex-direction: column; } }

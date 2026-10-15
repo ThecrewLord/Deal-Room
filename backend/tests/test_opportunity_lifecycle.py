@@ -22,6 +22,7 @@ from app.models.account.account import Account
 from app.models.auth.user import User
 from app.models.auth.user_role import UserRole
 from app.models.opportunity.opportunity import Opportunity
+from app.models.opportunity.opportunity_value_history import OpportunityValueHistory
 from app.models.opportunity.opportunity_team import OpportunityTeam
 from app.models.opportunity.poc_tracker import POCTracker
 from app.models.opportunity.stage_master import StageMaster
@@ -1090,19 +1091,21 @@ def test_value_cannot_be_changed_after_creation(app):
         original_value = opp.estimated_value
         original_version = opp.row_version
 
-        with pytest.raises(ValueError, match="Opportunity Value cannot be changed"):
-            OpportunityValueService.change_value(
-                oid,
-                125000,
-                "Commercial revision",
-                original_version,
-                psm,
-                PRE_SALES_MANAGER,
-            )
-
-        unchanged = Opportunity.query.get(oid)
-        assert unchanged.estimated_value == original_value
-        assert unchanged.row_version == original_version
+        updated = OpportunityValueService.change_value(
+            oid,
+            125000,
+            "Commercial revision",
+            original_version,
+            psm,
+            PRE_SALES_MANAGER,
+        )
+        assert updated.estimated_value == 125000
+        assert updated.row_version == original_version + 1
+        assert updated.final_revenue is None
+        history = OpportunityValueHistory.query.filter_by(opportunity_id=oid).all()
+        assert history[-1].new_value == 125000
+        assert history[-1].old_value == original_value
+        assert history[-1].reason == "Commercial revision"
 
 
 def test_closed_opportunity_is_locked(app):
@@ -1111,7 +1114,7 @@ def test_closed_opportunity_is_locked(app):
         manager = user(app, SALES_MANAGER); opp = Opportunity.query.get(oid)
         LifecycleTransitionService.close_won(oid, opp.row_version, manager, SALES_MANAGER)
         closed = Opportunity.query.get(oid)
-        with pytest.raises(ValueError, match="Opportunity Value cannot be changed"):
+        with pytest.raises(TransitionConflict):
             OpportunityValueService.change_value(
                 oid,
                 200000,

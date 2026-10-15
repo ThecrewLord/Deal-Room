@@ -6,7 +6,7 @@ from app.services.opportunity_value_service import RevenueAttributionService
 
 class DashboardService:
     @staticmethod
-    def get_dashboard_summary(user, active_role):
+    def get_dashboard_summary(user, active_role, today=None):
         if active_role == ADMIN:
             raise AuthorizationDenied("Admin has no business dashboard.")
 
@@ -28,9 +28,9 @@ class DashboardService:
             "recent_opportunities": DashboardRepository.get_recent_opportunities(user, active_role),
             "upcoming_pocs": DashboardRepository.get_upcoming_pocs(user, active_role),
             "recent_activity": DashboardRepository.get_recent_activity(user, active_role),
-            "follow_ups": DashboardRepository.get_follow_up_summary(user, active_role),
+            "follow_ups": DashboardRepository.get_follow_up_summary(user, active_role, today=today),
             "activities": DashboardRepository.get_activity_summary(user, active_role),
-            "operational": DashboardRepository.get_role_operational_summary(user, active_role),
+            "operational": DashboardRepository.get_role_operational_summary(user, active_role, today=today),
         }
 
         if active_role in {LEADERSHIP, SALES_MANAGER}:

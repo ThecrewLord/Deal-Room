@@ -70,7 +70,7 @@ def test_group10_migration_graph_has_one_head():
             referenced.add(down_revision)
 
     heads = [revision for revision in revisions if revision not in referenced]
-    assert heads == ["93e6990990fd"]
+    assert len(heads) == 1, f"Expected exactly one Alembic head, found: {heads}"
 
 
 def test_no_legacy_closed_won_compatibility_symbols_remain_in_application_code():

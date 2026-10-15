@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 import math
 
@@ -71,8 +72,7 @@ class OpportunityValueService:
 
     @classmethod
     def change_value(cls, opportunity_id, new_value, reason, expected_version, user, active_role):
-        raise ValueError("Opportunity Value cannot be changed after opportunity creation.")
-
+        new_value = cls._validate_value(new_value)
         reason = cls._validate_reason(reason)
 
         opportunity = Opportunity.query.filter_by(opportunity_id=opportunity_id).with_for_update().first()
@@ -101,6 +101,7 @@ class OpportunityValueService:
                 )
                 .values(
                     estimated_value=new_value,
+                    updated_at=datetime.utcnow(),
                     row_version=Opportunity.row_version + 1,
                 )
             )

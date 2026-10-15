@@ -17,6 +17,13 @@ class POCTracker(BaseModel):
             "row_version >= 1",
             name="ck_poc_tracker_row_version_positive",
         ),
+        db.Index(
+            "uq_poc_tracker_one_open_per_opportunity",
+            "opportunity_id",
+            unique=True,
+            postgresql_where=db.text("status IN ('Draft','In Progress','Submitted')"),
+            sqlite_where=db.text("status IN ('Draft','In Progress','Submitted')"),
+        ),
     )
 
     poc_id = db.Column(

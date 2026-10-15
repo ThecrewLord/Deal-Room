@@ -9,7 +9,6 @@ import {
     RefreshCw,
     Search,
     Target,
-    Plus,
 } from "lucide-react";
 import { getOpportunities } from "../api/opportunityApi";
 import { getPocsByOpportunity, getAssignedPocs } from "../api/pocApi";
@@ -25,10 +24,24 @@ import ErrorState from "../components/ui/ErrorState";
 import StatusBadge from "../components/ui/StatusBadge";
 import EmptyState from "../components/ui/EmptyState";
 import Button from "../components/ui/Button";
-import PocForm from "../components/PocForm";
-import { requestPoc } from "../api/pocApi";
 
 const STATUS_ORDER = ["Draft", "In Progress", "Submitted", "Completed"];
+const FINAL_POC_OUTCOMES = new Set(["Success", "Failure"]);
+const hasFinalPocOutcome = (poc) => poc.status === "Completed" && FINAL_POC_OUTCOMES.has(poc.outcome);
+const timestamp = (value) => {
+    if (!value) return 0;
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+const orderPocs = (pocs) => [...pocs].sort((a, b) => {
+    const aCompleted = hasFinalPocOutcome(a);
+    const bCompleted = hasFinalPocOutcome(b);
+    if (aCompleted !== bCompleted) return aCompleted ? 1 : -1;
+    const aDate = aCompleted ? (a.updated_at || a.submitted_at || a.created_at) : a.created_at;
+    const bDate = bCompleted ? (b.updated_at || b.submitted_at || b.created_at) : b.created_at;
+    const dateDifference = timestamp(bDate) - timestamp(aDate);
+    return dateDifference || Number(b.poc_id || 0) - Number(a.poc_id || 0);
+});
 
 export default function Pocs() {
     const { activeRole } = useAuth();
@@ -40,9 +53,7 @@ export default function Pocs() {
     const [error, setError] = useState("");
     const [expandedPocs, setExpandedPocs] = useState(new Set());
 
-    const [showAddPoc, setShowAddPoc] = useState(false);
-    const [creating, setCreating] = useState(false);
-        const load = async () => {
+    const load = async () => {
         try {
             setLoading(true);
             setError("");
@@ -73,25 +84,6 @@ export default function Pocs() {
         }
     };
 
-    const handleCreatePoc = async (payload) => {
-        try {
-            setCreating(true);
-            setError("");
-
-            await requestPoc(payload);
-
-            setShowAddPoc(false);
-
-            await load();
-        } catch (err) {
-            setError(
-                err?.response?.data?.message ||
-                "Unable to create POC. Please try again."
-            );
-        } finally {
-            setCreating(false);
-        }
-    };
 
     useEffect(() => {
         if ([ROLES.SOLUTION_ENGINEER,ROLES.DELIVERY_MANAGER,ROLES.DEVOPS_ENGINEER,ROLES.DATA_ANALYST].includes(activeRole)) load();
@@ -112,8 +104,7 @@ export default function Pocs() {
         });
     };
 
-    const isCompletedPoc = (poc) =>
-        poc.status === "Completed" && Boolean(poc.outcome);
+    const isCompletedPoc = hasFinalPocOutcome;
 
     const statuses = useMemo(() => {
         const returned = [...new Set(items.map((item) => item.status).filter(Boolean))];
@@ -123,7 +114,7 @@ export default function Pocs() {
 
     const visible = useMemo(() => {
         const q = search.trim().toLowerCase();
-        return items.filter((item) => {
+        return orderPocs(items).filter((item) => {
             const text = [
                 item.poc_name, item.opportunity_name, item.account_name,
                 item.status, item.outcome, item.objective
@@ -150,8 +141,6 @@ export default function Pocs() {
     description="Plan, execute and close technical proofs of concept."
     actions={
         <div className="poc-header-actions">
-            {activeRole === ROLES.SOLUTION_ENGINEER && <Button variant="primary" onClick={() => setShowAddPoc(true)}><Plus size={15} />Add POC</Button>}
-
             <Button
                 variant="secondary"
                 onClick={load}
@@ -163,36 +152,6 @@ export default function Pocs() {
         </div>
     }
 />
-{showAddPoc && (
-    <div className="poc-modal-backdrop">
-        <div className="poc-modal">
-            <div className="poc-modal-header">
-                <div>
-                    <h2>Create New POC</h2>
-                    <p>
-                        Define the technical proof of concept and its success criteria.
-                    </p>
-                </div>
-
-                <button
-                    type="button"
-                    className="poc-modal-close"
-                    onClick={() => setShowAddPoc(false)}
-                    disabled={creating}
-                >
-                    ×
-                </button>
-            </div>
-
-            <PocForm
-                onSubmit={handleCreatePoc}
-                submitting={creating}
-                onCancel={() => setShowAddPoc(false)}
-            />
-        </div>
-    </div>
-)}
-
             {error && <ErrorState message={error} onRetry={load} />}
 
             <div className="ui-kpi-grid">

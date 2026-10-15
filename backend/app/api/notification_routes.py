@@ -17,3 +17,9 @@ def get_notifications():
 @phase2_auth_required
 def mark_notification_read(notification_id):
     return NotificationController.mark_read(notification_id, g.auth_user, g.active_role)
+
+
+@notification_bp.post("/read-all")
+@phase2_auth_required
+def mark_all_notifications_read():
+    return NotificationController.mark_all_read(g.auth_user, g.active_role)

@@ -529,3 +529,147 @@
 .header-search-result-content strong { overflow-wrap: anywhere; }
 .header-search-result-content small { color: #64748b; overflow-wrap: anywhere; }
 .header-search-state { padding: 14px; color: #64748b; font-size: 13px; }
+
+/* Notification panel: structured, readable, and viewport-safe. */
+.notification-dropdown {
+    width: min(430px, calc(100vw - 24px));
+    min-width: 0;
+    max-height: min(620px, calc(100vh - 90px));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.notification-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid var(--color-border-light);
+    background: #fff;
+}
+.notification-panel-header h3 {
+    margin: 0;
+    color: var(--color-text);
+    font-size: 14px;
+    font-weight: 750;
+}
+.notification-panel-header p {
+    margin: 4px 0 0;
+    color: var(--color-text-muted);
+    font-size: 11px;
+}
+.notification-mark-all {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--color-primary);
+    font-size: 10px;
+    font-weight: 650;
+    cursor: pointer;
+}
+.notification-mark-all:hover:not(:disabled) { background: var(--color-bg); }
+.notification-mark-all:disabled { opacity: .45; cursor: not-allowed; }
+.notification-panel-error {
+    margin: 10px 12px 0;
+    padding: 9px 10px;
+    border: 1px solid #fecaca;
+    border-radius: 7px;
+    background: #fef2f2;
+    color: var(--color-danger);
+    font-size: 11px;
+}
+.notification-list { overflow-y: auto; min-height: 0; }
+.notification-row {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--color-border-light);
+}
+.notification-row:last-child { border-bottom: 0; }
+.notification-row.is-unread { background: #f8fbff; }
+.notification-row .notification-status {
+    width: 7px;
+    height: 7px;
+    margin-top: 6px;
+    border-radius: 50%;
+    background: #cbd5e1;
+}
+.notification-row.is-unread .notification-status { background: var(--color-primary); }
+.notification-open {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+}
+.notification-message {
+    color: var(--color-text);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.notification-row.is-unread .notification-message { font-weight: 650; }
+.notification-open small { color: var(--color-text-muted); font-size: 10px; }
+.notification-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.notification-open-link,
+.notification-mark-one {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 27px;
+    min-height: 27px;
+    padding: 0 5px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-primary);
+    font-size: 10px;
+    cursor: pointer;
+}
+.notification-open-link:hover,
+.notification-mark-one:hover { border-color: var(--color-border); background: #fff; }
+.notification-mark-one { white-space: nowrap; }
+.notification-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 32px 18px;
+    text-align: center;
+}
+.notification-empty-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-bottom: 3px;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+}
+.notification-empty strong { color: var(--color-text); font-size: 12px; }
+.notification-empty p { margin: 0; color: var(--color-text-muted); font-size: 11px; }
+@media (max-width: 520px) {
+    .notification-dropdown { position: fixed; top: calc(var(--header-height) + 8px); right: 12px; width: calc(100vw - 24px); max-height: calc(100vh - var(--header-height) - 24px); }
+    .notification-panel-header { flex-wrap: wrap; }
+}

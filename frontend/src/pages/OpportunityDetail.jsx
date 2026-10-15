@@ -23,7 +23,7 @@ import {
 } from "../api/phase2Api";
 import { getStakeholdersByOpportunity } from "../api/stakeholderApi";
 import {
-    getOpportunity, getOpportunityStageHistory, getOpportunityValueHistory, changeOpportunityValue, updateOpportunity,
+    getOpportunity, getOpportunityMetadata, getOpportunityStageHistory, getOpportunityValueHistory, changeOpportunityValue, updateOpportunity,
     submitOpportunityForReview, advanceToRfx, advanceToPoc, advanceToNegotiations,
     closeWon, closeLost, requestClosedWon, approveClosedWon, rejectClosedWon, markStalled, markActive
 } from "../api/opportunityApi";
@@ -113,12 +113,15 @@ export default function OpportunityDetail() {
     const [edit, setEdit] = useState(null);
     const [editingSales, setEditingSales] = useState(false);
     const [editingValue, setEditingValue] = useState(false);
+    const [remoteChanged, setRemoteChanged] = useState(false);
+    const [remoteMetadata, setRemoteMetadata] = useState(null);
     const [valueEdit, setValueEdit] = useState({ new_value: "", reason: "" });
     const [resultForms, setResultForms] = useState({});
     const [pocCandidates, setPocCandidates] = useState([]);
     const [pocTeamSelections, setPocTeamSelections] = useState({});
     const [pocResultLinks, setPocResultLinks] = useState({});
     const [pocOutcomes, setPocOutcomes] = useState({});
+    const [pocOutcomeReasons, setPocOutcomeReasons] = useState({});
     const [pocRepeatReasons, setPocRepeatReasons] = useState({});
     const [pocRepeatSaving, setPocRepeatSaving] = useState({});
 
@@ -335,6 +338,51 @@ export default function OpportunityDetail() {
         load();
     }, [opportunityId, activeRole]);
 
+    useEffect(() => {
+        let active = true;
+        const refreshAuthoritative = async () => {
+            if (document.visibilityState === "hidden" || !navigator.onLine) return;
+            try {
+                const metadata = await getOpportunityMetadata(opportunityId);
+                if (!active || !opportunity) return;
+                if (Number(metadata.row_version) !== Number(opportunity.row_version)) {
+                    if (editingSales || editingValue) {
+                        setRemoteMetadata(metadata);
+                        setRemoteChanged(true);
+                    } else {
+                        const latest = await getOpportunity(opportunityId);
+                        if (!active) return;
+                        setOpportunity(latest);
+                        setEdit({
+                            opportunity_name: latest.opportunity_name || "",
+                            description: latest.description || "",
+                            pain_points: latest.pain_points || "",
+                            probability: latest.probability ?? 0,
+                            expected_close_date: latest.expected_close_date || "",
+                        });
+                        setRemoteChanged(false);
+                        setRemoteMetadata(null);
+                    }
+                }
+            } catch {
+                // Background refresh is best-effort; retain the last known record.
+            }
+        };
+        const onVisibility = () => { if (document.visibilityState === "visible") refreshAuthoritative(); };
+        const onOnline = () => refreshAuthoritative();
+        const timer = window.setInterval(refreshAuthoritative, 25000);
+        window.addEventListener("focus", refreshAuthoritative);
+        window.addEventListener("online", onOnline);
+        document.addEventListener("visibilitychange", onVisibility);
+        return () => {
+            active = false;
+            window.clearInterval(timer);
+            window.removeEventListener("focus", refreshAuthoritative);
+            window.removeEventListener("online", onOnline);
+            document.removeEventListener("visibilitychange", onVisibility);
+        };
+    }, [opportunityId, opportunity?.row_version, editingSales, editingValue]);
+
     const assignedSE = opportunity?.team_members?.some(
         (member) => member.role === ROLES.SOLUTION_ENGINEER && member.user_id === currentUserId
     );
@@ -346,11 +394,9 @@ export default function OpportunityDetail() {
     const isClosed = status === "Closed";
 
     const canEditSales =
-        [ROLES.LEADERSHIP, ROLES.SALES_MANAGER, ROLES.SALES_EXECUTIVE, ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST].includes(activeRole) &&
-        opportunity?.created_by === currentUserId &&
+        [ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER].includes(activeRole) &&
         opportunity?.operational_status === "Active" &&
-        stageName === "Lead" &&
-        opportunity?.review_status === "Draft";
+        opportunity?.outcome === "Open";
 
     const canSubmitLead =
         [ROLES.LEADERSHIP, ROLES.SALES_MANAGER, ROLES.SALES_EXECUTIVE, ROLES.PRE_SALES_MANAGER, ROLES.SOLUTION_ENGINEER, ROLES.DELIVERY_MANAGER, ROLES.DEVOPS_ENGINEER, ROLES.DATA_ANALYST].includes(activeRole) &&
@@ -361,10 +407,9 @@ export default function OpportunityDetail() {
         opportunity?.review_status === "Draft";
 
     const canEditOpportunityValue =
-        activeRole === ROLES.SALES_MANAGER &&
+        [ROLES.SALES_EXECUTIVE, ROLES.SALES_MANAGER].includes(activeRole) &&
         opportunity?.operational_status === "Active" &&
-        opportunity?.outcome === "Open" &&
-        opportunity?.review_status === "Pending Sales Manager Review";
+        opportunity?.outcome === "Open";
 
 
     const run = async (fn) => {
@@ -432,25 +477,72 @@ export default function OpportunityDetail() {
         }
     };
 
-    const saveSales = () => run(async () => {
-        await updateOpportunity(opportunityId, {
-            ...edit,
-            probability: Number(edit.probability || 0),
-            expected_close_date: edit.expected_close_date || null,
-            expected_version: opportunity.row_version,
-        });
-        setEditingSales(false);
-    });
+    const saveSales = async () => {
+        try {
+            setSaving(true);
+            setError("");
+            const updated = await updateOpportunity(opportunityId, {
+                ...edit,
+                probability: Number(edit.probability || 0),
+                expected_close_date: edit.expected_close_date || null,
+                expected_version: opportunity.row_version,
+            });
+            setOpportunity(updated);
+            setEdit({
+                opportunity_name: updated.opportunity_name || "",
+                description: updated.description || "",
+                pain_points: updated.pain_points || "",
+                probability: updated.probability ?? 0,
+                expected_close_date: updated.expected_close_date || "",
+            });
+            setEditingSales(false);
+            setRemoteChanged(false);
+        } catch (err) {
+            if (err?.response?.status === 409) {
+                setRemoteChanged(true);
+                try {
+                    const latest = await getOpportunityMetadata(opportunityId);
+                    setRemoteMetadata(latest);
+                } catch { /* Keep the unsaved form even if the refresh request fails. */ }
+                setError("This opportunity was updated by someone else. Your unsaved changes are preserved; reload the latest record and reapply them.");
+            } else {
+                setError(err?.response?.data?.message || "Unable to save Deal Overview changes.");
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
 
-    const saveValue = () => run(async () => {
-        await changeOpportunityValue(opportunityId, {
-            new_value: Number(valueEdit.new_value),
-            reason: valueEdit.reason,
-            expected_version: opportunity.row_version,
-        });
-        setEditingValue(false);
-        setValueEdit({ new_value: "", reason: "" });
-    });
+    const saveValue = async () => {
+        try {
+            setSaving(true);
+            setError("");
+            const updated = await changeOpportunityValue(opportunityId, {
+                new_value: Number(valueEdit.new_value),
+                reason: valueEdit.reason,
+                expected_version: opportunity.row_version,
+            });
+            setOpportunity(updated);
+            setEditingValue(false);
+            setValueEdit({ new_value: "", reason: "" });
+            setRemoteChanged(false);
+            setRemoteMetadata(null);
+            await retrySection("valueHistory");
+        } catch (err) {
+            if (err?.response?.status === 409) {
+                setRemoteChanged(true);
+                try {
+                    const latest = await getOpportunityMetadata(opportunityId);
+                    setRemoteMetadata(latest);
+                } catch { /* Preserve the user's unsaved value edit. */ }
+                setError("This opportunity was updated by someone else. Your unsaved value and reason are preserved; reload and reapply them.");
+            } else {
+                setError(err?.response?.data?.message || "Unable to save the opportunity value.");
+            }
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const submitPocRequest = async (payload) => {
         try {
@@ -599,6 +691,20 @@ export default function OpportunityDetail() {
                 <KpiCard icon={Layers3Icon} label="Stage" value={stageName} description={status} />
             </div>
 
+            {remoteChanged && (
+                <div role="alert" className="opportunity-conflict-banner">
+                    <strong>This opportunity has changed.</strong>
+                    <span>Your current form values have not been replaced. Latest version: v{remoteMetadata?.row_version ?? "unknown"}{remoteMetadata?.updated_at ? ` · updated ${new Date(remoteMetadata.updated_at).toLocaleString()}` : ""}{remoteMetadata?.last_updated_by ? ` by ${remoteMetadata.last_updated_by}` : ""}.</span>
+                    <Button variant="secondary" size="sm" onClick={() => {
+                        setEditingSales(false);
+                        setEditingValue(false);
+                        setRemoteChanged(false);
+                        setRemoteMetadata(null);
+                        load();
+                    }}>Reload latest record</Button>
+                </div>
+            )}
+
             <div className="opportunity-two-column">
                 <SectionCard
                  title="Deal Overview"
@@ -629,12 +735,13 @@ export default function OpportunityDetail() {
                     ) : (
                         <>
                             <InfoGrid>
-                                <InfoItem icon={DollarSign} label="Final revenue" value={money(opportunity.final_revenue)} />
-                                <InfoItem icon={History} label="Version" value={opportunity.value_version ?? 1} />
-                                <InfoItem icon={FileText} label="Account" value={opportunity.account_name || `Account #${opportunity.account_id}`} />
-                                <InfoItem icon={UserRound} label="Created by" value={createdBy} />
-                                <InfoItem icon={CalendarDays} label="Created on" value={dateLabel(opportunity.created_at)} />
-                                <InfoItem icon={Clock3} label="Last updated" value={dateLabel(opportunity.updated_at)} />
+                                <InfoItem icon={DollarSign} label="Current Opportunity Value" value={money(opportunity.estimated_value)} />
+                                <InfoItem icon={CalendarDays} label="Expected Close" value={dateLabel(opportunity.expected_close_date)} />
+                                <InfoItem icon={Target} label="Probability" value={`${probability}%`} />
+                                <InfoItem icon={FileText} label="Description" value={opportunity.description} />
+                                <InfoItem icon={MessageSquare} label="Pain Points" value={opportunity.pain_points} />
+                                <InfoItem icon={History} label="Version" value={opportunity.row_version ?? 1} />
+                                <InfoItem icon={Clock3} label="Last Updated" value={opportunity.updated_at ? new Date(opportunity.updated_at).toLocaleString() : "—"} />
                             </InfoGrid>
 
                             {editingValue ? (
@@ -1314,6 +1421,7 @@ export default function OpportunityDetail() {
                                                 }}
                                             >
                                                 Outcome: {poc.outcome}
+                                                {poc.outcome_notes ? <p>{poc.outcome_notes}</p> : null}
                                             </div>
                                         )}
 
@@ -1349,15 +1457,32 @@ export default function OpportunityDetail() {
                                                     <option value="Failure">Failure</option>
                                                 </select>
 
+                                                <textarea
+                                                    rows="3"
+                                                    value={pocOutcomeReasons[poc.poc_id] || ""}
+                                                    onChange={(e) => setPocOutcomeReasons((current) => ({
+                                                        ...current,
+                                                        [poc.poc_id]: e.target.value,
+                                                    }))}
+                                                    placeholder="Required reason for this POC outcome"
+                                                    disabled={saving}
+                                                    style={{ width: "100%", marginBottom: "8px" }}
+                                                />
                                                 <Button
-                                                    disabled={saving || !pocOutcomes[poc.poc_id]}
+                                                    disabled={saving || !pocOutcomes[poc.poc_id] || !(pocOutcomeReasons[poc.poc_id] || "").trim()}
                                                     onClick={() =>
                                                         run(async () => {
                                                             await completePocV2(poc.poc_id, {
                                                                 outcome: pocOutcomes[poc.poc_id],
+                                                                outcome_notes: pocOutcomeReasons[poc.poc_id],
+                                                                row_version: poc.row_version,
                                                             });
 
                                                             setPocOutcomes((current) => ({
+                                                                ...current,
+                                                                [poc.poc_id]: "",
+                                                            }));
+                                                            setPocOutcomeReasons((current) => ({
                                                                 ...current,
                                                                 [poc.poc_id]: "",
                                                             }));

@@ -105,6 +105,18 @@ class NotificationService:
         return [n for n in notifications if NotificationService._visible(n, user, active_role)]
 
     @staticmethod
+    def mark_all_read(user, active_role):
+        """Mark only notifications visible to this user in the active role as read."""
+        visible_unread = NotificationService.get_for_user(
+            user, active_role, unread_only=True
+        )
+        for notification in visible_unread:
+            notification.is_read = True
+        if visible_unread:
+            db.session.commit()
+        return len(visible_unread)
+
+    @staticmethod
     def mark_read(notification_id, user, active_role):
         notification = Notification.query.filter_by(
             notification_id=notification_id,

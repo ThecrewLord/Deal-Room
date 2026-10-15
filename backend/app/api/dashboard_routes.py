@@ -10,3 +10,9 @@ dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/dashboard")
 @business_access_required
 def get_dashboard():
     return DashboardController.get_dashboard()
+
+
+@dashboard_bp.get("/follow-ups")
+@business_access_required
+def get_dashboard_follow_ups():
+    return DashboardController.get_follow_ups()

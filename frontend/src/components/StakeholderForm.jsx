@@ -3,6 +3,8 @@ import { useState, useEffect, useRef } from "react";
 import { createStakeholder } from "../api/stakeholderApi";
 import { getTags } from "../api/phase2Api";
 import Button from "./ui/Button";
+import FormSection from "./ui/FormSection";
+import FormActions from "./ui/FormActions";
 import "./StakeholderForm.css";
 
 const DEFAULT_TAGS = [
@@ -19,7 +21,6 @@ const EMPTY_FORM = {
     job_title: "",
     email: "",
     phone: "",
-    company: "",
     tags: [],
 };
 
@@ -143,39 +144,34 @@ export default function StakeholderForm({ opportunityId, onCreated }) {
                     ✓ {success}
                 </div>
             )}
-
-            <input
-                required
-                placeholder="Name"
-                value={form.name}
-                disabled={submitting}
-                onChange={(e) => updateField("name", e.target.value)}
-            />
-            <input
-                placeholder="Job title"
-                value={form.job_title}
-                disabled={submitting}
-                onChange={(e) => updateField("job_title", e.target.value)}
-            />
-            <input
-                placeholder="Email"
-                type="email"
-                value={form.email}
-                disabled={submitting}
-                onChange={(e) => updateField("email", e.target.value)}
-            />
-            <input
-                placeholder="10-digit phone number"
-                value={form.phone}
-                disabled={submitting}
-                onChange={(e) => updateField("phone", e.target.value)}
-            />
-            <input
-                placeholder="Company"
-                value={form.company}
-                disabled={submitting}
-                onChange={(e) => updateField("company", e.target.value)}
-            />
+            <FormSection
+                title="Stakeholder information"
+                description="Add the contact and the roles they play in this opportunity."
+            >
+            <div className="field-grid">
+            <label className="shared-form-field">
+                <span>Name <span className="required-mark">*</span></span>
+                <input required autoComplete="name" value={form.name} disabled={submitting}
+                    onChange={(e) => updateField("name", e.target.value)} />
+            </label>
+            <label className="shared-form-field">
+                <span>Job title</span>
+                <input value={form.job_title} disabled={submitting}
+                    onChange={(e) => updateField("job_title", e.target.value)} />
+            </label>
+            <label className="shared-form-field">
+                <span>Email</span>
+                <input type="email" autoComplete="email" value={form.email} disabled={submitting}
+                    onChange={(e) => updateField("email", e.target.value)} />
+            </label>
+            <label className="shared-form-field">
+                <span>Phone</span>
+                <input type="tel" inputMode="numeric" maxLength={10} pattern="[0-9]{10}"
+                    aria-describedby="stakeholder-phone-help" placeholder="10-digit phone number"
+                    value={form.phone} disabled={submitting}
+                    onChange={(e) => updateField("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} />
+                <small id="stakeholder-phone-help" className="shared-form-note">Enter 10 digits without a country code.</small>
+            </label>
 
             <section className="role-field" ref={dropdownRef}>
                 <div className="role-heading">
@@ -282,12 +278,14 @@ export default function StakeholderForm({ opportunityId, onCreated }) {
                     </div>
                 )}
             </section>
+            </div>
+            </FormSection>
 
-            <div className="role-submit">
+            <FormActions className="role-submit">
                 <Button type="submit" disabled={submitting}>
                     {submitting ? "Saving stakeholder…" : "Add stakeholder"}
                 </Button>
-            </div>
+            </FormActions>
         </form>
     );
 }

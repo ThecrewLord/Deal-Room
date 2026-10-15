@@ -482,8 +482,10 @@ class LifecycleTransitionService:
             reason = str(reason).strip() if reason is not None else None
             explanation = str(explanation).strip() if explanation is not None else None
 
-            if not reason:
-                raise TransitionInvalid("A closure reason is required.")
+            # A reason is required for Closed Lost, but Closed Won requests
+            # historically do not require a loss reason.
+            if requested_outcome == "Closed Lost" and not reason:
+                raise TransitionInvalid("A closure reason is required for Closed Lost.")
 
             if requested_outcome == "Closed Lost" and reason.lower() == "other" and not explanation:
                 raise TransitionInvalid("Explanation is required when Closed Lost reason is Other.")

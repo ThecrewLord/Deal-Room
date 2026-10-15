@@ -19,10 +19,10 @@ export default function Signup() {
     return (
         <AuthLayout eyebrow="GET STARTED" title="Create your Deal Room account" description="Set up your account and get ready to collaborate on better deals.">
             <form className="auth-modern-form" onSubmit={submit} noValidate>
-                <label className="auth-field"><span>Full Name</span><input name="full_name" value={form.full_name} onChange={handleChange} placeholder="Your full name" required autoComplete="name" /></label>
-                <label className="auth-field"><span>Email</span><input name="email" type="email" value={form.email} onChange={handleChange} placeholder="you@company.com" required autoComplete="email" /></label>
-                <label className="auth-field"><span>Password</span><input name="password" type="password" value={form.password} onChange={handleChange} placeholder="Create a password" required autoComplete="new-password" /></label>
-                {error && <div className="auth-error" role="alert">{error}</div>}
+                <label className="auth-field"><span>Full Name</span><input id="signup-full-name" name="full_name" aria-invalid={Boolean(error)} aria-describedby={error ? "signup-error" : undefined} value={form.full_name} onChange={handleChange} placeholder="Your full name" required autoComplete="name" /></label>
+                <label className="auth-field"><span>Email</span><input id="signup-email" name="email" type="email" aria-invalid={Boolean(error)} aria-describedby={error ? "signup-error" : undefined} value={form.email} onChange={handleChange} placeholder="you@company.com" required autoComplete="email" /></label>
+                <label className="auth-field"><span>Password</span><input id="signup-password" name="password" type="password" aria-invalid={Boolean(error)} aria-describedby={error ? "signup-error" : undefined} value={form.password} onChange={handleChange} placeholder="Create a password" required autoComplete="new-password" /></label>
+                {error && <div id="signup-error" className="auth-error" role="alert">{error}</div>}
                 <button className="auth-submit" type="submit" disabled={submitting}>{submitting ? "Creating account…" : "Register"}</button>
             </form>
             <p className="auth-footer-link">Already have an account? <Link to="/login">Back to Login</Link></p>

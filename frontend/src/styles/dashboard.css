@@ -16,8 +16,36 @@
 @media(max-width:900px){.dashboard-pipeline-outcome-grid,.dashboard-lower-grid,.dashboard-admin-grid{grid-template-columns:1fr}.dashboard-workspace-grid{grid-template-columns:1fr}.dashboard-kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.dashboard-content{padding:20px 14px 28px}.dashboard-kpi-row{grid-template-columns:1fr}.dashboard-context-row{align-items:flex-start;flex-direction:column}.dashboard-funnel-row{grid-template-columns:minmax(95px,1fr) minmax(0,2fr) 26px;gap:7px}.dashboard-funnel-fill span{display:none}.dashboard-team-row{grid-template-columns:32px minmax(0,1fr) 16px}.dashboard-team-stat{display:none}.dashboard-opportunity-row{grid-template-columns:32px minmax(0,1fr) 16px}.dashboard-row-value{display:none}.dashboard-poc-row,.dashboard-activity-row{grid-template-columns:32px minmax(0,1fr)}.dashboard-poc-meta,.dashboard-activity-meta{display:none}}
 
-/* Phase 4 — denser admin overview without introducing new data sources */
+/* Phase 4 â€” denser admin overview without introducing new data sources */
 .dashboard-admin-user-row { min-width: 0; }
 .dashboard-admin-user-role { min-width: 120px; max-width: 220px; color: var(--color-text-secondary); font-size: 9px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-admin-status { flex: 0 0 auto; }
 @media (max-width: 700px) { .dashboard-admin-user-role { display: none; } }
+
+/* Consistent vertical spacing between dashboard sections across all roles. */
+.deal-dashboard > .ui-card,
+.deal-dashboard > .dashboard-pipeline-outcome-grid,
+.deal-dashboard > .dashboard-lower-grid,
+.deal-dashboard > .dashboard-admin-grid,
+.deal-dashboard > .dashboard-workspace-card,
+.deal-dashboard > .dashboard-team-card,
+.deal-dashboard > .dashboard-queue-card {
+    margin-bottom: 20px;
+}
+
+/* Keep the final section from adding unnecessary space at the bottom. */
+.deal-dashboard > :last-child {
+    margin-bottom: 0;
+}
+
+@media (max-width: 700px) {
+    .deal-dashboard > .ui-card,
+    .deal-dashboard > .dashboard-pipeline-outcome-grid,
+    .deal-dashboard > .dashboard-lower-grid,
+    .deal-dashboard > .dashboard-admin-grid,
+    .deal-dashboard > .dashboard-workspace-card,
+    .deal-dashboard > .dashboard-team-card,
+    .deal-dashboard > .dashboard-queue-card {
+        margin-bottom: 16px;
+    }
+}

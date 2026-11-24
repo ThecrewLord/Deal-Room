@@ -22,6 +22,7 @@ import {
 } from "../api/phase2Api";
 
 import SectionCard from "./ui/SectionCard";
+import "./Phase2OpportunityPanel.css";
 import Button from "./ui/Button";
 import EmptyState from "./ui/EmptyState";
 import { ROLES } from "../auth/roles";
@@ -800,67 +801,18 @@ export default function Phase2OpportunityPanel({
           icon={CalendarCheck}
         >
           {/* Add Follow-up */}
-          <div
-            style={{
-              padding: "16px",
-              border: "1px solid var(--border)",
-              borderRadius: "12px",
-              background: "var(--surface)",
-              opacity: collaborationBlocked ? 0.65 : 1,
-            }}
-          >
-            <div style={{ marginBottom: "12px" }}>
-              <strong
-                style={{
-                  display: "block",
-                  fontSize: "14px",
-                  marginBottom: "4px",
-                }}
-              >
-                Add a Follow-up
-              </strong>
-
-              <small style={{ color: "var(--muted)" }}>
-                Record the next action that needs to be completed.
-              </small>
+          <div className={`opportunity-followup-form${collaborationBlocked ? " is-locked" : ""}`}>
+            <div className="opportunity-followup-form-heading">
+              <strong>Add a Follow-up</strong>
+              <small>Record the next action that needs to be completed.</small>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 180px auto",
-                gap: "10px",
-                alignItems: "end",
-              }}
-            >
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    marginBottom: "6px",
-                    color: "var(--muted)",
-                  }}
-                >
-                  Next Action
-                </label>
-
+            <div className="opportunity-followup-fields">
+              <div className="opportunity-followup-field opportunity-followup-description">
+                <label htmlFor="opportunity-followup-description">Next Action</label>
                 <textarea
-                  style={{
-                    width: "100%",
-                    minHeight: "90px",
-                    boxSizing: "border-box",
-                    resize: "vertical",
-                    padding: "11px 13px",
-                    borderRadius: "9px",
-                    border: "1px solid #dbe1ea",
-                    background: "#ffffff",
-                    fontSize: "13px",
-                    lineHeight: 1.5,
-                    outline: "none",
-                  }}
-                  placeholder="Describe the action that needs to be completed...\n\nExample: Send the revised pricing proposal to the customer and schedule a review call."
+                  id="opportunity-followup-description"
+                  placeholder={"Describe the action that needs to be completed...\nExample: Send the revised pricing proposal to the customer and schedule a review call."}
                   value={fu.description}
                   disabled={collaborationBlocked}
                   onChange={(e) =>
@@ -872,25 +824,11 @@ export default function Phase2OpportunityPanel({
                 />
               </div>
 
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    marginBottom: "6px",
-                    color: "var(--muted)",
-                  }}
-                >
-                  Due Date
-                </label>
-
+              <div className="opportunity-followup-field opportunity-followup-date">
+                <label htmlFor="opportunity-followup-due-date">Due Date</label>
                 <input
+                  id="opportunity-followup-due-date"
                   type="date"
-                  style={{
-                    width: "100%",
-                    boxSizing: "border-box",
-                  }}
                   value={fu.due_date}
                   disabled={collaborationBlocked}
                   onChange={(e) =>
@@ -902,18 +840,19 @@ export default function Phase2OpportunityPanel({
                 />
               </div>
 
-              <Button
-                onClick={addF}
-                disabled={
-                  collaborationBlocked ||
-                  !fu.description.trim() ||
-                  !fu.due_date
-                }
-              >
-                {collaborationBlocked ? "Locked" : "Add Follow-up"}
-              </Button>
+              <div className="opportunity-followup-submit">
+                <Button
+                  onClick={addF}
+                  disabled={
+                    collaborationBlocked ||
+                    !fu.description.trim() ||
+                    !fu.due_date
+                  }
+                >
+                  {collaborationBlocked ? "Locked" : "Add Follow-up"}
+                </Button>
+              </div>
             </div>
-
             {collaborationBlocked && (
               <small
                 style={{
@@ -948,51 +887,11 @@ export default function Phase2OpportunityPanel({
                 return (
                   <div
                     key={f.follow_up_id}
-                    style={{
-                      padding: "15px",
-                      border: "1px solid var(--border)",
-                      borderRadius: "10px",
-                      background: "var(--surface)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: "16px",
-                      opacity: isCompleted ? 0.65 : 1,
-                    }}
+                    className={`opportunity-followup-item${isCompleted ? " is-completed" : ""}`}
                   >
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: "6px",
-                        minWidth: 0,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <span
-                          style={{
-                            padding: "4px 8px",
-                            borderRadius: "6px",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            background: isCompleted
-                              ? "#ecfdf3"
-                              : isOverdue
-                                ? "#fef2f2"
-                                : "#eff6ff",
-                            color: isCompleted
-                              ? "#15803d"
-                              : isOverdue
-                                ? "#dc2626"
-                                : "#2563eb",
-                          }}
-                        >
+                    <div className="opportunity-followup-item-content">
+                      <div className="opportunity-followup-item-heading">
+                        <span className={`opportunity-followup-status ${isCompleted ? "is-completed" : isOverdue ? "is-overdue" : "is-open"}`}>
                           {isCompleted
                             ? "COMPLETED"
                             : isOverdue
@@ -1000,20 +899,12 @@ export default function Phase2OpportunityPanel({
                               : "OPEN"}
                         </span>
 
-                        <strong style={{ fontSize: "14px" }}>
+                        <strong className="opportunity-followup-item-description">
                           {f.description}
                         </strong>
                       </div>
 
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "14px",
-                          flexWrap: "wrap",
-                          fontSize: "12px",
-                          color: "var(--muted)",
-                        }}
-                      >
+                      <div className="opportunity-followup-item-meta">
                         <span>
                           📅 Due: {f.due_date || "Date not available"}
                         </span>
@@ -1025,7 +916,7 @@ export default function Phase2OpportunityPanel({
                       </div>
 
                       {isCompleted && (
-                        <small style={{ color: "var(--muted)" }}>
+                        <small className="opportunity-followup-completed-at">
                           Completed:{" "}
                           {f.completed_at
                             ? new Date(f.completed_at).toLocaleString()
@@ -1037,12 +928,14 @@ export default function Phase2OpportunityPanel({
                     {!isCompleted &&
                       Number(currentUser?.user_id) ===
                         Number(f.created_by) && (
+                        <div className="opportunity-followup-item-action">
                         <Button
                           onClick={() => completeF(f.follow_up_id)}
                           disabled={collaborationBlocked}
                         >
                           {collaborationBlocked ? "Locked" : "Complete"}
                         </Button>
+                        </div>
                       )}
                   </div>
                 );

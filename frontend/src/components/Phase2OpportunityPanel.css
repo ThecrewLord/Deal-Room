@@ -1,0 +1,231 @@
+/* Follow-up form on the opportunity detail workspace */
+.opportunity-followup-form {
+    padding: 20px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 12px;
+    background: var(--color-surface-subtle, #fbfdff);
+}
+
+.opportunity-followup-form.is-locked {
+    opacity: 0.72;
+}
+
+.opportunity-followup-form-heading {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 16px;
+}
+
+.opportunity-followup-form-heading strong {
+    color: var(--color-text, #172033);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.opportunity-followup-form-heading small {
+    color: var(--color-text-secondary, #64748b);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.opportunity-followup-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 230px) auto;
+    align-items: end;
+    gap: 14px;
+}
+
+.opportunity-followup-field {
+    display: grid;
+    align-content: start;
+    gap: 7px;
+    min-width: 0;
+}
+
+.opportunity-followup-field label {
+    color: var(--color-text-secondary, #475569);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.opportunity-followup-field textarea,
+.opportunity-followup-field input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    border: 1px solid var(--color-border, #dbe3ef);
+    border-radius: 9px;
+    background: #fff;
+    color: var(--color-text, #172033);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.5;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.opportunity-followup-field textarea {
+    min-height: 88px;
+    padding: 11px 12px;
+    resize: vertical;
+}
+
+.opportunity-followup-field input {
+    min-height: 42px;
+    padding: 8px 10px;
+}
+
+.opportunity-followup-field textarea:focus,
+.opportunity-followup-field input:focus {
+    border-color: var(--color-primary, #2563eb);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #2563eb) 12%, transparent);
+}
+
+.opportunity-followup-field textarea:disabled,
+.opportunity-followup-field input:disabled {
+    background: #f1f5f9;
+    cursor: not-allowed;
+}
+
+.opportunity-followup-submit {
+    display: flex;
+    align-items: end;
+    min-height: 42px;
+}
+
+.opportunity-followup-submit > button {
+    min-height: 42px;
+    white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+    .opportunity-followup-fields {
+        grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
+    }
+
+    .opportunity-followup-submit {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 600px) {
+    .opportunity-followup-form {
+        padding: 14px;
+    }
+
+    .opportunity-followup-fields {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    .opportunity-followup-submit {
+        grid-column: auto;
+    }
+
+    .opportunity-followup-submit > button {
+        width: 100%;
+    }
+}
+
+/* Follow-up list items */
+.opportunity-followup-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--color-border-light, #e5eaf2);
+    border-radius: 10px;
+    background: #fff;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.opportunity-followup-item:hover {
+    border-color: #cbd8ea;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, .04);
+}
+
+.opportunity-followup-item.is-completed {
+    background: #fbfcfe;
+    opacity: .72;
+}
+
+.opportunity-followup-item-content {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+}
+
+.opportunity-followup-item-heading {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.opportunity-followup-status {
+    flex: 0 0 auto;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: .025em;
+}
+
+.opportunity-followup-status.is-completed {
+    background: #ecfdf3;
+    color: #15803d;
+}
+
+.opportunity-followup-status.is-overdue {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+.opportunity-followup-status.is-open {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.opportunity-followup-item-description {
+    min-width: 0;
+    color: var(--color-text, #172033);
+    font-size: 13px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.opportunity-followup-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    color: var(--color-text-muted, #64748b);
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.opportunity-followup-completed-at {
+    color: var(--color-text-muted, #64748b);
+    font-size: 10px;
+}
+
+.opportunity-followup-item-action {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 600px) {
+    .opportunity-followup-item {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .opportunity-followup-item-action,
+    .opportunity-followup-item-action > button {
+        width: 100%;
+    }
+}

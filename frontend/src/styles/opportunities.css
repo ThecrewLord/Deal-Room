@@ -967,3 +967,335 @@
 .opportunity-conflict-banner span {
     flex: 1 1 220px;
 }
+
+
+
+/* Stakeholder step: style the role/tag selector buttons rather than browser defaults. */
+.opportunity-create-card .standard-form .shared-form-section > div[style*="margin-top"] {
+    margin-top: 24px !important;
+    padding-top: 20px;
+    border-top: 1px solid #edf1f6;
+}
+.opportunity-create-card .standard-form .shared-form-section > div[style*="margin-top"] > strong {
+    display: block;
+    margin-bottom: 11px;
+    color: #172033;
+    font-size: 13px;
+    font-weight: 750;
+}
+.opportunity-create-card .standard-form .shared-form-section > div[style*="margin-top"] > div {
+    gap: 9px !important;
+    margin-top: 0 !important;
+}
+.opportunity-create-card .standard-form .shared-form-section > div[style*="margin-top"] button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 7px 12px;
+    border: 1px solid #dce4ef;
+    border-radius: 9px;
+    background: #fff;
+    color: #52627a;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: all .16s ease;
+}
+.opportunity-create-card .standard-form .shared-form-section > div[style*="margin-top"] button:hover {
+    border-color: #9bbcff;
+    background: #f7faff;
+    color: #1d4ed8;
+}
+.opportunity-create-card .standard-form .shared-form-section > div[style*="margin-top"] button.tag-selected {
+    border-color: #8bb5ff;
+    background: #eff6ff;
+    color: #1d4ed8;
+    box-shadow: 0 1px 3px rgba(37, 99, 235, .08);
+}
+
+/* Review step: turn the plain data dump into a clear summary. */
+.opportunity-create-card .review-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 11px;
+}
+.opportunity-create-card .review-detail-grid > div {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 65px;
+    padding: 12px 14px;
+    border: 1px solid #edf1f6;
+    border-radius: 10px;
+    background: #f9fbfe;
+}
+.opportunity-create-card .review-detail-grid span {
+    color: #8a9ab0;
+    font-size: 9px;
+    font-weight: 750;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+}
+.opportunity-create-card .review-detail-grid strong {
+    overflow-wrap: anywhere;
+    color: #1e293b;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+.opportunity-create-card .review-description {
+    margin: 14px 0 22px;
+    padding: 14px;
+    border: 1px solid #edf1f6;
+    border-radius: 10px;
+    background: #fbfcfe;
+    color: #334155;
+    font-size: 12px;
+    line-height: 1.6;
+}
+.opportunity-create-card .review-description strong {
+    display: block;
+    margin-bottom: 5px;
+    color: #8a9ab0;
+    font-size: 9px;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+}
+.opportunity-create-card .review-description {
+    overflow-wrap: anywhere;
+}
+.opportunity-create-card .review-description + .shared-form-section-heading {
+    margin: 0 0 10px;
+    padding-top: 17px;
+    border-top: 1px solid #edf1f6;
+}
+.opportunity-create-card .review-description + .shared-form-section-heading h3 {
+    margin: 0;
+    color: #172033;
+    font-size: 15px;
+    font-weight: 750;
+}
+.opportunity-create-card .review-description + .shared-form-section-heading + .shared-form-section-heading {
+    margin: 0 0 12px;
+}
+.opportunity-create-card .review-description + .shared-form-section-heading + .shared-form-section-heading h3 {
+    margin: 0;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+}
+.opportunity-create-card .review-description ~ p:not(.review-description) {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0;
+    padding: 11px 13px;
+    border-bottom: 1px solid #edf1f6;
+    color: #334155;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.opportunity-create-card .review-description ~ p:not(.review-description):last-of-type {
+    border-bottom: 0;
+}
+.opportunity-create-card .review-description ~ p:not(.review-description) strong {
+    min-width: 88px;
+    color: #8a98ab;
+    font-size: 10px;
+    font-weight: 700;
+}
+@media (max-width: 750px) {
+    .opportunity-create-card .review-detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (max-width: 480px) {
+    .opportunity-create-card .review-detail-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .opportunity-create-card .review-description ~ p:not(.review-description) {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 4px;
+    }
+}
+
+
+/* =========================================================
+   VISUAL POLISH — stronger dashboard colour
+   Keeps the Stakeholder and Review wizard improvements above.
+   ========================================================= */
+
+/* Give the dashboard a little more depth without overpowering content. */
+.opportunities-page {
+    background:
+        radial-gradient(circle at 92% 0%, rgba(191, 219, 254, 0.58), transparent 32%),
+        radial-gradient(circle at 4% 12%, rgba(224, 231, 255, 0.38), transparent 28%),
+        #f4f7fc;
+}
+
+.opportunities-eyebrow {
+    color: #2563eb;
+}
+
+/* Distinct, restrained colour identities for the four KPI cards. */
+.opportunity-stat-card {
+    border-color: #e3eaf5;
+    box-shadow:
+        0 1px 3px rgba(15, 23, 42, 0.035),
+        0 10px 26px rgba(15, 23, 42, 0.045);
+}
+
+.opportunity-stat-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 4px;
+    border-radius: 16px 0 0 16px;
+    background: #3b82f6;
+}
+
+.opportunity-stat-card:nth-child(1) {
+    background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
+    border-color: #d7e6ff;
+}
+.opportunity-stat-card:nth-child(1)::before {
+    background: #3b82f6;
+}
+.opportunity-stat-card:nth-child(1)::after {
+    background: rgba(191, 219, 254, 0.32);
+}
+.opportunity-stat-card:nth-child(1) .opportunity-stat-icon {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.opportunity-stat-card:nth-child(2) {
+    background: linear-gradient(135deg, #ffffff 0%, #ecfdf7 100%);
+    border-color: #ccefe2;
+}
+.opportunity-stat-card:nth-child(2)::before {
+    background: #10b981;
+}
+.opportunity-stat-card:nth-child(2)::after {
+    background: rgba(167, 243, 208, 0.30);
+}
+.opportunity-stat-card:nth-child(2) .opportunity-stat-icon {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.opportunity-stat-card:nth-child(3) {
+    background: linear-gradient(135deg, #ffffff 0%, #effcf4 100%);
+    border-color: #d2f1dc;
+}
+.opportunity-stat-card:nth-child(3)::before {
+    background: #22c55e;
+}
+.opportunity-stat-card:nth-child(3)::after {
+    background: rgba(187, 247, 208, 0.34);
+}
+.opportunity-stat-card:nth-child(3) .opportunity-stat-icon {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.opportunity-stat-card:nth-child(4) {
+    background: linear-gradient(135deg, #ffffff 0%, #fff1f2 100%);
+    border-color: #ffe0e3;
+}
+.opportunity-stat-card:nth-child(4)::before {
+    background: #f43f5e;
+}
+.opportunity-stat-card:nth-child(4)::after {
+    background: rgba(254, 205, 211, 0.32);
+}
+.opportunity-stat-card:nth-child(4) .opportunity-stat-icon {
+    background: #ffe4e6;
+    color: #e11d48;
+}
+
+.opportunity-stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.085);
+}
+
+.opportunity-stat-card span {
+    color: #53657f;
+}
+
+.opportunity-stat-card strong {
+    color: #172033;
+}
+
+/* Keep the create form and table visually connected to the dashboard palette. */
+.opportunity-create-card,
+.opportunity-table-card {
+    border-color: #dce6f5;
+    box-shadow: 0 8px 26px rgba(30, 64, 175, 0.045);
+}
+
+.opportunity-toolbar {
+    background: linear-gradient(135deg, #ffffff 0%, #f7faff 100%);
+}
+
+.opportunity-table thead {
+    background: #f1f5fb;
+}
+
+.opportunity-table th {
+    color: #526783;
+}
+
+.opportunity-table-row:hover {
+    background: #f2f7ff;
+}
+
+/* Make the wizard's selected stakeholder tags easier to identify.
+   This intentionally retains the previous selected/unselected behaviour. */
+.opportunity-create-card .standard-form button.tag-selected,
+.opportunity-create-card .standard-form button[aria-pressed="true"] {
+    border-color: #6d9eff;
+    background: #dbeafe;
+    color: #1d4ed8;
+    box-shadow: 0 2px 7px rgba(37, 99, 235, 0.12);
+}
+
+.opportunity-create-card .standard-form button:not(.tag-selected):hover {
+    border-color: #93b4f8;
+    background: #f3f7ff;
+    color: #1d4ed8;
+}
+
+/* Add subtle colour to the Review summary while preserving its grid layout. */
+.opportunity-create-card .review-detail-grid > div {
+    border-color: #e1eaf7;
+    background: linear-gradient(135deg, #ffffff 0%, #f5f8ff 100%);
+}
+
+.opportunity-create-card .review-detail-grid > div:nth-child(3n + 1) {
+    border-left: 3px solid #60a5fa;
+}
+.opportunity-create-card .review-detail-grid > div:nth-child(3n + 2) {
+    border-left: 3px solid #34d399;
+}
+.opportunity-create-card .review-detail-grid > div:nth-child(3n) {
+    border-left: 3px solid #a78bfa;
+}
+
+.opportunity-create-card .review-description {
+    border-color: #dbeafe;
+    background: #f5f9ff;
+}
+
+@media (max-width: 750px) {
+    .opportunity-stat-card {
+        min-height: 104px;
+    }
+}
